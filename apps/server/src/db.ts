@@ -75,5 +75,46 @@ export function createDatabase(dataDirectory: string): { sqlite: Database.Databa
       throw error
     }
   }
+  if (schemaVersion < 2) {
+    try {
+      sqlite.exec(`BEGIN IMMEDIATE;
+        ALTER TABLE jobs ADD COLUMN canonical_url TEXT;
+        ALTER TABLE jobs ADD COLUMN apply_url TEXT;
+        ALTER TABLE jobs ADD COLUMN location TEXT NOT NULL DEFAULT '';
+        ALTER TABLE jobs ADD COLUMN remote TEXT NOT NULL DEFAULT '';
+        ALTER TABLE jobs ADD COLUMN salary TEXT NOT NULL DEFAULT '';
+        ALTER TABLE jobs ADD COLUMN source TEXT NOT NULL DEFAULT 'paste';
+        ALTER TABLE jobs ADD COLUMN capture_method TEXT NOT NULL DEFAULT 'paste';
+        ALTER TABLE applications ADD COLUMN submitted_text TEXT;
+        ALTER TABLE job_answers ADD COLUMN category TEXT NOT NULL DEFAULT 'Other';
+        ALTER TABLE job_answers ADD COLUMN char_limit INTEGER;
+        ALTER TABLE job_answers ADD COLUMN submitted_answer TEXT;
+        ALTER TABLE job_answers ADD COLUMN reused_from TEXT;
+        CREATE INDEX IF NOT EXISTS jobs_canonical_url_idx ON jobs(canonical_url);
+        CREATE INDEX IF NOT EXISTS applications_status_idx ON applications(status);
+        PRAGMA user_version = 2;
+      COMMIT;`)
+    } catch (error) {
+      sqlite.exec('ROLLBACK;')
+      sqlite.close()
+      throw error
+    }
+  }
+  if (schemaVersion < 3) {
+    try {
+      sqlite.exec(`BEGIN IMMEDIATE;
+        ALTER TABLE jobs ADD COLUMN text TEXT NOT NULL DEFAULT '';
+        UPDATE jobs SET text = raw_snapshot;
+        ALTER TABLE job_answers ADD COLUMN submitted_at TEXT;
+        ALTER TABLE job_answers ADD COLUMN updated_at TEXT;
+        UPDATE job_answers SET updated_at = created_at;
+        PRAGMA user_version = 3;
+      COMMIT;`)
+    } catch (error) {
+      sqlite.exec('ROLLBACK;')
+      sqlite.close()
+      throw error
+    }
+  }
   return { sqlite, db: drizzle(sqlite, { schema }) }
 }

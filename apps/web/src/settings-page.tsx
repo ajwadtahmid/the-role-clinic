@@ -104,7 +104,7 @@ export function SettingsPage() {
     </header>
 
     <section className="intro" id="top">
-      <p className="eyebrow">LOCAL WORKSPACE · PHASE 1 FOUNDATION</p>
+      <p className="eyebrow">LOCAL WORKSPACE · SETTINGS</p>
       <h1>Make the setup<br /><em>work for you.</em></h1>
       <p className="lede">Choose a model for each job-search task. Your settings and résumé data stay on this computer.</p>
     </section>
@@ -161,6 +161,6 @@ export function SettingsPage() {
       {queueStatus && <p className="queue-status" role="status">{queueStatus}</p>}
     </section>
 
-    <footer><span>THE ROLE CLINIC</span><span>Phase 1 foundation · Nothing is uploaded unless you choose an API provider.</span></footer>
+    <footer><span>THE ROLE CLINIC</span><span>Nothing is uploaded unless you choose an API provider.</span></footer>
   </main>
 }

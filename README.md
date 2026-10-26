@@ -2,7 +2,7 @@
 
 A local-first workspace for saving jobs, tracking applications, and tailoring résumés from a grounded master résumé.
 
-The local build plan and other reference material live in the gitignored `extra/` folder. Phase 1 provides the initial runnable local app foundation.
+The local build plan and other reference material live in the gitignored `extra/` folder. The capture, Inbox, and application tracker are ready for local use. Résumé extraction and tailoring are planned for later phases.
 
 The intended public release is a downloadable app that runs on each user's computer. Its local server will bind to `127.0.0.1` and open the user's existing browser. There are no hosted accounts or shared data. Job tracking will work without an AI provider; résumé tailoring will use either the user's Claude API key or an optional local Ollama installation.
 
@@ -32,12 +32,14 @@ data directory. The database, settings, and backups live in the current user's
 OS data folder. An Anthropic API key, if configured, is written with
 owner-only file permissions and never returned to the browser.
 
-The Settings screen configures providers and models independently for
-requirement extraction, eligibility analysis, evidence selection, résumé
-drafting, claim verification, and writing review. Local model calls use one
-serial queue. Provider checks do not send résumé content. The queue demo only
-tests run events and SSE; extraction, tailoring, and the application workflow
-belong to later phases.
+The Inbox accepts pasted job descriptions or captures supported public job
+pages. Jobs can be tracked through application statuses, and per-job Q&A can be
+saved, searched, copied, and snapshotted when marked applied. The Settings screen
+configures providers and models independently for requirement extraction,
+eligibility analysis, evidence selection, résumé drafting, claim verification,
+and writing review. Local model calls use one serial queue. Provider checks do
+not send résumé content. The queue demo only tests run events and SSE; résumé
+extraction and tailoring belong to later phases.
 
 Useful checks: `npm run typecheck`, `npm test`, and `npm run build`.
 To serve the built UI and API from one loopback port, run `npm run build` then
