@@ -116,5 +116,20 @@ export function createDatabase(dataDirectory: string): { sqlite: Database.Databa
       throw error
     }
   }
+  if (schemaVersion < 4) {
+    try {
+      sqlite.exec(`BEGIN IMMEDIATE;
+        INSERT OR IGNORE INTO synonyms(id,term,equivalence,created_at) VALUES
+          ('b58fa528-4e72-4ca3-83e9-0ca7a5123d01','JavaScript','JS',CURRENT_TIMESTAMP),
+          ('b58fa528-4e72-4ca3-83e9-0ca7a5123d02','PostgreSQL','Postgres',CURRENT_TIMESTAMP),
+          ('b58fa528-4e72-4ca3-83e9-0ca7a5123d03','Kubernetes','k8s',CURRENT_TIMESTAMP);
+        PRAGMA user_version = 4;
+      COMMIT;`)
+    } catch (error) {
+      sqlite.exec('ROLLBACK;')
+      sqlite.close()
+      throw error
+    }
+  }
   return { sqlite, db: drizzle(sqlite, { schema }) }
 }

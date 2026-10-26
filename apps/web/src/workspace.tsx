@@ -20,15 +20,18 @@ export function Workspace() {
   const [form, setForm] = useState({ company: '', title: '', location: '', url: '', canonicalUrl: '', applyUrl: '', text: '', rawSnapshot: '', source: 'paste', captureMethod: 'paste' })
   const [qa, setQa] = useState({ question: '', answer: '', category: 'Other', charLimit: '' })
   const [editingAnswerId, setEditingAnswerId] = useState<string | null>(null)
+  const [onboarding, setOnboarding] = useState<{ capturedJob: boolean; hasMaster: boolean; hasProfile: boolean; configuredModels: boolean; triedTracker: boolean } | null>(null)
+  async function loadOnboarding() { const result = await api<NonNullable<typeof onboarding>>('/api/onboarding'); setOnboarding(result) }
   async function loadJobs(filter = statusFilter) { const result = await api<{ jobs: Job[] }>(`/api/jobs?q=${encodeURIComponent(query)}&status=${encodeURIComponent(filter)}`); setJobs(result.jobs) }
   async function loadDetail(id: string) { setSelected(id); const result = await api<Detail>(`/api/jobs/${id}`); setDetail(result) }
   useEffect(() => { void loadJobs().catch((error) => setNotice(error.message)) }, [])
+  useEffect(() => { void loadOnboarding().catch((error) => setNotice(error.message)) }, [])
   useEffect(() => { const timer = window.setTimeout(() => { void api<{ answers: SearchAnswer[] }>(`/api/answers/search?q=${encodeURIComponent(answerQuery)}`).then((result) => setAnswerResults(result.answers)).catch((error: Error) => setNotice(error.message)) }, 220); return () => window.clearTimeout(timer) }, [answerQuery])
   useEffect(() => { const timer = window.setTimeout(() => { void loadJobs().catch((error) => setNotice(error.message)) }, 220); return () => window.clearTimeout(timer) }, [query, statusFilter])
   useEffect(() => { if (selected) void loadDetail(selected).catch((error) => setNotice(error.message)) }, [selected])
   async function capture(event?: React.FormEvent, allowSimilar = false) {
     event?.preventDefault(); setBusy(true); setNotice('')
-    try { const result = await api<{ id: string }>('/api/jobs', { method: 'POST', body: JSON.stringify({ ...form, ...(allowSimilar ? { allowSimilar: true } : {}) }) }); setSimilarJob(null); setForm({ company: '', title: '', location: '', url: '', canonicalUrl: '', applyUrl: '', text: '', rawSnapshot: '', source: 'paste', captureMethod: 'paste' }); await loadJobs(); await loadDetail(result.id); setNotice('Job saved to your Inbox.') }
+    try { const result = await api<{ id: string }>('/api/jobs', { method: 'POST', body: JSON.stringify({ ...form, ...(allowSimilar ? { allowSimilar: true } : {}) }) }); setSimilarJob(null); setForm({ company: '', title: '', location: '', url: '', canonicalUrl: '', applyUrl: '', text: '', rawSnapshot: '', source: 'paste', captureMethod: 'paste' }); await loadJobs(); await loadDetail(result.id); await loadOnboarding(); setNotice('Job saved to your Inbox.') }
     catch (error) { const issue = error as Error & { duplicateId?: string; similar?: { id: string; company: string; title: string } }; setNotice(issue.message); setSimilarJob(issue.similar ?? null); if (issue.duplicateId) await loadDetail(issue.duplicateId) } finally { setBusy(false) }
   }
   async function captureUrl() {
@@ -40,7 +43,7 @@ export function Workspace() {
   async function updateStatus(status: string) {
     if (!selected) return
     const submittedText = status === 'applied' ? window.prompt('Optional: paste the résumé or application text you submitted. It will be frozen as a record.') ?? '' : ''
-    try { await api(`/api/jobs/${selected}/status`, { method: 'PUT', body: JSON.stringify({ status, submittedText }) }); const nextFilter = status === 'new' ? 'new' : status === 'skipped' ? 'skipped' : 'tracker'; setStatusFilter(nextFilter); await loadDetail(selected); await loadJobs(nextFilter); setNotice(`Status updated to ${status}.`) }
+    try { await api(`/api/jobs/${selected}/status`, { method: 'PUT', body: JSON.stringify({ status, submittedText }) }); const nextFilter = status === 'new' ? 'new' : status === 'skipped' ? 'skipped' : 'tracker'; setStatusFilter(nextFilter); await loadDetail(selected); await loadJobs(nextFilter); await loadOnboarding(); setNotice(`Status updated to ${status}.`) }
     catch (error) { setNotice((error as Error).message) }
   }
   async function saveAnswer(event: React.FormEvent) {
@@ -49,9 +52,10 @@ export function Workspace() {
     catch (error) { setNotice((error as Error).message) }
   }
   return <main className="shell workspace-shell">
-    <header className="topbar"><a className="wordmark" href="#top"><span className="mark">RC</span><span>The Role Clinic</span></a><nav><a href="#top">Inbox & tracker</a><a href="#settings">Settings</a></nav><span className="local-chip"><span className="green-dot" /> Private · on this device</span></header>
+    <header className="topbar"><a className="wordmark" href="#top"><span className="mark">RC</span><span>The Role Clinic</span></a><nav><a href="#top">Inbox & tracker</a><a href="#master">Master résumé</a><a href="#profile">Profile</a><a href="#settings">Settings</a></nav><span className="local-chip"><span className="green-dot" /> Private · on this device</span></header>
     <section className="intro workspace-intro" id="top"><p className="eyebrow">JOB INBOX + TRACKER</p><h1>Your job search,<br /><em>in one place.</em></h1><p className="lede">Paste a posting to save it locally. Keep application status and answers with each job.</p></section>
     {notice && <div className="notice neutral" role="status">{notice}</div>}
+    {onboarding && !(onboarding.capturedJob && onboarding.triedTracker) && <section className="panel checklist"><p className="eyebrow">GET STARTED</p><h2>Your first steps</h2><div><span>{onboarding.capturedJob ? '✓' : '○'} Capture a job</span><span>{onboarding.triedTracker ? '✓' : '○'} Update its tracker status</span><a href="#master">{onboarding.hasMaster ? '✓' : '○'} Add a master résumé (optional)</a><a href="#profile">{onboarding.hasProfile ? '✓' : '○'} Fill in your profile (optional)</a><a href="#settings">{onboarding.configuredModels ? '✓' : '○'} Choose models for later tailoring (optional)</a></div></section>}
     {similarJob && <div className="notice neutral">Similar saved job: <strong>{similarJob.title} at {similarJob.company}</strong>. <button className="text-button" disabled={busy} onClick={() => { void loadDetail(similarJob.id); setSimilarJob(null) }}>Open existing</button><button className="text-button" disabled={busy} onClick={() => void capture(undefined, true)}>Keep this as a separate job</button></div>}
     <div className="workspace-grid">
       <section className="panel capture-panel"><p className="eyebrow">INBOX</p><h2>Save a job posting</h2><form onSubmit={capture}>

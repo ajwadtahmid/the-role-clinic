@@ -12,6 +12,7 @@ import { readSettings, toPublicSettings, writeSettings } from './settings.js'
 import { SerialRunQueue } from './queue.js'
 import { ModelRouter } from './model-adapters.js'
 import { captureJobUrl } from './capture.js'
+import { registerMasterRoutes } from './master-routes.js'
 
 const isLoopback = (host: string) => ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(host.toLowerCase())
 const applicationStatuses = ['new', 'saved', 'applied', 'screening', 'interviewing', 'offer', 'accepted', 'rejected', 'withdrawn', 'ghosted', 'skipped'] as const
@@ -132,8 +133,9 @@ export function createApp(options: AppOptions) {
   const app = new Hono()
   app.use('*', securityMiddleware({ port, webPort, development }))
   app.use('/api/*', (context, next) => {
-    const maxSize = context.req.path === '/api/jobs' && context.req.method === 'POST' ? 5_000_000 : 1024 * 1024
-    return bodyLimit({ maxSize, onError: (limitedContext) => limitedContext.json({ error: `Request body exceeds the ${maxSize === 5_000_000 ? '5 MB' : '1 MB'} limit.` }, 413) })(context, next)
+    const masterRequest = context.req.path.startsWith('/api/master/') || context.req.path === '/api/master'
+    const maxSize = context.req.path === '/api/master/import-preview' ? 8_100_000 : masterRequest ? 8_000_000 : context.req.path === '/api/jobs' && context.req.method === 'POST' ? 5_000_000 : 1024 * 1024
+    return bodyLimit({ maxSize, onError: (limitedContext) => limitedContext.json({ error: `Request body exceeds the ${maxSize >= 8_000_000 ? '8 MB' : maxSize === 5_000_000 ? '5 MB' : '1 MB'} limit.` }, 413) })(context, next)
   })
 
   app.onError((error, context) => {
@@ -142,6 +144,7 @@ export function createApp(options: AppOptions) {
   })
 
   app.get('/api/health', (context) => context.json({ ok: true, app: 'the-role-clinic', database: options.sqlite.open ? 'connected' : 'unavailable' }))
+  registerMasterRoutes(app, options.sqlite, options.dataDirectory)
 
   app.get('/api/jobs', (context) => {
     const query = cleanText(context.req.query('q'), 200)
