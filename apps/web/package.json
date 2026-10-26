@@ -1,0 +1,7 @@
+{
+  "name": "@the-role-clinic/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "dev": "vite --config vite.config.ts --host 127.0.0.1", "build": "vite build --config vite.config.ts" }
+}

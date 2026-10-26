@@ -1,0 +1,17 @@
+node_modules/
+dist/
+coverage/
+*.log
+
+.env
+.env.*
+!.env.example
+
+*.sqlite
+*.sqlite-*
+backups/
+artifacts/
+
+.DS_Store
+
+extra/
