@@ -21,6 +21,9 @@ export const requirements = sqliteTable('requirements', {
 export const runs = sqliteTable('runs', {
   id: text('id').primaryKey(), jobId: text('job_id'), kind: text('kind').notNull(), status: text('status').notNull(), step: text('step').notNull(), preset: text('preset'), promptVersions: text('prompt_versions').notNull(), usage: text('usage'), costEstimate: real('cost_estimate'), error: text('error'), startedAt: text('started_at'), finishedAt: text('finished_at'), createdAt: text('created_at').notNull(),
 })
+export const runCheckpoints = sqliteTable('run_checkpoints', {
+  runId: text('run_id').notNull(), step: text('step').notNull(), document: text('document').notNull(), createdAt: text('created_at').notNull(),
+})
 export const tailored = sqliteTable('tailored', {
   id: text('id').primaryKey(), jobId: text('job_id').notNull(), runId: text('run_id').notNull(), snapshotHash: text('snapshot_hash').notNull(), document: text('document').notNull(), createdAt: text('created_at').notNull(),
 })

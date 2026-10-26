@@ -9,7 +9,7 @@ function App() {
   const [route, setRoute] = useState(location.hash)
   useEffect(() => { const update = () => setRoute(location.hash); window.addEventListener('hashchange', update); return () => window.removeEventListener('hashchange', update) }, [])
   if (route === '#settings') return <SettingsPage />
-  if (route === '#master') return <MasterPage />
+  if (route.startsWith('#master')) return <MasterPage key={route} />
   if (route === '#profile') return <ProfilePage />
   return <Workspace />
 }

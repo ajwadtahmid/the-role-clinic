@@ -13,6 +13,10 @@ import { SerialRunQueue } from './queue.js'
 import { ModelRouter } from './model-adapters.js'
 import { captureJobUrl } from './capture.js'
 import { registerMasterRoutes } from './master-routes.js'
+import { PipelineService } from './pipeline.js'
+import { listSynonyms, readMaster, readProfile } from './master.js'
+import { assessRequirement } from './pipeline-core.js'
+import type { Requirement } from '../../../packages/shared/src/index.js'
 
 const isLoopback = (host: string) => ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(host.toLowerCase())
 const applicationStatuses = ['new', 'saved', 'applied', 'screening', 'interviewing', 'offer', 'accepted', 'rejected', 'withdrawn', 'ghosted', 'skipped'] as const
@@ -53,6 +57,7 @@ export interface AppOptions {
   webPort?: number
   development?: boolean
   queue?: SerialRunQueue
+  modelRouter?: Pick<ModelRouter, 'complete'> & Partial<Pick<ModelRouter, 'countInputTokens'>>
 }
 
 function getRequestOrigin(context: Context): string | undefined {
@@ -129,7 +134,8 @@ export function createApp(options: AppOptions) {
   const webPort = options.webPort ?? 5173
   const development = options.development ?? process.env.NODE_ENV !== 'production'
   const queue = options.queue ?? new SerialRunQueue(options.db)
-  const modelRouter = new ModelRouter(() => readSettings(options.dataDirectory))
+  const modelRouter = options.modelRouter ?? new ModelRouter(() => readSettings(options.dataDirectory))
+  const pipeline = new PipelineService(options.sqlite, options.dataDirectory, queue, modelRouter)
   const app = new Hono()
   app.use('*', securityMiddleware({ port, webPort, development }))
   app.use('/api/*', (context, next) => {
@@ -145,6 +151,34 @@ export function createApp(options: AppOptions) {
 
   app.get('/api/health', (context) => context.json({ ok: true, app: 'the-role-clinic', database: options.sqlite.open ? 'connected' : 'unavailable' }))
   registerMasterRoutes(app, options.sqlite, options.dataDirectory)
+  app.get('/api/jobs/:id/analysis', (context) => {
+    const analysis = pipeline.getAnalysis(context.req.param('id'))
+    return analysis ? context.json(analysis) : context.json({ error: 'Job not found.' }, 404)
+  })
+  app.get('/api/jobs/:id/estimate', async (context) => {
+    const kind = context.req.query('kind')
+    if (kind !== 'extract' && kind !== 'tailor') return context.json({ error: 'Choose extract or tailor.' }, 400)
+    try { return context.json(await pipeline.estimate(context.req.param('id'), kind)) }
+    catch (error) { return context.json({ error: (error as Error).message }, 422) }
+  })
+  app.post('/api/jobs/:id/extract', async (context) => {
+    const jobId = context.req.param('id')
+    if (!options.sqlite.prepare('SELECT 1 FROM jobs WHERE id=?').get(jobId)) return context.json({ error: 'Job not found.' }, 404)
+    if (options.sqlite.prepare("SELECT 1 FROM runs WHERE job_id=? AND kind='extract' AND status IN ('queued','running') LIMIT 1").get(jobId)) return context.json({ error: 'Extraction is already queued or running.' }, 409)
+    try { return context.json({ run: await pipeline.enqueueExtract(jobId) }, 202) }
+    catch (error) { return context.json({ error: (error as Error).message }, 422) }
+  })
+  app.post('/api/jobs/:id/tailor', async (context) => {
+    const jobId = context.req.param('id')
+    if (!options.sqlite.prepare('SELECT 1 FROM jobs WHERE id=?').get(jobId)) return context.json({ error: 'Job not found.' }, 404)
+    if (options.sqlite.prepare("SELECT 1 FROM runs WHERE job_id=? AND kind='tailor' AND status IN ('queued','running') LIMIT 1").get(jobId)) return context.json({ error: 'Tailoring is already queued or running.' }, 409)
+    try { return context.json({ run: await pipeline.enqueueTailor(jobId) }, 202) }
+    catch (error) { return context.json({ error: (error as Error).message }, 422) }
+  })
+  app.post('/api/runs/:id/retry', (context) => {
+    try { return context.json({ run: pipeline.retry(context.req.param('id')) }, 202) }
+    catch (error) { return context.json({ error: (error as Error).message }, 409) }
+  })
 
   app.get('/api/jobs', (context) => {
     const query = cleanText(context.req.query('q'), 200)
@@ -154,8 +188,15 @@ export function createApp(options: AppOptions) {
     const params: string[] = []
     if (query) params.push(`%${query}%`, `%${query}%`, `%${query}%`)
     if (status && status !== 'tracker') params.push(status)
-    const rows = options.sqlite.prepare(`SELECT j.id,j.company,j.title,j.captured_at AS capturedAt,j.source_url AS sourceUrl,j.canonical_url AS canonicalUrl,j.apply_url AS applyUrl,j.location,j.remote,j.salary,j.source,j.capture_method AS captureMethod,substr(j.text,1,400) AS summary,COALESCE(a.status,'new') AS status,a.applied_at AS appliedAt,a.notes FROM jobs j LEFT JOIN applications a ON a.job_id=j.id ${clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''} ORDER BY j.captured_at DESC`).all(...params)
-    return context.json({ jobs: rows })
+    const rows = options.sqlite.prepare(`SELECT j.id,j.company,j.title,j.captured_at AS capturedAt,j.source_url AS sourceUrl,j.canonical_url AS canonicalUrl,j.apply_url AS applyUrl,j.location,j.remote,j.salary,j.source,j.capture_method AS captureMethod,substr(j.text,1,400) AS summary,COALESCE(a.status,'new') AS status,a.applied_at AS appliedAt,a.notes FROM jobs j LEFT JOIN applications a ON a.job_id=j.id ${clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''} ORDER BY j.captured_at DESC`).all(...params) as Array<{ id: string }>
+    const master = readMaster(options.sqlite).document, profile = readProfile(options.sqlite).document, synonyms = listSynonyms(options.sqlite)
+    const requirementQuery = options.sqlite.prepare('SELECT document FROM requirements WHERE job_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1')
+    const jobs = rows.map((row) => {
+      const latest = requirementQuery.get(row.id) as { document: string } | undefined
+      const requirements = latest ? (JSON.parse(latest.document) as { requirements: Requirement[] }).requirements : []
+      return { ...row, knockouts: requirements.filter((item) => item.kind === 'knockout').map((item) => ({ quote: item.quote, ...assessRequirement(item, master, profile, synonyms) })) }
+    })
+    return context.json({ jobs })
   })
 
   app.post('/api/jobs', async (context) => {
@@ -202,7 +243,8 @@ export function createApp(options: AppOptions) {
     }
     const jobId = id(), now = new Date().toISOString()
     options.sqlite.prepare('INSERT INTO jobs(id,company,title,captured_at,source_url,raw_snapshot,text,canonical_url,apply_url,location,remote,salary,source,capture_method) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(jobId, company, title, now, sourceUrl || null, rawSnapshot, text, canonicalUrl, applyUrl, cleanText(payload.location, 300), cleanText(payload.remote, 100), cleanText(payload.salary, 200), cleanText(payload.source, 60) || 'paste', cleanText(payload.captureMethod, 60) || 'paste')
-    return context.json({ id: jobId, company, title, capturedAt: now, status: 'new' }, 201)
+    const autoRun = await pipeline.maybeAutoExtract(jobId)
+    return context.json({ id: jobId, company, title, capturedAt: now, status: 'new', extractionRunId: autoRun?.id ?? null }, 201)
   })
 
   app.post('/api/capture/url', async (context) => {

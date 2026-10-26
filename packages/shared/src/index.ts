@@ -21,6 +21,8 @@ export const appSettingsSchema = z.object({
   taskModels: z.record(taskNameSchema, modelChoiceSchema),
   ollamaBaseUrl: z.string().url().max(500),
   anthropicApiKey: z.string().max(500).regex(/^[^\r\n]*$/, 'API key must not contain line breaks.').optional(),
+  costCapUsd: z.number().nonnegative().max(100).default(1),
+  modelPrices: z.record(z.string().min(1).max(160), z.object({ inputPerMillion: z.number().positive().max(1000), outputPerMillion: z.number().positive().max(1000) }).strict()).default({}),
 })
 export type AppSettings = z.infer<typeof appSettingsSchema>
 
@@ -28,6 +30,8 @@ export const publicSettingsSchema = z.object({
   taskModels: appSettingsSchema.shape.taskModels,
   ollamaBaseUrl: appSettingsSchema.shape.ollamaBaseUrl,
   anthropicApiKeyConfigured: z.boolean(),
+  costCapUsd: appSettingsSchema.shape.costCapUsd,
+  modelPrices: appSettingsSchema.shape.modelPrices,
 })
 export type PublicSettings = z.infer<typeof publicSettingsSchema>
 
@@ -66,3 +70,27 @@ export const emptyProfile = (): Profile => ({ name: '', email: '', phone: '', lo
 export const synonymSchema = z.object({ id: identifier, term: short(100).min(1), equivalence: short(100).min(1) }).strict()
 export type Synonym = z.infer<typeof synonymSchema>
 export const masterBundleSchema = z.object({ format: z.literal('the-role-clinic-master'), version: z.literal(1), exportedAt: z.string(), master: masterSchema, profile: profileSchema, synonyms: z.array(synonymSchema).max(1000) }).strict()
+
+export const requirementSchema = z.object({
+  id: identifier,
+  quote: z.string().trim().min(3).max(2000),
+  kind: z.enum(['knockout', 'hard', 'nice']),
+  category: z.enum(['years', 'skill', 'location', 'work_authorization', 'clearance', 'education', 'other']),
+  skill: short(100),
+  years: z.number().nonnegative().max(80).nullable(),
+  start: z.number().int().nonnegative(),
+  end: z.number().int().nonnegative(),
+  assessment: z.enum(['met', 'gap', 'unknown']).default('unknown'),
+  basis: short(1000).default(''),
+}).strict()
+export type Requirement = z.infer<typeof requirementSchema>
+export const extractionSchema = z.object({ requirements: z.array(requirementSchema).max(100), seniority: short(100), vocabulary: z.array(short(100)).max(100), partial: z.boolean() }).strict()
+export type Extraction = z.infer<typeof extractionSchema>
+export const bulletScoreSchema = z.object({ bulletId: identifier, score: z.number().min(0).max(100), requirementIds: z.array(identifier).max(100), rationale: short(1000) }).strict()
+export type BulletScore = z.infer<typeof bulletScoreSchema>
+export const gapSchema = z.object({ requirementId: identifier, quote: short(2000), reason: short(1000), evidenceIds: z.array(identifier).max(20) }).strict()
+export type Gap = z.infer<typeof gapSchema>
+export const tailoredLineSchema = z.object({ outId: identifier, text: z.string().trim().min(1).max(4000), sourceIds: z.array(identifier).min(1).max(10), author: z.enum(['model', 'user']), verdict: z.enum(['grounded', 'stretch', 'unsupported']), layer1Flags: z.array(short(300)), layer2Reason: short(1000), slopFlags: z.array(short(300)) }).strict()
+export type TailoredLine = z.infer<typeof tailoredLineSchema>
+export const tailoredDocumentSchema = z.object({ jobId: identifier, runId: identifier, snapshotHash: z.string().length(64), summary: z.object({ variantId: identifier, text: short(1200), sourceIds: z.array(identifier), verdict: z.enum(['grounded', 'stretch', 'unsupported']), flags: z.array(short(300)) }).nullable(), skillsLine: z.array(short(100)), lines: z.array(tailoredLineSchema).max(30), scores: z.array(bulletScoreSchema), gaps: z.array(gapSchema), exportReady: z.boolean() }).strict()
+export type TailoredDocument = z.infer<typeof tailoredDocumentSchema>

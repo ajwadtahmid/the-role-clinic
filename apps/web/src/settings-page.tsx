@@ -3,7 +3,7 @@ import { taskNames, type PublicSettings, type TaskName } from '../../../packages
 
 const labels: Record<TaskName, { title: string; description: string }> = {
   requirementExtraction: { title: 'Requirement extraction', description: 'Find required and preferred qualifications in a job posting.' },
-  eligibilityAnalysis: { title: 'Eligibility and gaps', description: 'Compare job gates with your profile and résumé evidence.' },
+  eligibilityAnalysis: { title: 'Eligibility and gaps', description: 'Local checks compare job gates with private profile fields and résumé evidence.' },
   bulletScoring: { title: 'Evidence selection', description: 'Rank résumé bullets against a job.' },
   resumeDrafting: { title: 'Résumé drafting', description: 'Select and rewrite cited résumé content.' },
   claimVerification: { title: 'Claim verification', description: 'Check revised statements against their cited sources.' },
@@ -39,6 +39,10 @@ export function SettingsPage() {
         [task]: { ...current.taskModels[task], [key]: value },
       },
     } : current)
+  }
+  const pricedModels = settings ? [...new Set(taskNames.filter((task) => task !== 'eligibilityAnalysis' && settings.taskModels[task].provider === 'anthropic').map((task) => settings.taskModels[task].model).filter(Boolean))] : []
+  function updatePrice(model: string, field: 'inputPerMillion' | 'outputPerMillion', value: string) {
+    setSettings((current) => current ? { ...current, modelPrices: { ...current.modelPrices, [model]: { inputPerMillion: current.modelPrices[model]?.inputPerMillion ?? 0, outputPerMillion: current.modelPrices[model]?.outputPerMillion ?? 0, [field]: Number(value) } } } : current)
   }
 
   async function saveSettings() {
@@ -142,14 +146,14 @@ export function SettingsPage() {
       <div className="task-list">
         {taskNames.map((task) => <article className="task-row" key={task}>
           <div className="task-copy"><h3>{labels[task].title}</h3><p>{labels[task].description}</p></div>
-          <div className="choice-fields">
+          {task === 'eligibilityAnalysis' ? <span className="local-rule-note">Local rules · private profile stays off-model</span> : <div className="choice-fields">
             <label className="sr-only" htmlFor={`${task}-provider`}>Provider for {labels[task].title}</label>
             <select id={`${task}-provider`} value={settings.taskModels[task].provider} onChange={(event) => updateTask(task, 'provider', event.target.value)}>
               <option value="ollama">Ollama · local</option><option value="anthropic">Anthropic API</option>
             </select>
             <label className="sr-only" htmlFor={`${task}-model`}>Model for {labels[task].title}</label>
             <input id={`${task}-model`} value={settings.taskModels[task].model} list="installed-models" onChange={(event) => updateTask(task, 'model', event.target.value)} placeholder="Model ID" />
-          </div>
+          </div>}
         </article>)}
       </div>
       <datalist id="installed-models">{ollamaModels.map((model) => <option value={model} key={model} />)}</datalist>
@@ -160,6 +164,15 @@ export function SettingsPage() {
       <div><p className="eyebrow">LOCAL DATA</p><h2>Backups and run updates</h2><p className="subtle">Backups are stored beside the local database. The run button verifies queue and SSE wiring only.</p></div>
       <div className="button-row"><button className="button secondary" onClick={async () => { try { const result = await request<{ filename: string }>('/api/backups', { method: 'POST', body: '{}' }); setNotice({ kind: 'success', text: `Database backup created: ${result.filename}` }) } catch (error) { setNotice({ kind: 'error', text: (error as Error).message }) } }}>Create database backup</button><button className="button secondary" disabled={busy === 'queue'} onClick={demoQueue}>{busy === 'queue' ? 'Listening…' : 'Test run updates'}</button></div>
       {queueStatus && <p className="queue-status" role="status">{queueStatus}</p>}
+    </section>
+
+    <section className="panel editor-panel cost-panel">
+      <p className="eyebrow">RUN SPENDING</p><h2>Cost estimate and cap</h2>
+      <p className="subtle">Local Ollama calls have no API charge. Enter your provider’s current per-million-token prices for each selected Anthropic model. Runs check estimates before starting and track reported usage after every call.</p>
+      <label>Maximum estimated API spend per run (USD)<input type="number" min="0" max="100" step="0.01" value={settings.costCapUsd} onChange={(event) => setSettings({ ...settings, costCapUsd: Number(event.target.value) })} /></label>
+      {pricedModels.map((model) => <div className="editor-card" key={model}><strong>{model}</strong><div className="form-pair"><label>Input USD / 1M tokens<input type="number" min="0" step="0.01" value={settings.modelPrices[model]?.inputPerMillion ?? ''} onChange={(event) => updatePrice(model, 'inputPerMillion', event.target.value)} /></label><label>Output USD / 1M tokens<input type="number" min="0" step="0.01" value={settings.modelPrices[model]?.outputPerMillion ?? ''} onChange={(event) => updatePrice(model, 'outputPerMillion', event.target.value)} /></label></div></div>)}
+      {pricedModels.length > 0 && <p className="subtle">Prices change; confirm them with your provider before using its API. Missing prices prevent a paid run from starting.</p>}
+      <button className="button primary" disabled={busy === 'save'} onClick={saveSettings}>Save settings</button>
     </section>
 
     <footer><span>THE ROLE CLINIC</span><span>Nothing is uploaded unless you choose an API provider.</span></footer>

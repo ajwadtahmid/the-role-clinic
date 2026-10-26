@@ -7,6 +7,7 @@ export interface ModelRequest {
   user: string
   tier: 'fast' | 'strong'
   schema?: Record<string, unknown>
+  maxOutputTokens?: number
 }
 
 export interface ModelResponse {
@@ -19,6 +20,7 @@ export interface ModelResponse {
 export interface ModelAdapter {
   readonly provider: 'ollama' | 'anthropic'
   complete(model: string, request: ModelRequest): Promise<ModelResponse>
+  countInputTokens?(model: string, request: ModelRequest): Promise<number>
   unload?(model: string, baseUrl?: string): Promise<void>
 }
 
@@ -48,7 +50,7 @@ export class OllamaAdapter implements ModelAdapter {
         stream: false,
         keep_alive: '5m',
         ...(request.schema ? { format: request.schema } : {}),
-        options: { num_ctx: request.tier === 'strong' ? 8192 : 4096 },
+        options: { num_ctx: request.tier === 'strong' || request.system.length + request.user.length > 10_000 ? 8192 : 4096, ...(request.maxOutputTokens ? { num_predict: request.maxOutputTokens } : {}) },
       }),
       signal: AbortSignal.timeout(180000),
     })
@@ -83,13 +85,21 @@ export class AnthropicAdapter implements ModelAdapter {
 
   constructor(private getSettings: () => Promise<AppSettings>) {}
 
+  async countInputTokens(model: string, request: ModelRequest): Promise<number> {
+    const settings = await this.getSettings()
+    if (!settings.anthropicApiKey) throw new Error('Add an Anthropic API key in Settings first.')
+    const client = new Anthropic({ apiKey: settings.anthropicApiKey, maxRetries: 1, timeout: 180000 })
+    const response = await client.messages.countTokens({ model, system: request.system + jsonInstructions(request.schema), messages: [{ role: 'user', content: request.user }] })
+    return response.input_tokens
+  }
+
   async complete(model: string, request: ModelRequest): Promise<ModelResponse> {
     const settings = await this.getSettings()
     if (!settings.anthropicApiKey) throw new Error('Add an Anthropic API key in Settings first.')
     const client = new Anthropic({ apiKey: settings.anthropicApiKey, maxRetries: 1, timeout: 180000 })
     const response = await client.messages.create({
       model,
-      max_tokens: request.tier === 'strong' ? 4096 : 2048,
+      max_tokens: request.maxOutputTokens ?? (request.tier === 'strong' ? 4096 : 2048),
       system: request.system + jsonInstructions(request.schema),
       messages: [{ role: 'user', content: request.user }],
     })
@@ -142,5 +152,13 @@ export class ModelRouter {
       this.activeLocalModel = nextLocal
       return this.adapters[choice.provider].complete(choice.model, request)
     })
+  }
+
+  async countInputTokens(task: TaskName, request: ModelRequest): Promise<number | null> {
+    const settings = await this.getSettings()
+    const choice = settings.taskModels[task]
+    if (choice.provider !== 'anthropic') return null
+    if (!this.adapters.anthropic.countInputTokens) throw new Error('This Anthropic adapter cannot count input tokens before a paid run.')
+    return this.adapters.anthropic.countInputTokens(choice.model, request)
   }
 }

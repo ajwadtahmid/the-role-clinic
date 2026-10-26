@@ -131,5 +131,25 @@ export function createDatabase(dataDirectory: string): { sqlite: Database.Databa
       throw error
     }
   }
+  if (schemaVersion < 5) {
+    try {
+      sqlite.exec(`BEGIN IMMEDIATE;
+        CREATE TABLE IF NOT EXISTS run_checkpoints (
+          run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+          step TEXT NOT NULL,
+          document TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          PRIMARY KEY (run_id,step)
+        );
+        CREATE INDEX IF NOT EXISTS requirements_job_created_idx ON requirements(job_id,created_at);
+        CREATE INDEX IF NOT EXISTS tailored_job_created_idx ON tailored(job_id,created_at);
+        PRAGMA user_version = 5;
+      COMMIT;`)
+    } catch (error) {
+      sqlite.exec('ROLLBACK;')
+      sqlite.close()
+      throw error
+    }
+  }
   return { sqlite, db: drizzle(sqlite, { schema }) }
 }

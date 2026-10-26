@@ -10,6 +10,10 @@ import { serve } from '@hono/node-server'
 import { fetch as nodeFetch, Request as NodeRequest, Response as NodeResponse, Headers as NodeHeaders } from 'undici'
 import { createApp } from '../../server/src/app.js'
 import { createDatabase } from '../../server/src/db.js'
+import { saveMaster } from '../../server/src/master.js'
+import { emptyMaster, type TaskName } from '../../../packages/shared/src/index.js'
+import { randomUUID } from 'node:crypto'
+import type { ModelRequest, ModelRouter } from '../../server/src/model-adapters.js'
 import { Workspace } from './workspace.js'
 
 const temporaryDirectories: string[] = []
@@ -22,7 +26,7 @@ afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })))
 })
 
-async function setup() {
+async function setup(modelRouter?: Pick<ModelRouter, 'complete'>) {
   const dataDirectory = await mkdtemp(join(tmpdir(), 'role-clinic-workspace-'))
   temporaryDirectories.push(dataDirectory)
   const { sqlite, db } = createDatabase(dataDirectory)
@@ -32,7 +36,7 @@ async function setup() {
   vi.stubGlobal('Request', NodeRequest)
   vi.stubGlobal('Response', NodeResponse)
   vi.stubGlobal('Headers', NodeHeaders)
-  const app = createApp({ dataDirectory, sqlite, db, port, webPort: 5173, development: true })
+  const app = createApp({ dataDirectory, sqlite, db, port, webPort: 5173, development: true, modelRouter })
   const server = serve({ fetch: app.fetch, hostname: '127.0.0.1', port })
   servers.push(server)
   await new Promise<void>((resolve) => server.on('listening', () => resolve()))
@@ -96,6 +100,38 @@ describe('Phase 2 workspace flow', () => {
     await screen.findByText('Job saved to your Inbox.')
     expect(sqlite.prepare('SELECT text,raw_snapshot AS rawSnapshot FROM jobs').get()).toEqual({ text: 'Build useful software for customers and collaborate across a team of product engineers and designers.', rawSnapshot: '{"original":"API response"}' })
     await waitFor(() => expect(screen.getByText('Download original capture')).toBeTruthy())
+    sqlite.close()
+  })
+})
+
+describe('Phase 4 job analysis view', () => {
+  it('shows exact JD highlights, knockout basis, gaps, and a tailoring estimate', async () => {
+    const modelRouter = { async complete(task: TaskName, _request: ModelRequest) {
+      if (task !== 'requirementExtraction') throw new Error('Only extraction should run in this test.')
+      return { text: JSON.stringify({ requirements: [
+        { quote: 'TypeScript experience is required', kind: 'hard', category: 'skill', skill: 'TypeScript', years: null },
+        { quote: '5+ years of experience', kind: 'knockout', category: 'years', skill: '', years: 5 },
+      ], seniority: '', vocabulary: ['TypeScript'] }), provider: 'ollama' as const, model: 'fake-local' }
+    } }
+    const { user, sqlite } = await setup(modelRouter)
+    const master = emptyMaster()
+    master.roles.push({ id: randomUUID(), company: 'Acme', title: 'Engineer', start: 'January 2025', end: 'Present', bullets: [{ id: randomUUID(), rev: 1, text: 'Built TypeScript APIs for customers', skills: ['TypeScript'], metrics: [], verbs: [], sourceRef: '' }] })
+    saveMaster(sqlite, master)
+    await user.type(screen.getByRole('textbox', { name: 'Company' }), 'Example')
+    await user.type(screen.getByRole('textbox', { name: 'Role title' }), 'Software Engineer')
+    await user.type(screen.getByRole('textbox', { name: 'Job description' }), 'TypeScript experience is required. Candidates need 5+ years of experience building software for customers.')
+    await user.click(screen.getByRole('button', { name: 'Save to Inbox' }))
+    await screen.findByText('Job saved to your Inbox.')
+    await user.click(await screen.findByRole('button', { name: 'Extract requirements' }))
+    await waitFor(() => expect((sqlite.prepare("SELECT status FROM runs WHERE kind='extract' ORDER BY rowid DESC LIMIT 1").get() as { status: string })?.status).toBe('done'))
+    cleanup()
+    render(<Workspace />)
+    const jobTitle = await screen.findByText('Software Engineer', { selector: '.job-card strong' })
+    await user.click(jobTitle.closest('button')!)
+    expect(await screen.findByText('TypeScript experience is required', { selector: 'mark' })).toBeTruthy()
+    expect((await screen.findAllByText(/years across dated employment roles/)).length).toBeGreaterThan(0)
+    expect(await screen.findByText(/Estimated API cost: \$0\.0000/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Tailor résumé' })).toBeTruthy()
     sqlite.close()
   })
 })

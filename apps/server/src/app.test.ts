@@ -193,7 +193,7 @@ describe('Phase 2 capture and tracker foundation', () => {
       PRAGMA user_version = 1;`)
     legacy.close()
     const migrated = createDatabase(dataDirectory)
-    expect(migrated.sqlite.pragma('user_version', { simple: true })).toBe(4)
+    expect(migrated.sqlite.pragma('user_version', { simple: true })).toBe(5)
     expect((migrated.sqlite.prepare('SELECT COUNT(*) AS count FROM synonyms').get() as { count: number }).count).toBe(3)
     expect(migrated.sqlite.prepare("SELECT company,raw_snapshot,text FROM jobs WHERE id='legacy-job'").get()).toEqual({ company: 'Acme', raw_snapshot: 'Existing Phase 1 job snapshot', text: 'Existing Phase 1 job snapshot' })
     expect(migrated.sqlite.prepare('PRAGMA table_info(jobs)').all().map((column) => (column as { name: string }).name)).toContain('canonical_url')
