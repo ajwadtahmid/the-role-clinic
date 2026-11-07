@@ -154,7 +154,7 @@ variables. Certificate import and secure release credential provisioning are not
 implemented by the preview workflow. Validate the nested signatures, notarization and
 Gatekeeper assessment before release. Windows signing can use Tauri's supported
 certificate/sign-command configuration once credentials and a channel are selected.
-No signing secrets are required by pull-request CI.
+No signing secrets are required by the development CI builds.
 
 ### Automated coverage and remaining checks
 
@@ -163,8 +163,10 @@ WebKit harness without outbound networking. Its test-only root containers disabl
 WebKit sandbox; production does not. `packaging/Dockerfile.desktop-linux` provides the
 pinned build environment. See the existing Linux evidence for Fedora checks.
 
-`.github/workflows/desktop-native.yml` builds on native macOS arm64 and Windows x64
-runners, installs the DMG/NSIS artifacts into paths with spaces/non-ASCII, and runs:
+`.github/workflows/desktop-native.yml` runs only on a version tag such as `v1.0.0` or a
+manual run, never on pull requests or branch pushes, because the macOS and Windows
+runners are costly. It builds on native macOS arm64 and Windows x64 runners, installs
+the DMG/NSIS artifacts into paths with spaces/non-ASCII, and runs:
 
 - `scripts/smoke-package.mjs`: bundled Node/SQLite, loopback guards, first-run capture,
   controlled local Ollama connection, real exports/submitted records, package move,

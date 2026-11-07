@@ -1,6 +1,7 @@
 name: macOS and Windows desktop previews
 on:
-  pull_request:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
   workflow_dispatch:
 permissions:
   contents: read
