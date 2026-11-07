@@ -29,6 +29,15 @@ function jsonInstructions(schema?: Record<string, unknown>) {
   return `\nReturn only valid JSON matching this JSON Schema. Do not include markdown fences.\n${JSON.stringify(schema)}`
 }
 
+const MAX_LOCAL_CONTEXT = 32768
+// Ollama silently drops the start of a prompt that does not fit, which is where the instructions sit.
+// Size the window from the request instead of using a fixed number, and refuse what cannot fit.
+export function contextWindowFor(request: ModelRequest): number {
+  const needed = Math.ceil((request.system.length + request.user.length + (request.schema ? JSON.stringify(request.schema).length : 0)) / 3) + (request.maxOutputTokens ?? 2048) + 256
+  if (needed > MAX_LOCAL_CONTEXT) throw new Error(`This step needs about ${needed.toLocaleString('en-US')} tokens of context, more than the ${MAX_LOCAL_CONTEXT.toLocaleString('en-US')} the app will request from a local model. Use a shorter master résumé or job text, or choose Claude for this task.`)
+  return [request.tier === 'strong' ? 8192 : 4096, 8192, 16384, MAX_LOCAL_CONTEXT].find((size) => size >= needed)!
+}
+
 export class OllamaAdapter implements ModelAdapter {
   readonly provider = 'ollama' as const
 
@@ -38,6 +47,7 @@ export class OllamaAdapter implements ModelAdapter {
     const settings = await this.getSettings()
     const base = new URL(settings.ollamaBaseUrl)
     if (base.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(base.hostname)) throw new Error('Ollama must be configured on this computer.')
+    const numCtx = contextWindowFor(request)
     const response = await fetch(new URL('/api/chat', base), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -50,7 +60,7 @@ export class OllamaAdapter implements ModelAdapter {
         stream: false,
         keep_alive: '5m',
         ...(request.schema ? { format: request.schema } : {}),
-        options: { num_ctx: request.tier === 'strong' || request.system.length + request.user.length > 10_000 ? 8192 : 4096, ...(request.maxOutputTokens ? { num_predict: request.maxOutputTokens } : {}) },
+        options: { num_ctx: numCtx, ...(request.maxOutputTokens ? { num_predict: request.maxOutputTokens } : {}) },
       }),
       signal: AbortSignal.timeout(180000),
     })
