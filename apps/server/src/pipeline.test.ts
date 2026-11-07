@@ -172,4 +172,35 @@ describe('Phase 4 pipeline', () => {
     expect(calls).toHaveLength(0)
     sqlite.close()
   })
+
+  it('refuses paid work that would pass the monthly cap, counting spend from earlier runs this month', async () => {
+    const { dir, sqlite, post, request, job, calls } = await setup()
+    const settings = defaultSettings()
+    settings.taskModels.requirementExtraction = { provider: 'anthropic', model: 'claude-test' }
+    settings.anthropicApiKey = 'test-only-key'
+    settings.modelPrices['claude-test'] = { inputPerMillion: 3, outputPerMillion: 15 }
+    settings.costCapUsd = 1
+    settings.monthlyCapUsd = 20
+    await writeSettings(dir, settings)
+    expect(await (await request(`/api/jobs/${job.id}/estimate?kind=extract`)).json()).toMatchObject({ allowed: true, monthlyCapUsd: 20, spentThisMonthUsd: 0 })
+    sqlite.prepare('INSERT INTO runs(id,kind,status,step,usage,created_at) VALUES(?,?,?,?,?,?)').run(randomUUID(), 'tailor', 'done', 'complete', JSON.stringify({ totalUsd: 19.99, calls: [] }), new Date().toISOString())
+    const blocked = await post(`/api/jobs/${job.id}/extract`)
+    expect(blocked.status).toBe(422)
+    expect((await blocked.json() as { error: string }).error).toMatch(/monthly cap/)
+    expect(await (await request(`/api/jobs/${job.id}/estimate?kind=extract`)).json()).toMatchObject({ allowed: false, spentThisMonthUsd: 19.99 })
+    expect(calls).toHaveLength(0)
+    sqlite.close()
+  })
+
+  it('ignores spend from earlier months and never blocks a local model', async () => {
+    const { dir, sqlite, post, request, job } = await setup()
+    sqlite.prepare('INSERT INTO runs(id,kind,status,step,usage,created_at) VALUES(?,?,?,?,?,?)').run(randomUUID(), 'tailor', 'done', 'complete', JSON.stringify({ totalUsd: 500, calls: [] }), '2020-01-15T00:00:00.000Z')
+    expect(await (await request(`/api/jobs/${job.id}/estimate?kind=extract`)).json()).toMatchObject({ spentThisMonthUsd: 0 })
+    const settings = defaultSettings(); settings.monthlyCapUsd = 1
+    await writeSettings(dir, settings)
+    sqlite.prepare('INSERT INTO runs(id,kind,status,step,usage,created_at) VALUES(?,?,?,?,?,?)').run(randomUUID(), 'tailor', 'done', 'complete', JSON.stringify({ totalUsd: 50, calls: [] }), new Date().toISOString())
+    expect((await post(`/api/jobs/${job.id}/extract`)).status).toBe(202)
+    await waitFor(sqlite, 'extract', 'done')
+    sqlite.close()
+  })
 })

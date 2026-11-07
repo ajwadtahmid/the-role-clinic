@@ -53,6 +53,19 @@ function getUsage(sqlite: Database.Database, runId: string): { totalUsd: number;
   return row.usage ? JSON.parse(row.usage) : { totalUsd: 0, calls: [] }
 }
 
+// API spend recorded by every run created since the first of this month (local time). Local models record 0.
+function spentThisMonth(sqlite: Database.Database): number {
+  const now = new Date(), start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+  return (sqlite.prepare("SELECT COALESCE(SUM(COALESCE(json_extract(usage,'$.totalUsd'),0)),0) AS spent FROM runs WHERE created_at >= ?").get(start) as { spent: number }).spent
+}
+// Only paid work is limited: a local model (estimate 0) is never blocked by a cap.
+const withinCaps = (settings: AppSettings, estimatedUsd: number, spentUsd: number) => estimatedUsd <= settings.costCapUsd && (estimatedUsd === 0 || spentUsd + estimatedUsd <= settings.monthlyCapUsd)
+function capError(what: string, settings: AppSettings, estimatedUsd: number, spentUsd: number) {
+  return estimatedUsd > settings.costCapUsd
+    ? new Error(`Estimated ${what} cost $${estimatedUsd} exceeds the $${settings.costCapUsd} run cap.`)
+    : new Error(`Estimated ${what} cost $${estimatedUsd} would take this month's API spend ($${spentUsd.toFixed(4)} so far) past the $${settings.monthlyCapUsd} monthly cap. Raise the cap in Settings or choose a local model.`)
+}
+
 export class PipelineService {
   private reviewRequests = new Set<string>()
   constructor(private sqlite: Database.Database, private dataDirectory: string, private queue: SerialRunQueue, private router: Pick<ModelRouter, 'complete'> & Partial<Pick<ModelRouter, 'countInputTokens'>>) {
@@ -100,7 +113,8 @@ export class PipelineService {
       ]
     }
     const estimatedUsd = Math.ceil(lines.reduce((sum, line) => sum + line.estimatedUsd, 0) * 10_000) / 10_000
-    return { kind, lines, estimatedUsd, capUsd: settings.costCapUsd, allowed: estimatedUsd <= settings.costCapUsd, note: 'Estimated from text length and output limits; actual token use can differ.' }
+    const spentThisMonthUsd = spentThisMonth(this.sqlite)
+    return { kind, lines, estimatedUsd, capUsd: settings.costCapUsd, monthlyCapUsd: settings.monthlyCapUsd, spentThisMonthUsd, allowed: withinCaps(settings, estimatedUsd, spentThisMonthUsd), note: 'Estimated from text length and output limits; actual token use can differ.' }
   }
 
   async maybeAutoExtract(jobId: string) {
@@ -111,14 +125,14 @@ export class PipelineService {
   }
   async enqueueExtract(jobId: string) {
     const estimate = await this.estimate(jobId, 'extract')
-    if (!estimate.allowed) throw new Error(`Estimated extraction cost $${estimate.estimatedUsd} exceeds the $${estimate.capUsd} run cap.`)
+    if (!estimate.allowed) throw capError('extraction', await readSettings(this.dataDirectory), estimate.estimatedUsd, estimate.spentThisMonthUsd)
     const run = this.queue.enqueueWork('extract', jobId, (record, context) => this.extract(record, context))
     this.sqlite.prepare('UPDATE runs SET cost_estimate=?,prompt_versions=? WHERE id=?').run(estimate.estimatedUsd, JSON.stringify({ requirementExtraction: promptVersions.requirementExtraction }), run.id)
     return run
   }
   async enqueueTailor(jobId: string) {
     const estimate = await this.estimate(jobId, 'tailor')
-    if (!estimate.allowed) throw new Error(`Estimated tailoring cost $${estimate.estimatedUsd} exceeds the $${estimate.capUsd} run cap.`)
+    if (!estimate.allowed) throw capError('tailoring', await readSettings(this.dataDirectory), estimate.estimatedUsd, estimate.spentThisMonthUsd)
     const run = this.queue.enqueueWork('tailor', jobId, (record, context) => this.tailor(record, context))
     this.sqlite.prepare('UPDATE runs SET cost_estimate=?,prompt_versions=? WHERE id=?').run(estimate.estimatedUsd, JSON.stringify(promptVersions), run.id)
     return run
@@ -147,7 +161,7 @@ export class PipelineService {
     const chars = this.reviewRequest({ ...review, lines: review.lines.map((line) => ({ ...line, verification: 'pending' as const })) }).user.length
     const lines = [estimateTask(settings, 'claimVerification', chars + 2000, 2400)]
     const estimatedUsd = lines.reduce((sum, line) => sum + line.estimatedUsd, 0)
-    return { estimatedUsd, capUsd: settings.costCapUsd, allowed: estimatedUsd <= settings.costCapUsd }
+    return { estimatedUsd, capUsd: settings.costCapUsd, allowed: withinCaps(settings, estimatedUsd, spentThisMonth(this.sqlite)) }
   }
 
   private reviewRequest(review: Review): ModelRequest {
@@ -159,7 +173,7 @@ export class PipelineService {
   async enqueueReview(review: Review) {
     if (!review.lines.some((line) => line.verification === 'pending')) return null
     const estimate = await this.estimateReview(review)
-    if (!estimate.allowed) throw new Error('Estimated verification cost exceeds the per-run spending cap. Your edits were saved.')
+    if (!estimate.allowed) throw new Error('Estimated verification cost exceeds the run or monthly spending cap. Your edits were saved.')
     const key = JSON.stringify([review.runId, review.snapshotHash, this.reviewRequest(review).user])
     if (this.reviewRequests.has(key)) return null
     this.reviewRequests.add(key)
@@ -195,6 +209,9 @@ export class PipelineService {
     const estimate = estimateTask(settings, task, request.system.length + request.user.length, outputLimit)
     const usage = getUsage(this.sqlite, run.id)
     if (usage.totalUsd + estimate.estimatedUsd > settings.costCapUsd) throw new Error(`The next model step may exceed the $${settings.costCapUsd} run cap.`)
+    // This run's spend so far is already part of the month total, so only the next step is added.
+    const monthSpent = spentThisMonth(this.sqlite)
+    if (estimate.estimatedUsd > 0 && monthSpent + estimate.estimatedUsd > settings.monthlyCapUsd) throw new Error(`The next model step may exceed the $${settings.monthlyCapUsd} monthly cap ($${monthSpent.toFixed(4)} spent this month).`)
     if (settings.taskModels[task].provider === 'anthropic') {
       if (!this.router.countInputTokens) throw new Error('Input token counting is required before a paid model call.')
       const counted = await this.router.countInputTokens(task, { ...request, maxOutputTokens: outputLimit })
@@ -202,6 +219,7 @@ export class PipelineService {
       const price = settings.modelPrices[settings.taskModels[task].model]
       const guardedCost = ((Math.ceil(counted * 1.05) + 32) * price.inputPerMillion + outputLimit * price.outputPerMillion) / 1_000_000
       if (usage.totalUsd + guardedCost > settings.costCapUsd) throw new Error(`Token-counted cost could exceed the $${settings.costCapUsd} run cap. Increase the cap or choose a local model.`)
+      if (monthSpent + guardedCost > settings.monthlyCapUsd) throw new Error(`Token-counted cost could take this month's API spend past the $${settings.monthlyCapUsd} monthly cap. Increase the cap or choose a local model.`)
     }
     const response = await this.router.complete(task, { ...request, maxOutputTokens: outputLimit })
     const usd = actualCost(settings, task, response)
@@ -209,6 +227,7 @@ export class PipelineService {
     usage.totalUsd += usd
     this.sqlite.prepare('UPDATE runs SET usage=? WHERE id=?').run(JSON.stringify(usage), run.id)
     if (usage.totalUsd > settings.costCapUsd) throw new Error(`The $${settings.costCapUsd} run cap was reached after ${task}; remaining steps were stopped.`)
+    if (usd > 0 && spentThisMonth(this.sqlite) > settings.monthlyCapUsd) throw new Error(`The $${settings.monthlyCapUsd} monthly cap was reached after ${task}; remaining steps were stopped.`)
     return response
   }
 

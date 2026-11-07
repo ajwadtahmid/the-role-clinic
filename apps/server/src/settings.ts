@@ -9,6 +9,7 @@ export function defaultSettings(): AppSettings {
     taskModels: Object.fromEntries(taskNames.map((task) => [task, { provider: 'ollama', model: DEFAULT_MODEL }])) as AppSettings['taskModels'],
     ollamaBaseUrl: 'http://127.0.0.1:11434',
     costCapUsd: 1,
+    monthlyCapUsd: 20,
     modelPrices: {},
   }
 }
@@ -39,6 +40,7 @@ export function toPublicSettings(settings: AppSettings): PublicSettings {
     ollamaBaseUrl: settings.ollamaBaseUrl,
     anthropicApiKeyConfigured: Boolean(settings.anthropicApiKey),
     costCapUsd: settings.costCapUsd,
+    monthlyCapUsd: settings.monthlyCapUsd,
     modelPrices: settings.modelPrices,
   }
 }

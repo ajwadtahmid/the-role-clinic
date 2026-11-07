@@ -22,6 +22,7 @@ export const appSettingsSchema = z.object({
   ollamaBaseUrl: z.string().url().max(500),
   anthropicApiKey: z.string().max(500).regex(/^[^\r\n]*$/, 'API key must not contain line breaks.').optional(),
   costCapUsd: z.number().nonnegative().max(100).default(1),
+  monthlyCapUsd: z.number().nonnegative().max(10000).default(20),
   modelPrices: z.record(z.string().min(1).max(160), z.object({ inputPerMillion: z.number().positive().max(1000), outputPerMillion: z.number().positive().max(1000) }).strict()).default({}),
 })
 export type AppSettings = z.infer<typeof appSettingsSchema>
@@ -31,6 +32,7 @@ export const publicSettingsSchema = z.object({
   ollamaBaseUrl: appSettingsSchema.shape.ollamaBaseUrl,
   anthropicApiKeyConfigured: z.boolean(),
   costCapUsd: appSettingsSchema.shape.costCapUsd,
+  monthlyCapUsd: appSettingsSchema.shape.monthlyCapUsd,
   modelPrices: appSettingsSchema.shape.modelPrices,
 })
 export type PublicSettings = z.infer<typeof publicSettingsSchema>
