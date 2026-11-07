@@ -2,7 +2,7 @@
 
 A local-first workspace for saving jobs, tracking applications, and tailoring résumés from a grounded master résumé.
 
-The local build plan and other reference material live in the gitignored `extra/` folder. Capture, tracking, master résumé management, and the extraction/tailoring pipeline are implemented. Phase 5 adds a saved review workspace, document preview, and DOCX/PDF exports. Live-model quality evaluation remains deferred until feature work is complete.
+The local build plan and other reference material live in the gitignored `extra/` folder. Capture, tracking, master résumé management, and the extraction/tailoring pipeline are implemented. The saved review workspace includes document preview and DOCX/PDF exports. Phase 6 adds a tracker table, follow-ups, submitted-version records, an answer library, and XLSX/CSV exports. Live-model quality evaluation remains deferred until feature work is complete.
 
 The intended public release is a downloadable app that runs on each user's computer. Its local server will bind to `127.0.0.1` and open the user's existing browser. There are no hosted accounts or shared data. Job tracking will work without an AI provider; résumé tailoring will use either the user's Claude API key or an optional local Ollama installation.
 
@@ -70,4 +70,32 @@ an application submitted. In **Export history & mark as applied**, choose the fi
 you actually sent and confirm it; the app freezes that version's text and the
 current answers. Existing submitted records remain unchanged by subsequent edits.
 
-See [Phase 5 validation](docs/phase5-validation.md) for verification and limits.
+See [Phase 5 validation](extra/phase5-validation.md) for verification and limits.
+
+## Tracker and answer library
+
+Use **Tracker** for the application table, company/status/date filters, follow-up
+dates, contacts, notes, and submitted versions. Due reminders appear in the
+**Needs follow-up** strip. Marking a follow-up done records today's last-contact
+date and clears the reminder. Quiet applications suggest `ghosted` after the
+configured interval; statuses change only after your confirmation. The funnel
+counts jobs that reached each stage or later across recorded status history.
+
+**Gap trends** uses only the latest tailored draft per tracked job, counting each
+job once per recorded evidence gap. It does not run a model or reassess skills.
+
+**Answers** searches working questions/answers by text or category, shows the
+source company, role, date and application outcome, and supports editing or
+adapting an answer into another saved job. The same editor appears beside job
+Q&A and in the review drawer. Categories are suggested by keyword rules and
+remain editable. Similar-answer suggestions prefer matching categories, then
+text matches. Reused answers preserve their source link and flag references to
+other captured companies; character limits remain enforced.
+
+From the tracker, **XLSX** exports Applications and Q&A worksheets; CSV links
+export each separately. Exports follow the current filters. The submitted-answer
+column uses the frozen answer for applied jobs, including an empty value for
+answers added only after submission. A separate column preserves the working
+answer. Very long fields that exceed XLSX's cell limit can be exported in CSV.
+
+Validation notes remain local in [extra/phase6-validation.md](extra/phase6-validation.md).

@@ -169,5 +169,23 @@ export function createDatabase(dataDirectory: string): { sqlite: Database.Databa
       throw error
     }
   }
+  if (schemaVersion < 7) {
+    try {
+      sqlite.exec(`BEGIN IMMEDIATE;
+        ALTER TABLE applications ADD COLUMN follow_up_date TEXT;
+        ALTER TABLE applications ADD COLUMN last_contact_at TEXT;
+        ALTER TABLE applications ADD COLUMN contacts TEXT NOT NULL DEFAULT '';
+        ALTER TABLE applications ADD COLUMN submitted_job_text TEXT;
+        ALTER TABLE job_answers ADD COLUMN submitted_question TEXT;
+        ALTER TABLE job_answers ADD COLUMN submitted_category TEXT;
+        UPDATE job_answers SET submitted_question=question,submitted_category=category WHERE submitted_at IS NOT NULL;
+        UPDATE applications SET submitted_job_text=(SELECT text FROM jobs WHERE jobs.id=applications.job_id) WHERE applied_at IS NOT NULL;
+        CREATE TABLE tracker_preferences (id INTEGER PRIMARY KEY CHECK(id=1),ghosted_days INTEGER NOT NULL DEFAULT 14);
+        INSERT INTO tracker_preferences(id,ghosted_days) VALUES(1,14);
+        CREATE INDEX job_answers_job_idx ON job_answers(job_id);
+        PRAGMA user_version = 7;
+      COMMIT;`)
+    } catch (error) { sqlite.exec('ROLLBACK;'); sqlite.close(); throw error }
+  }
   return { sqlite, db: drizzle(sqlite, { schema }) }
 }

@@ -181,7 +181,7 @@ describe('Phase 2 capture and tracker foundation', () => {
     first.sqlite.prepare('INSERT INTO jobs(id,company,title,captured_at,source_url,raw_snapshot) VALUES(?,?,?,?,?,?)').run('legacy-job', 'Acme', 'Engineer', new Date().toISOString(), null, 'Existing Phase 1 job snapshot')
     first.sqlite.close()
     const legacy = new Database(join(dataDirectory, 'clinic.sqlite'))
-    legacy.exec(`DROP TABLE review_drafts; ALTER TABLE artifacts DROP COLUMN document; ALTER TABLE applications DROP COLUMN submitted_artifact_id; DROP INDEX jobs_canonical_url_idx; DROP INDEX applications_status_idx;
+    legacy.exec(`ALTER TABLE job_answers DROP COLUMN submitted_question; ALTER TABLE job_answers DROP COLUMN submitted_category; DROP TABLE tracker_preferences; DROP INDEX job_answers_job_idx; ALTER TABLE applications DROP COLUMN follow_up_date; ALTER TABLE applications DROP COLUMN last_contact_at; ALTER TABLE applications DROP COLUMN contacts; ALTER TABLE applications DROP COLUMN submitted_job_text; DROP TABLE review_drafts; ALTER TABLE artifacts DROP COLUMN document; ALTER TABLE applications DROP COLUMN submitted_artifact_id; DROP INDEX jobs_canonical_url_idx; DROP INDEX applications_status_idx;
       ALTER TABLE jobs DROP COLUMN text; ALTER TABLE job_answers DROP COLUMN submitted_at;
       ALTER TABLE job_answers DROP COLUMN updated_at;
       ALTER TABLE jobs DROP COLUMN canonical_url; ALTER TABLE jobs DROP COLUMN apply_url;
@@ -193,7 +193,7 @@ describe('Phase 2 capture and tracker foundation', () => {
       PRAGMA user_version = 1;`)
     legacy.close()
     const migrated = createDatabase(dataDirectory)
-    expect(migrated.sqlite.pragma('user_version', { simple: true })).toBe(6)
+    expect(migrated.sqlite.pragma('user_version', { simple: true })).toBe(7)
     expect((migrated.sqlite.prepare('SELECT COUNT(*) AS count FROM synonyms').get() as { count: number }).count).toBe(3)
     expect(migrated.sqlite.prepare("SELECT company,raw_snapshot,text FROM jobs WHERE id='legacy-job'").get()).toEqual({ company: 'Acme', raw_snapshot: 'Existing Phase 1 job snapshot', text: 'Existing Phase 1 job snapshot' })
     expect(migrated.sqlite.prepare('PRAGMA table_info(jobs)').all().map((column) => (column as { name: string }).name)).toContain('canonical_url')

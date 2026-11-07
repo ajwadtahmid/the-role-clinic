@@ -117,3 +117,49 @@ export interface ReviewWorkspace {
   verificationEstimate: { estimatedUsd: number; allowed: boolean; capUsd: number } | null;
   verificationError?: string;
 }
+
+export const applicationStatuses = ['new', 'saved', 'applied', 'screening', 'interviewing', 'offer', 'accepted', 'rejected', 'withdrawn', 'ghosted', 'skipped'] as const
+export const answerCategories = ['why-us', 'why-leaving', 'motivation', 'project', 'strengths', 'salary', 'availability', 'other'] as const
+export function suggestAnswerCategory(question: string): string {
+  if (/salary|compensation|pay expectation/i.test(question)) return 'salary'
+  if (/leaving|leave your|left your/i.test(question)) return 'why-leaving'
+  if (/start date|available|availability|notice period/i.test(question)) return 'availability'
+  if (/why.{0,60}(?:join|company|us|work here|this role)|interest.{0,40}(?:company|role)/i.test(question)) return 'why-us'
+  if (/project|built|proud/i.test(question)) return 'project'
+  if (/strength|skill|bring to/i.test(question)) return 'strengths'
+  if (/motivat|career goal/i.test(question)) return 'motivation'
+  return 'other'
+}
+export function answerCompanyWarnings(text: string, targetCompany: string, companies: string[]): string[] {
+  const target = targetCompany.normalize('NFKC').toLocaleLowerCase().trim()
+  return [...new Set(companies)].filter((company) => {
+    if (!company.trim() || company.normalize('NFKC').toLocaleLowerCase().trim() === target) return false
+    const escaped = company.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, 'iu').test(text)
+  }).map((company) => `Mentions ${company} — this application is for ${targetCompany}.`)
+}
+export interface TrackerJob {
+  id: string; company: string; title: string; sourceUrl: string | null; source: string; location: string; remote: string; salary: string;
+  status: string; capturedAt: string; appliedAt: string | null; followUpDate: string | null; lastContactAt: string | null;
+  lastActivityAt: string; notes: string; contacts: string; answerCount: number; submittedArtifactId: string | null;
+  submittedFilename: string | null; hasSubmittedText: boolean; costUsd: number;
+  knockouts: Array<{ quote: string; assessment: string; basis: string }>;
+}
+export interface TrackerSummary {
+  jobs: TrackerJob[]; preferences: { ghostedDays: number };
+  followUps: TrackerJob[]; ghostedSuggestions: TrackerJob[];
+  funnel: Array<{ status: string; count: number }>;
+  gaps: Array<{ key: string; label: string; count: number; jobs: Array<{ id: string; company: string; title: string; reason: string }> }>;
+  analyzedJobs: number;
+}
+export interface LibraryAnswer {
+  id: string; jobId: string; company: string; title: string; status: string; question: string; answer: string;
+  category: string; charLimit: number | null; submittedAnswer: string | null; submittedAt: string | null;
+  createdAt: string; updatedAt: string; appliedAt: string | null; reusedFrom: string | null;
+}
+
+export function calendarDate(value: Date | string = new Date()): string {
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value
+  const date = typeof value === 'string' ? new Date(value) : value
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}

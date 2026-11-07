@@ -104,7 +104,7 @@ export function SettingsPage() {
   return <main className="shell">
     <header className="topbar">
       <a className="wordmark" href="#top"><span className="mark">RC</span><span>The Role Clinic</span></a>
-      <nav><a href="#top">Inbox & tracker</a><a href="#master">Master résumé</a><a href="#profile">Profile</a><a href="#settings">Settings</a></nav>
+      <nav><a href="#top">Inbox</a><a href="#tracker">Tracker</a><a href="#answers">Answers</a><a href="#master">Master résumé</a><a href="#profile">Profile</a><a href="#settings">Settings</a></nav>
       <span className="local-chip"><span className="green-dot" /> Private · on this device</span>
     </header>
 

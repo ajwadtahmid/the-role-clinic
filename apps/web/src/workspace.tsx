@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { JobAnswers } from './answers.js'
+import { SubmissionForm } from './tracker-page.js'
 import { TailoringWorkspace } from './tailoring-workspace.js'
 
 type Job = { id: string; company: string; title: string; capturedAt: string; status: string; location: string; summary: string; sourceUrl?: string; applyUrl?: string; knockouts?: Array<{ quote: string; assessment: 'met' | 'gap' | 'unknown' }> }
@@ -45,14 +47,13 @@ function AnalysisPanel({ text, analysis, estimate, estimateError, busy, onExtrac
   </div>
 }
 
-export function Workspace() {
-  const [jobs, setJobs] = useState<Job[]>([]), [selected, setSelected] = useState<string | null>(null), [detail, setDetail] = useState<Detail | null>(null)
+export function Workspace({ initialJobId }: { initialJobId?: string } = {}) {
+  const [jobs, setJobs] = useState<Job[]>([]), [selected, setSelected] = useState<string | null>(initialJobId ?? null), [detail, setDetail] = useState<Detail | null>(null)
   const [query, setQuery] = useState(''), [statusFilter, setStatusFilter] = useState('new'), [notice, setNotice] = useState(''), [busy, setBusy] = useState(false)
   const [similarJob, setSimilarJob] = useState<{ id: string; company: string; title: string } | null>(null)
   const [answerQuery, setAnswerQuery] = useState(''), [answerResults, setAnswerResults] = useState<SearchAnswer[]>([])
   const [form, setForm] = useState({ company: '', title: '', location: '', url: '', canonicalUrl: '', applyUrl: '', text: '', rawSnapshot: '', source: 'paste', captureMethod: 'paste' })
-  const [qa, setQa] = useState({ question: '', answer: '', category: 'Other', charLimit: '' })
-  const [editingAnswerId, setEditingAnswerId] = useState<string | null>(null)
+  const [showSubmit, setShowSubmit] = useState(false)
   const [analysis, setAnalysis] = useState<Analysis | null>(null), [estimate, setEstimate] = useState<Estimate | null>(null), [estimateError, setEstimateError] = useState('')
   const [onboarding, setOnboarding] = useState<{ capturedJob: boolean; hasMaster: boolean; hasProfile: boolean; configuredModels: boolean; triedTracker: boolean } | null>(null)
   async function loadOnboarding() { const result = await api<NonNullable<typeof onboarding>>('/api/onboarding'); setOnboarding(result) }
@@ -80,17 +81,13 @@ export function Workspace() {
   }
   async function updateStatus(status: string) {
     if (!selected) return
-    const submittedText = status === 'applied' ? window.prompt('Optional: paste the résumé or application text you submitted. It will be frozen as a record.') ?? '' : ''
+    if (status === 'applied' && !detail?.job.appliedAt) { setShowSubmit(true); return }
+    const submittedText = ''
     try { await api(`/api/jobs/${selected}/status`, { method: 'PUT', body: JSON.stringify({ status, submittedText }) }); const nextFilter = status === 'new' ? 'new' : status === 'skipped' ? 'skipped' : 'tracker'; setStatusFilter(nextFilter); await loadDetail(selected); await loadJobs(nextFilter); await loadOnboarding(); setNotice(`Status updated to ${status}.`) }
     catch (error) { setNotice((error as Error).message) }
   }
-  async function saveAnswer(event: React.FormEvent) {
-    event.preventDefault(); if (!selected) return
-    try { await api(`/api/jobs/${selected}/answers${editingAnswerId ? `/${editingAnswerId}` : ''}`, { method: editingAnswerId ? 'PUT' : 'POST', body: JSON.stringify({ ...qa, charLimit: qa.charLimit ? Number(qa.charLimit) : null }) }); setQa({ question: '', answer: '', category: 'Other', charLimit: '' }); setEditingAnswerId(null); await loadDetail(selected); setNotice('Answer saved for this job.') }
-    catch (error) { setNotice((error as Error).message) }
-  }
   return <main className="shell workspace-shell">
-    <header className="topbar"><a className="wordmark" href="#top"><span className="mark">RC</span><span>The Role Clinic</span></a><nav><a href="#top">Inbox & tracker</a><a href="#master">Master résumé</a><a href="#profile">Profile</a><a href="#settings">Settings</a></nav><span className="local-chip"><span className="green-dot" /> Private · on this device</span></header>
+    <header className="topbar"><a className="wordmark" href="#top"><span className="mark">RC</span><span>The Role Clinic</span></a><nav><a href="#top">Inbox</a><a href="#tracker">Tracker</a><a href="#answers">Answers</a><a href="#master">Master résumé</a><a href="#profile">Profile</a><a href="#settings">Settings</a></nav><span className="local-chip"><span className="green-dot" /> Private · on this device</span></header>
     <section className="intro workspace-intro" id="top"><p className="eyebrow">JOB INBOX + TRACKER</p><h1>Your job search,<br /><em>in one place.</em></h1><p className="lede">Paste a posting to save it locally. Keep application status and answers with each job.</p></section>
     {notice && <div className="notice neutral" role="status">{notice}</div>}
     {onboarding && !(onboarding.capturedJob && onboarding.triedTracker) && <section className="panel checklist"><p className="eyebrow">GET STARTED</p><h2>Your first steps</h2><div><span>{onboarding.capturedJob ? '✓' : '○'} Capture a job</span><span>{onboarding.triedTracker ? '✓' : '○'} Update its tracker status</span><a href="#master">{onboarding.hasMaster ? '✓' : '○'} Add a master résumé (optional)</a><a href="#profile">{onboarding.hasProfile ? '✓' : '○'} Fill in your profile (optional)</a><a href="#settings">{onboarding.configuredModels ? '✓' : '○'} Choose models for later tailoring (optional)</a></div></section>}
@@ -115,10 +112,9 @@ export function Workspace() {
       {analysis?.tailored && <TailoringWorkspace key={`${selected}-${analysis.tailored.runId}`} jobId={selected!} company={detail.job.company} title={detail.job.title} onApplied={() => { void loadDetail(selected!); void loadJobs(); void loadOnboarding() }} />}
       <a className="external-link" href={`/api/jobs/${selected}/snapshot`} download="job-capture.txt">Download original capture</a>
       {detail.job.submittedText && <details><summary>Submitted application text</summary><pre className="job-text">{detail.job.submittedText}</pre></details>}
-      <div className="qa-section"><div><p className="eyebrow">APPLICATION Q&A</p><h3>Answers for this job</h3></div>
-        <form className="qa-form" onSubmit={saveAnswer}><div className="form-pair"><label>Category<input value={qa.category} onChange={(e) => setQa({ ...qa, category: e.target.value })} /></label><label>Character limit (optional)<input type="number" min="1" value={qa.charLimit} onChange={(e) => setQa({ ...qa, charLimit: e.target.value })} /></label></div><label>Question<input required maxLength={2000} value={qa.question} onChange={(e) => setQa({ ...qa, question: e.target.value })} /></label><label>Answer<textarea required maxLength={20000} rows={4} value={qa.answer} onChange={(e) => setQa({ ...qa, answer: e.target.value })} /></label>{qa.charLimit && <p className="subtle">{qa.answer.length}/{qa.charLimit} characters</p>}<div className="button-row"><button className="button secondary">{editingAnswerId ? 'Save changes' : 'Save answer'}</button>{editingAnswerId && <button className="text-button" type="button" onClick={() => { setEditingAnswerId(null); setQa({ question: '', answer: '', category: 'Other', charLimit: '' }) }}>Cancel edit</button>}</div></form>
-        <div className="answer-list">{detail.answers.map((answer) => <article className="answer-card" key={answer.id}><span className="eyebrow">{answer.category}{answer.charLimit ? ` · ${answer.answer.length}/${answer.charLimit}` : ''}{answer.submittedAnswer !== null ? ' · submitted snapshot saved' : ''}</span><h4>{answer.question}</h4><p>{answer.answer}</p>{answer.submittedAnswer !== null && <details><summary>Submitted answer snapshot</summary><p>{answer.submittedAnswer}</p></details>}<button className="text-button" onClick={() => { setEditingAnswerId(answer.id); setQa({ question: answer.question, answer: answer.answer, category: answer.category, charLimit: answer.charLimit?.toString() ?? '' }) }}>Edit</button><button className="text-button" onClick={() => { void navigator.clipboard.writeText(answer.answer).then(() => setNotice('Answer copied to clipboard.')) }}>Copy answer</button>{answer.submittedAnswer !== null && <button className="text-button" onClick={() => { void navigator.clipboard.writeText(answer.submittedAnswer!).then(() => setNotice('Submitted answer copied to clipboard.')) }}>Copy submitted</button>}</article>)}{!detail.answers.length && <p className="subtle">No answers saved yet.</p>}</div>
-      </div>
+      {showSubmit && <SubmissionForm key={selected} jobId={selected!} onSaved={async () => { setShowSubmit(false); setStatusFilter('tracker'); await loadDetail(selected!); await loadJobs('tracker'); await loadOnboarding(); setNotice('Status updated to applied.') }} onCancel={() => setShowSubmit(false)} />}
+      <a className="external-link" href="#answers">Open answer library →</a>
+      <JobAnswers key={selected} jobId={selected!} answers={detail.answers} onSaved={async () => { await loadDetail(selected!); setNotice('Answer saved for this job.') }} />
       {detail.events.length > 0 && <p className="subtle">Status history: {detail.events.map((event) => `${event.status} · ${new Date(event.createdAt).toLocaleDateString()}`).join(' → ')}</p>}
     </section>}
     <section className="panel answer-search-panel"><div className="panel-heading"><div><p className="eyebrow">ANSWER LIBRARY</p><h2>Search saved answers</h2></div></div><input className="search-input" value={answerQuery} onChange={(e) => setAnswerQuery(e.target.value)} placeholder="Search questions and answer text" />{answerResults.length > 0 && <div className="answer-search-results">{answerResults.map((answer) => <article key={answer.id} className="answer-card"><span className="eyebrow">{answer.company} · {answer.title}</span><h4>{answer.question}</h4><p>{answer.answer}</p><button className="text-button" onClick={() => { void navigator.clipboard.writeText(answer.answer).then(() => setNotice('Answer copied to clipboard.')) }}>Copy answer</button><button className="text-button" onClick={() => void loadDetail(answer.jobId)}>Open job</button></article>)}</div>}</section>

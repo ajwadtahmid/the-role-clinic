@@ -18,3 +18,10 @@ Review writes require the originating tailoring run ID and expected revision;
 stale writes return 409. Schema v6 adds review drafts, immutable artifact
 snapshots, and a submitted-artifact reference. The original tailoring record
 and master snapshot remain available independently of later review edits.
+
+Phase 6 adds `/api/tracker`, tracker preferences and per-job metadata, submitted
+records and PDF/DOCX attachments, answer-library/similarity/reuse-check routes,
+and filtered XLSX/CSV exports. Schema v7 preserves submitted question/category
+and JD text alongside the previously frozen answers and résumé artifacts.
+Follow-up and quiet-day calculations use calendar days on this device. No model
+adapter is involved in tracker, answer reuse, or spreadsheet exports.

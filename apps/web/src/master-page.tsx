@@ -21,7 +21,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 }
 const json = (value: unknown) => ({ headers: { 'content-type': 'application/json' }, body: JSON.stringify(value) })
 
-function Nav() { return <header className="topbar"><a className="wordmark" href="#top"><span className="mark">RC</span><span>The Role Clinic</span></a><nav><a href="#top">Inbox & tracker</a><a href="#master">Master résumé</a><a href="#profile">Profile</a><a href="#settings">Settings</a></nav><span className="local-chip"><span className="green-dot" /> Private · on this device</span></header> }
+function Nav() { return <header className="topbar"><a className="wordmark" href="#top"><span className="mark">RC</span><span>The Role Clinic</span></a><nav><a href="#top">Inbox</a><a href="#tracker">Tracker</a><a href="#answers">Answers</a><a href="#master">Master résumé</a><a href="#profile">Profile</a><a href="#settings">Settings</a></nav><span className="local-chip"><span className="green-dot" /> Private · on this device</span></header> }
 
 function MasterEditor({ document, change }: { document: Master; change: (next: Master) => void }) {
   const edit = (callback: (next: Master) => void) => { const next = structuredClone(document); callback(next); change(next) }

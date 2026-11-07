@@ -29,12 +29,13 @@ export const tailored = sqliteTable('tailored', {
 })
 export const applications = sqliteTable('applications', {
   id: text('id').primaryKey(), jobId: text('job_id').notNull(), status: text('status').notNull(), appliedAt: text('applied_at'), notes: text('notes').notNull(), submittedText: text('submitted_text'),
-  submittedArtifactId: text('submitted_artifact_id'),
+  submittedArtifactId: text('submitted_artifact_id'), followUpDate: text('follow_up_date'), lastContactAt: text('last_contact_at'), contacts: text('contacts').notNull(), submittedJobText: text('submitted_job_text'),
 })
 export const statusEvents = sqliteTable('status_events', {
   id: text('id').primaryKey(), applicationId: text('application_id').notNull(), status: text('status').notNull(), createdAt: text('created_at').notNull(),
 })
 export const jobAnswers = sqliteTable('job_answers', {
+  submittedQuestion: text('submitted_question'), submittedCategory: text('submitted_category'),
   id: text('id').primaryKey(), jobId: text('job_id').notNull(), question: text('question').notNull(), answer: text('answer').notNull(), createdAt: text('created_at').notNull(), updatedAt: text('updated_at'), category: text('category').notNull(), charLimit: integer('char_limit'), submittedAnswer: text('submitted_answer'), submittedAt: text('submitted_at'), reusedFrom: text('reused_from'),
 })
 export const artifacts = sqliteTable('artifacts', {
@@ -45,3 +46,5 @@ export const reviewDrafts = sqliteTable('review_drafts', {
   runId: text('run_id').primaryKey(), jobId: text('job_id').notNull(),
   revision: integer('revision').notNull(), document: text('document').notNull(), updatedAt: text('updated_at').notNull(),
 })
+
+export const trackerPreferences = sqliteTable('tracker_preferences', { id: integer('id').primaryKey(), ghostedDays: integer('ghosted_days').notNull() })

@@ -7,12 +7,13 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type Database from 'better-sqlite3'
 import type { ClinicDatabase } from './db.js'
-import { appSettingsSchema, taskNames, type AppSettings } from '../../../packages/shared/src/index.js'
+import { appSettingsSchema, taskNames, suggestAnswerCategory, type AppSettings } from '../../../packages/shared/src/index.js'
 import { readSettings, toPublicSettings, writeSettings } from './settings.js'
 import { SerialRunQueue } from './queue.js'
 import { ModelRouter } from './model-adapters.js'
 import { captureJobUrl } from './capture.js'
 import { registerMasterRoutes } from './master-routes.js'
+import { registerTrackerRoutes } from './tracker-routes.js'
 import { registerReviewRoutes } from './review-routes.js'
 import { PipelineService } from './pipeline.js'
 import { listSynonyms, readMaster, readProfile } from './master.js'
@@ -41,7 +42,7 @@ function similarity(left: string, right: string) {
 function parseAnswer(payload: Record<string, unknown> | null) {
   if (typeof payload?.question === 'string' && payload.question.length > 2000) return { error: 'Question exceeds the 2,000 character limit.' } as const
   if (typeof payload?.answer === 'string' && payload.answer.length > 20_000) return { error: 'Answer exceeds the 20,000 character limit.' } as const
-  const question = cleanText(payload?.question, 2000), answer = cleanText(payload?.answer, 20_000), category = cleanText(payload?.category, 80) || 'Other'
+  const question = cleanText(payload?.question, 2000), answer = cleanText(payload?.answer, 20_000), category = cleanText(payload?.category, 80) || suggestAnswerCategory(question)
   const limitValue = payload?.charLimit
   const charLimit = limitValue == null || limitValue === '' ? null : Number(limitValue)
   if (!question || !answer) return { error: 'Question and answer are required.' } as const
@@ -141,7 +142,7 @@ export function createApp(options: AppOptions) {
   app.use('*', securityMiddleware({ port, webPort, development }))
   app.use('/api/*', (context, next) => {
     const masterRequest = context.req.path.startsWith('/api/master/') || context.req.path === '/api/master'
-    const maxSize = context.req.path === '/api/master/import-preview' ? 8_100_000 : masterRequest ? 8_000_000 : context.req.path === '/api/jobs' && context.req.method === 'POST' ? 5_000_000 : 1024 * 1024
+    const maxSize = context.req.path === '/api/master/import-preview' || context.req.path.endsWith('/submitted-resume') ? 8_100_000 : masterRequest ? 8_000_000 : context.req.path === '/api/jobs' && context.req.method === 'POST' ? 5_000_000 : 1024 * 1024
     return bodyLimit({ maxSize, onError: (limitedContext) => limitedContext.json({ error: `Request body exceeds the ${maxSize >= 8_000_000 ? '8 MB' : maxSize === 5_000_000 ? '5 MB' : '1 MB'} limit.` }, 413) })(context, next)
   })
 
@@ -153,6 +154,7 @@ export function createApp(options: AppOptions) {
   app.get('/api/health', (context) => context.json({ ok: true, app: 'the-role-clinic', database: options.sqlite.open ? 'connected' : 'unavailable' }))
   registerMasterRoutes(app, options.sqlite, options.dataDirectory)
   registerReviewRoutes(app, options.sqlite, options.dataDirectory, pipeline)
+  registerTrackerRoutes(app, options.sqlite, options.dataDirectory)
   app.get('/api/jobs/:id/analysis', (context) => {
     const analysis = pipeline.getAnalysis(context.req.param('id'))
     return analysis ? context.json(analysis) : context.json({ error: 'Job not found.' }, 404)
@@ -297,7 +299,8 @@ export function createApp(options: AppOptions) {
       options.sqlite.prepare(`INSERT INTO applications(id,job_id,status,applied_at,notes,submitted_text) VALUES(?,?,?,?,?,?) ON CONFLICT(job_id) DO UPDATE SET status=excluded.status,applied_at=COALESCE(applications.applied_at,excluded.applied_at),notes=excluded.notes,submitted_text=COALESCE(applications.submitted_text,excluded.submitted_text)`).run(appId, jobId, status, status === 'applied' ? now : null, payload.notes === undefined ? application?.notes ?? '' : cleanText(payload.notes, 5000), status === 'applied' ? artifactText || cleanText(payload.submittedText, 100_000) || null : null)
       if (submittedArtifactId) options.sqlite.prepare('UPDATE applications SET submitted_artifact_id=COALESCE(submitted_artifact_id,?) WHERE id=?').run(submittedArtifactId, appId)
       options.sqlite.prepare('INSERT INTO status_events(id,application_id,status,created_at) VALUES(?,?,?,?)').run(id(), appId, status, now)
-      if (status === 'applied') options.sqlite.prepare('UPDATE job_answers SET submitted_answer=COALESCE(submitted_answer,answer),submitted_at=COALESCE(submitted_at,?) WHERE job_id=?').run(now, jobId)
+      if (status === 'applied') options.sqlite.prepare('UPDATE applications SET submitted_job_text=COALESCE(submitted_job_text,(SELECT text FROM jobs WHERE id=?)) WHERE id=?').run(jobId, appId)
+      if (status === 'applied') options.sqlite.prepare('UPDATE job_answers SET submitted_question=COALESCE(submitted_question,question),submitted_category=COALESCE(submitted_category,category),submitted_answer=COALESCE(submitted_answer,answer),submitted_at=COALESCE(submitted_at,?) WHERE job_id=?').run(now, jobId)
     })
     tx()
     return context.json({ ok: true, status, changedAt: now })
@@ -309,6 +312,8 @@ export function createApp(options: AppOptions) {
     const payload = await context.req.json().catch(() => null) as Record<string, unknown> | null
     const parsed = parseAnswer(payload)
     if ('error' in parsed) return context.json({ error: parsed.error }, 400)
+    const reusedFrom = payload?.reusedFrom
+    if (reusedFrom != null && (typeof reusedFrom !== 'string' || !options.sqlite.prepare('SELECT 1 FROM job_answers WHERE id=? AND job_id<>?').get(reusedFrom, jobId))) return context.json({ error: 'Choose a past answer from another job.' }, 400)
     const { question, answer, category, charLimit } = parsed
     const answerId = id(), now = new Date().toISOString()
     options.sqlite.transaction(() => {
