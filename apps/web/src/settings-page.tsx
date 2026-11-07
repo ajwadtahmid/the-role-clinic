@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { MaintenancePanel } from './runtime.js'
 import { taskNames, type PublicSettings, type TaskName } from '../../../packages/shared/src/index.js'
 
 const labels: Record<TaskName, { title: string; description: string }> = {
@@ -25,7 +26,6 @@ export function SettingsPage() {
   const [notice, setNotice] = useState<Notice>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [ollamaModels, setOllamaModels] = useState<string[]>([])
-  const [queueStatus, setQueueStatus] = useState('')
 
   useEffect(() => {
     request<PublicSettings>('/api/settings').then(setSettings).catch((error: Error) => setNotice({ kind: 'error', text: error.message }))
@@ -83,20 +83,6 @@ export function SettingsPage() {
       setNotice({ kind: 'success', text: 'Anthropic API key removed from local settings.' })
     } catch (error) { setNotice({ kind: 'error', text: (error as Error).message }) }
     finally { setBusy(null) }
-  }
-
-  async function demoQueue() {
-    setBusy('queue')
-    setQueueStatus('Subscribing to run updates…')
-    const events = new EventSource('/api/runs/events')
-    events.addEventListener('run', (event) => {
-      const detail = JSON.parse((event as MessageEvent).data) as { step: string; message?: string }
-      setQueueStatus(`${detail.step}: ${detail.message ?? 'Updated'}`)
-    })
-    try {
-      await request('/api/dev/queue-demo', { method: 'POST', body: '{}' })
-      window.setTimeout(() => { events.close(); setBusy(null) }, 1000)
-    } catch (error) { events.close(); setBusy(null); setQueueStatus((error as Error).message) }
   }
 
   if (!settings) return <main className="shell"><p className="loading">Loading local settings…</p></main>
@@ -160,11 +146,7 @@ export function SettingsPage() {
       <div className="save-row"><p>Suggested local starting model: Gemma 4 12B. Change it per task as your evaluations show a better fit.</p><button className="button primary" disabled={busy === 'save'} onClick={saveSettings}>{busy === 'save' ? 'Saving…' : 'Save settings'}</button></div>
     </section>
 
-    <section className="panel utility-panel">
-      <div><p className="eyebrow">LOCAL DATA</p><h2>Backups and run updates</h2><p className="subtle">Backups are stored beside the local database. The run button verifies queue and SSE wiring only.</p></div>
-      <div className="button-row"><button className="button secondary" onClick={async () => { try { const result = await request<{ filename: string }>('/api/backups', { method: 'POST', body: '{}' }); setNotice({ kind: 'success', text: `Database backup created: ${result.filename}` }) } catch (error) { setNotice({ kind: 'error', text: (error as Error).message }) } }}>Create database backup</button><button className="button secondary" disabled={busy === 'queue'} onClick={demoQueue}>{busy === 'queue' ? 'Listening…' : 'Test run updates'}</button></div>
-      {queueStatus && <p className="queue-status" role="status">{queueStatus}</p>}
-    </section>
+    <MaintenancePanel />
 
     <section className="panel editor-panel cost-panel">
       <p className="eyebrow">RUN SPENDING</p><h2>Cost estimate and cap</h2>

@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+unset NODE_OPTIONS NODE_PATH
+case "$0" in
+  */*) here=$(CDPATH= cd -- "${0%/*}" && pwd) ;;
+  *) echo 'Run this launcher by its path, for example ./role-clinic.' >&2; exit 1 ;;
+esac
+exec "$here/runtime/node" "$here/launcher.mjs" "$@"

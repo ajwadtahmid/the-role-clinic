@@ -12,6 +12,8 @@ import { readSettings, toPublicSettings, writeSettings } from './settings.js'
 import { SerialRunQueue } from './queue.js'
 import { ModelRouter } from './model-adapters.js'
 import { captureJobUrl } from './capture.js'
+import { databaseBackup } from './database-backups.js'
+import { registerRuntimeRoutes, type RuntimeInfo } from './runtime-routes.js'
 import { registerMasterRoutes } from './master-routes.js'
 import { registerTrackerRoutes } from './tracker-routes.js'
 import { registerReviewRoutes } from './review-routes.js'
@@ -58,6 +60,7 @@ export interface AppOptions {
   port?: number
   webPort?: number
   development?: boolean
+  runtime?: RuntimeInfo
   queue?: SerialRunQueue
   modelRouter?: Pick<ModelRouter, 'complete'> & Partial<Pick<ModelRouter, 'countInputTokens'>>
 }
@@ -151,6 +154,8 @@ export function createApp(options: AppOptions) {
     return context.json({ error: 'The request could not be completed.' }, 500)
   })
 
+  app.use('/api/*', async (context, next) => { context.header('Cache-Control', 'no-store'); await next() })
+  registerRuntimeRoutes(app, options.sqlite, options.dataDirectory, options.runtime)
   app.get('/api/health', (context) => context.json({ ok: true, app: 'the-role-clinic', database: options.sqlite.open ? 'connected' : 'unavailable' }))
   registerMasterRoutes(app, options.sqlite, options.dataDirectory)
   registerReviewRoutes(app, options.sqlite, options.dataDirectory, pipeline)
@@ -382,19 +387,14 @@ export function createApp(options: AppOptions) {
   })
 
   app.post('/api/backups', async (context) => {
-    const backupDirectory = join(options.dataDirectory, 'backups')
-    await mkdir(backupDirectory, { recursive: true, mode: 0o700 })
-    const filename = `clinic-${new Date().toISOString().replaceAll(':', '-').replaceAll('.', '-')}.sqlite`
-    const path = join(backupDirectory, filename)
-    options.sqlite.prepare('VACUUM INTO ?').run(path)
-    return context.json({ ok: true, filename, createdAt: new Date().toISOString() }, 201)
+    return context.json({ ok: true, ...databaseBackup(options.sqlite, options.dataDirectory) }, 201)
   })
 
   app.get('/api/backups', async (context) => {
     const directory = join(options.dataDirectory, 'backups')
     await mkdir(directory, { recursive: true, mode: 0o700 })
     const entries = await readdir(directory, { withFileTypes: true })
-    const backups = await Promise.all(entries.filter((entry) => entry.isFile() && /^clinic-[\dTZ-]+\.sqlite$/.test(entry.name)).map(async (entry) => {
+    const backups = await Promise.all(entries.filter((entry) => entry.isFile() && /^(?:clinic|auto|pre-migration-v\d+)-[\dTZ-]+(?:-[a-f0-9-]+)?\.sqlite$/.test(entry.name)).map(async (entry) => {
       const details = await stat(join(directory, entry.name))
       return { filename: entry.name, bytes: details.size, createdAt: details.mtime.toISOString() }
     }))
@@ -432,8 +432,12 @@ export function createApp(options: AppOptions) {
     })
   }
 
+  app.notFound((context) => context.json({ error: 'Route not found.' }, 404))
+  app.all('/api/*', (context) => context.json({ error: 'API route not found.' }, 404))
   if (!development) {
     const webDist = fileURLToPath(new URL('../../web/dist/', import.meta.url))
+    app.get('/guide.html', serveStatic({ root: webDist, path: 'guide.html' }))
+    app.get('/icon.svg', serveStatic({ root: webDist, path: 'icon.svg' }))
     app.use('/assets/*', serveStatic({ root: webDist }))
     app.get('*', async (context) => {
       const { readFile } = await import('node:fs/promises')

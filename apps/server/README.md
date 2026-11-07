@@ -25,3 +25,11 @@ and filtered XLSX/CSV exports. Schema v7 preserves submitted question/category
 and JD text alongside the previously frozen answers and résumé artifacts.
 Follow-up and quiet-day calculations use calendar days on this device. No model
 adapter is involved in tracker, answer reuse, or spreadsheet exports.
+
+Phase 7 adds a lifecycle-managed server with exclusive data-folder ownership,
+loopback port discovery, instance records, graceful shutdown, automatic database
+snapshots and newer-schema refusal. `/api/app/status`, `/api/app/welcome` and
+`/api/app/quit` support first-run and maintenance UI; named database backups can
+be downloaded. `maintenance.ts` provides validated full backups and staged,
+recoverable restores for the offline launcher. Full backups include settings
+and their configured API key, so archives remain private local files.

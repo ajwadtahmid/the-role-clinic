@@ -1,6 +1,6 @@
 {
   "name": "the-role-clinic",
-  "version": "0.0.0",
+  "version": "0.1.0-preview.1",
   "private": true,
   "description": "Local-first job tracker and resume tailoring app",
   "workspaces": [
@@ -11,10 +11,12 @@
     "dev": "concurrently -k -n server,web -c blue,green \"npm:dev:server\" \"npm:dev:web\"",
     "dev:server": "tsx watch apps/server/src/index.ts",
     "dev:web": "vite --config apps/web/vite.config.ts --host 127.0.0.1",
-    "build": "npm run typecheck && vite build --config apps/web/vite.config.ts",
+    "build": "npm run typecheck && node scripts/render-guide.mjs && vite build --config apps/web/vite.config.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "start": "tsx apps/server/src/start-production.ts"
+    "start": "tsx apps/server/src/start-production.ts",
+    "package:linux": "node scripts/build-package.mjs",
+    "test:package": "node scripts/smoke-package.mjs"
   },
   "devDependencies": {
     "@testing-library/react": "^16.3.3",
@@ -47,6 +49,7 @@
     "pdfmake": "^0.3.13",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
+    "tar": "^7.5.22",
     "unpdf": "^1.9.1",
     "zod": "^4.6.7"
   },

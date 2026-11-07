@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import { FirstRun } from './runtime.js'
 import { SettingsPage } from './settings-page.js'
 import { TrackerPage } from './tracker-page.js'
 import { AnswersPage } from './answers.js'
@@ -20,4 +21,4 @@ function App() {
   return <Workspace />
 }
 
-createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>)
+createRoot(document.getElementById('root')!).render(<React.StrictMode><FirstRun><App /></FirstRun></React.StrictMode>)

@@ -1,0 +1,45 @@
+name: Linux x86_64 package
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - run: npm run build
+      - run: npm run package:linux
+      - name: Smoke-test the extracted archive
+        run: npm run test:package -- "dist/the-role-clinic-$(node -p 'require("./package.json").version')-linux-x64.tar.gz"
+      - name: Clean Ubuntu run without network, Node or developer tools installed
+        shell: bash
+        run: |
+          package_name="the-role-clinic-$(node -p 'require("./package.json").version')-linux-x64"
+          docker pull ubuntu:22.04
+          docker run --rm --network none --read-only --cap-drop=ALL \
+            --security-opt=no-new-privileges --user 65534:65534 \
+            --tmpfs /tmp:rw,exec,mode=1777,size=1g \
+            --mount "type=bind,src=$PWD/dist,dst=/packages,readonly" \
+            --mount "type=bind,src=$PWD/scripts/smoke-package.mjs,dst=/smoke.mjs,readonly" \
+            ubuntu:22.04 "/packages/$package_name/runtime/node" /smoke.mjs "/packages/$package_name.tar.gz"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: the-role-clinic-linux-x64
+          path: |
+            dist/*.tar.gz
+            dist/*.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 14

@@ -4,7 +4,7 @@ A local-first workspace for saving jobs, tracking applications, and tailoring r�
 
 The local build plan and other reference material live in the gitignored `extra/` folder. Capture, tracking, master résumé management, and the extraction/tailoring pipeline are implemented. The saved review workspace includes document preview and DOCX/PDF exports. Phase 6 adds a tracker table, follow-ups, submitted-version records, an answer library, and XLSX/CSV exports. Live-model quality evaluation remains deferred until feature work is complete.
 
-The intended public release is a downloadable app that runs on each user's computer. Its local server will bind to `127.0.0.1` and open the user's existing browser. There are no hosted accounts or shared data. Job tracking will work without an AI provider; résumé tailoring will use either the user's Claude API key or an optional local Ollama installation.
+The Linux x86_64 preview is a downloadable app that runs on each user's computer. Its local server will bind to `127.0.0.1` and open the user's existing browser. There are no hosted accounts or shared data. Job tracking will work without an AI provider; résumé tailoring will use either the user's Claude API key or an optional local Ollama installation.
 
 ## Layout
 
@@ -19,7 +19,8 @@ Phase 0 feasibility work is complete and documented in `extra/`. Model selection
 
 ## Run locally
 
-Requires Node.js 22.12 or newer and npm.
+Development requires Node and npm. Use Node **24.18.1** (pinned in `.node-version`)
+to build the Linux package. End users run its bundled runtime and do not install Node.
 
 ```sh
 npm install
@@ -99,3 +100,51 @@ answers added only after submission. A separate column preserves the working
 answer. Very long fields that exceed XLSX's cell limit can be exported in CSV.
 
 Validation notes remain local in [extra/phase6-validation.md](extra/phase6-validation.md).
+
+## Linux x86_64 package
+
+Phase 7 provides a self-contained Linux preview with a bundled Node runtime,
+production dependencies, an executable launcher, first-run introduction, local
+user guide, optional application-menu shortcut, and full-data backup/restore.
+The packaging layout separates platform launchers/runtime from shared app code;
+macOS, Windows, ARM and musl builds remain future work.
+
+Build with Node 24.18.1, npm, `tar` and `readelf` available on Linux x86_64:
+
+```sh
+npm ci --ignore-scripts
+npm test
+npm run build
+npm run package:linux
+npm run test:package -- dist/the-role-clinic-0.1.0-preview.1-linux-x64.tar.gz
+```
+
+The archive, checksum and extracted package appear in ignored `dist/`. Packaging
+copies only the locked production dependency closure, compiled server/shared code,
+built UI, runtime and guide. Personal data, `extra/`, development dependencies and
+source tests are excluded. The manifest inventories bundled files, dependency
+lock hash and ELF runtime requirements; third-party licenses remain in the package.
+
+Extract the archive, then run `./role-clinic`. It reopens the existing instance or
+starts a loopback server on an available port. `./role-clinic stop` stops it;
+closing the browser tab leaves it running. Data stays in the per-user data folder
+across package replacement. Settings shows the folder, version, backup downloads
+and a confirmed stop control. No model or API call occurs merely by launching.
+
+**Compatibility:** Linux x86_64, glibc **2.34+**, GLIBCXX **3.4.29+**. The package
+was smoke-tested on Fedora 44 and in a clean Ubuntu 22.04.5 LTS container with
+networking disabled, no system Node/npm, and no development toolchain. Desktop
+browser visual checks remain open; these tests cover the actual server and files.
+
+Before migration, the server saves a database snapshot. It also creates startup
+and daily snapshots, retains 14 automatic backups, and refuses newer database
+schemas. Full backups include the database, recorded artifacts, settings and
+first-run state. Full restore validates paths, checksums, settings, SQLite
+integrity and schema before replacing data, rebases artifact paths, and keeps the
+prior folder for recovery. Run full backup/restore with the app stopped.
+
+See [the Linux user guide](packaging/USER-GUIDE.md) for launch, update, backup,
+restore and removal commands. CI describes the same clean Ubuntu smoke test;
+it builds preview artifacts without publishing a release. Local validation notes
+remain in [extra/phase7-validation.md](extra/phase7-validation.md). AI quality
+qualification remains deferred before public release.

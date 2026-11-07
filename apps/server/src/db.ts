@@ -1,8 +1,11 @@
 import Database from 'better-sqlite3'
-import { mkdirSync } from 'node:fs'
+import { chmodSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
+import { databaseBackup } from './database-backups.js'
 import * as schema from './schema.js'
+
+export const CURRENT_SCHEMA_VERSION = 7
 
 export type ClinicDatabase = BetterSQLite3Database<typeof schema>
 
@@ -62,6 +65,11 @@ PRAGMA user_version = 1;
 export function createDatabase(dataDirectory: string): { sqlite: Database.Database; db: ClinicDatabase } {
   mkdirSync(dataDirectory, { recursive: true, mode: 0o700 })
   const sqlite = new Database(join(dataDirectory, 'clinic.sqlite'))
+  const existingVersion = Number(sqlite.pragma('user_version', { simple: true }))
+  if (existingVersion > CURRENT_SCHEMA_VERSION) { sqlite.close(); throw new Error(`This database needs a newer version of The Role Clinic (schema ${existingVersion}). No downgrade was performed.`) }
+  if (existingVersion > 0 && existingVersion < CURRENT_SCHEMA_VERSION) {
+    try { databaseBackup(sqlite, dataDirectory, 'migration', existingVersion) } catch (error) { sqlite.close(); throw error }
+  }
   sqlite.pragma('journal_mode = WAL')
   sqlite.pragma('foreign_keys = ON')
   sqlite.pragma('busy_timeout = 5000')
@@ -187,5 +195,6 @@ export function createDatabase(dataDirectory: string): { sqlite: Database.Databa
       COMMIT;`)
     } catch (error) { sqlite.exec('ROLLBACK;'); sqlite.close(); throw error }
   }
+  chmodSync(join(dataDirectory, 'clinic.sqlite'), 0o600)
   return { sqlite, db: drizzle(sqlite, { schema }) }
 }

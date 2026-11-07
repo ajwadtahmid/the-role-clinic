@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": false, "rootDir": ".", "outDir": "dist/compiled", "sourceMap": false, "declaration": false },
+  "include": ["apps/server/src/**/*.ts", "packages/shared/src/**/*.ts"],
+  "exclude": ["**/*.test.ts", "**/*.test.tsx", "node_modules", "dist"]
+}

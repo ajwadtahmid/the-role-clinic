@@ -1,0 +1,74 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>The Role Clinic — Linux guide</title><style>body{font-family:system-ui,sans-serif;max-width:820px;margin:40px auto;padding:0 22px;color:#242920;background:#fffefa;line-height:1.7}p{white-space:pre-wrap;overflow-wrap:anywhere}h1,h2{color:#315b45}h2{margin-top:2em}code{background:#edf0e7;padding:2px 4px;border-radius:3px;font-size:.9em}</style><main><h1>The Role Clinic — Linux preview</h1><p>A local job tracker and résumé workspace. This preview targets <strong>Linux x86_64
+with glibc 2.34 or newer</strong> and the C++ runtime listed in <code>manifest.json</code>. It does
+not target Alpine/musl, ARM, macOS or Windows. Other platform packages are planned.
+Smoke-tested on Fedora 44 and in a clean Ubuntu 22.04.5 LTS container. Full
+desktop/browser visual qualification remains open. AI quality evaluation remains
+pending; review all generated résumé claims.</p><h2 id="download">Download and launch</h2><p>1. Check the archive with <code>sha256sum -c &lt;archive&gt;.sha256</code> in its download folder.
+2. Extract the <code>.tar.gz</code> into a folder you own. Keep the extracted files together.
+3. Open a terminal in that folder and run <code>./role-clinic</code>.
+4. The launcher starts a loopback server and opens your default browser. If opening
+   the browser fails, copy the printed <code>http://127.0.0.1:&lt;port&gt;</code> URL into it.</p><p>Node, npm, SQLite, Docker and a developer toolchain are <strong>not needed to run the
+package</strong>. Node and required libraries are bundled. Your desktop's <code>xdg-open</code>
+command opens the browser when available. A current Firefox or Chromium-family
+browser is the initial browser target; browser visual qualification is pending.
+Ollama and model downloads are optional and are not bundled or installed.</p><p><code>./role-clinic start --no-browser</code> prints the URL without opening a browser.
+Launching again reopens the existing instance. The default chooses an available
+port; an explicit <code>PORT</code> environment variable requests a particular port and
+fails visibly if occupied. The app listens only on <code>127.0.0.1</code>.</p><p>For an optional application-menu shortcut, run <code>./role-clinic install-desktop</code>.
+Run <code>./role-clinic uninstall-desktop</code> to remove it. Reinstall the shortcut after
+moving the extracted app folder. No autostart or system-wide installation is added.</p><h2 id="first">First use</h2><p>Choose <strong>Start tracking jobs</strong>. Paste a posting or fetch a supported public URL,
+then save jobs, change application status, and record answers. These features
+work without a model or API key. The first-run introduction is saved locally.</p><p>For optional tailoring: import a PDF/DOCX in <strong>Master résumé</strong>, review the draft,
+and save only true evidence. Fill in your private profile separately. Configure
+an installed local Ollama model or your own Anthropic API key in <strong>Settings</strong>.
+Claude sends relevant résumé evidence and job text to its API and charges you;
+Ollama processes model requests locally. Private profile and application answers
+stay outside model inputs. Capturing a URL contacts the public job site.</p><p>Review generated lines, accept/edit/reject them, and export DOCX or PDF. Record
+what you actually submitted using the explicit application confirmation. Tracker,
+Answers, Gap trends and spreadsheet exports are available from navigation.</p><h2 id="stop">Stop and reopen</h2><p>Closing the browser tab leaves the local server running. Use <strong>Settings → Stop
+local app</strong>, or run <code>./role-clinic stop</code>. Active model runs block an ordinary stop;
+wait for completion, or explicitly use <code>./role-clinic stop --force</code>. An interrupted
+run is recorded as failed on restart and can be retried where supported.</p><p><code>./role-clinic status</code> reports the running version and port. Reopen with the launcher.</p><h2 id="data">Data location</h2><p>By default, data is in <code>$XDG_DATA_HOME/the-role-clinic</code> or
+<code>~/.local/share/the-role-clinic</code>. <code>ROLE_CLINIC_DATA_DIR=/absolute/path</code> overrides
+it. Use the same override for every launch, backup and restore command. Settings
+shows the actual folder. Data is outside the replaceable package.</p><p><code>clinic.sqlite</code> stores jobs, answers and résumé records; <code>artifacts/</code> holds exported
+and attached files; <code>settings.json</code> may contain your API key with owner-only
+permissions; <code>backups/</code> holds database snapshots. <code>app.log</code> records server errors.
+Do not sync or copy a live SQLite/WAL file as your backup.</p><h2 id="backups">Backups</h2><p><strong>Full backup (recommended for recovery and moving computers):</strong> stop the app first,
+then run <code>./role-clinic backup /absolute/path/role-clinic-data.tar.gz</code>. The archive
+includes a consistent database snapshot, recorded artifacts, settings and first-run
+state. It includes your configured API key. Keep it private; it is not encrypted.
+The command refuses to overwrite an existing archive or omit missing artifacts.
+It has a 2 GiB expanded-data limit. Existing backup history and logs are not included.</p><p><strong>Database snapshots:</strong> the server creates a snapshot at startup and daily, keeping
+14 automatic snapshots. Manual and pre-migration snapshots are retained. Settings
+can create/download a database snapshot, but it is not a full backup: it excludes
+artifact files and settings. Full restore uses the full backup archive format.</p><h2 id="restore">Restore</h2><p>1. Stop the app. Place the full backup archive <strong>outside</strong> the data folder.
+2. Run <code>./role-clinic restore /absolute/path/role-clinic-data.tar.gz</code> to validate it
+   and inspect its date, file count and schema. This does not replace data.
+3. To apply it, repeat with <code>--confirm</code>. The entire prior data folder is preserved
+   as a sibling <code>the-role-clinic.before-restore-…</code> recovery folder. After validation,
+   the restored folder replaces the current one. Artifact paths are relocated to
+   the actual restored data directory.
+4. Start the app, check jobs, submitted records and files, then retain or manually
+   remove the old recovery folder when satisfied.</p><p>Archives with invalid paths, links, duplicate entries, missing files, checksum
+mismatches, invalid settings or an unsupported database version are rejected.
+A checksum protects consistency; it does not prove who created an archive. Restore
+only your own or otherwise trusted backups. Keep recovery folders private too.</p><h2 id="update">Update</h2><p>Stop the running app, make a full backup, extract the new package into a <strong>new</strong>
+folder, and launch its <code>role-clinic</code>. Keep the old package until the update is
+checked. The data directory stays the same. Before a schema upgrade, the app makes
+a pre-migration database snapshot; it refuses to open a database from a newer app.
+Reinstall the optional desktop shortcut to point to the new folder.</p><p>For a rollback after a schema change, keep a copy of current data, use a compatible
+app to restore the pre-update full backup, then start the older package. Do not
+force an older app to write a newer database or overwrite the data folder manually.</p><h2 id="troubleshooting">Troubleshooting and removal</h2><p>- <code>./role-clinic verify</code> checks the installed package against its file manifest.
+- If launch fails, read <code>app.log</code> in the data folder. Errors never require installing
+  npm dependencies into the downloaded package. Re-extract the package if damaged.
+- A busy explicit port can be resolved by unsetting <code>PORT</code> and relaunching. A second
+  instance using the same data folder is rejected or reused; stale records are
+  handled without killing unrelated processes.
+- For a missing Ollama connection, keep using tracking or install/configure Ollama
+  separately. The launcher never downloads models or makes paid inference calls.
+- To remove the app: stop it, remove the optional desktop shortcut, then delete the
+  extracted package. Local data remains. To remove data too, first make any desired
+  full backup and then manually delete the exact data folder shown in Settings.</p><p>This is a Linux preview. The validation record under the project's ignored <code>extra/</code>
+folder distinguishes same-host checks from any independently tested distribution.
+</p></main></html>
