@@ -5,12 +5,13 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { CURRENT_SCHEMA_VERSION } from './db.js'
 
-export interface RuntimeInfo { version: string; instanceId: string; managed: boolean; shutdown(force: boolean): Promise<void> }
+export interface RuntimeInfo { version: string; instanceId: string; managed: boolean; desktop?: boolean; shutdown(force: boolean): Promise<void> }
 export function registerRuntimeRoutes(app: Hono, sqlite: Database.Database, dataDirectory: string, runtime?: RuntimeInfo) {
   app.get('/api/app/status', (context) => context.json({
     app: 'the-role-clinic', version: runtime?.version ?? 'development', platform: process.platform, arch: process.arch,
     nodeVersion: process.version, schemaVersion: CURRENT_SCHEMA_VERSION, dataDirectory,
     instanceId: runtime?.instanceId ?? null, managed: runtime?.managed ?? false,
+    desktop: runtime?.desktop ?? false,
     canShutdown: Boolean(runtime), welcomeComplete: existsSync(join(dataDirectory, 'welcome.json')),
     activeRuns: (sqlite.prepare("SELECT COUNT(*) AS n FROM runs WHERE status IN ('queued','running')").get() as { n: number }).n,
   }))

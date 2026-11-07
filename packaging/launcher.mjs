@@ -58,6 +58,7 @@ async function browser(url) {
 async function start() {
   const existing = await state()
   if (existing) {
+    if (existing.shell === 'desktop') throw new Error('The desktop app is using this data folder. Switch to its window, or quit it before starting the browser preview.')
     if (!existing.managed) throw new Error('A development server is using this data folder. Stop it before launching the packaged app.')
     console.log(`Already running ${existing.version}: http://127.0.0.1:${existing.port}`)
     if (existing.version !== manifest.version) console.log('Stop the running version and launch again to use this update. Your data stays in the same folder.')

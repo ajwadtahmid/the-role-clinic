@@ -1,0 +1,15 @@
+FROM role-clinic-phase8-build AS tools
+FROM fedora:44
+RUN dnf install -y webkit2gtk4.1 gtk3 xdg-utils xorg-x11-server-Xvfb xorg-x11-xauth \
+    dbus-daemon xdotool xclip ImageMagick procps-ng findutils \
+    && dnf clean all
+COPY --from=tools /opt/node /opt/node
+COPY --from=tools /usr/bin/WebKitWebDriver /usr/local/bin/WebKitWebDriver
+COPY --from=tools /usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/MiniBrowser /usr/local/bin/MiniBrowser
+COPY --from=tools /usr/lib/x86_64-linux-gnu/libicui18n.so.70* /usr/local/lib/
+COPY --from=tools /usr/lib/x86_64-linux-gnu/libicuuc.so.70* /usr/local/lib/
+COPY --from=tools /usr/lib/x86_64-linux-gnu/libicudata.so.70* /usr/local/lib/
+RUN echo /usr/local/lib > /etc/ld.so.conf.d/desktop-test-driver.conf && ldconfig
+ENV PATH=/opt/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ENV LANG=C.UTF-8
+WORKDIR /work

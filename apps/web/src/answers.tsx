@@ -1,3 +1,4 @@
+import { writeClipboard } from './desktop.js'
 import { useEffect, useState } from 'react'
 import { answerCategories, suggestAnswerCategory, type LibraryAnswer, type TrackerJob } from '../../../packages/shared/src/index.js'
 
@@ -8,7 +9,7 @@ export async function localApi<T>(path: string, init?: RequestInit): Promise<T> 
   return data as T
 }
 export async function copyText(text: string, onNotice: (text: string) => void) {
-  try { await navigator.clipboard.writeText(text); onNotice('Answer copied to clipboard.') } catch { onNotice('Clipboard access failed. Select and copy the text manually.') }
+  try { await writeClipboard(text); onNotice('Answer copied to clipboard.') } catch { onNotice('Clipboard access failed. Select and copy the text manually.') }
 }
 type EditableAnswer = { id?: string; question: string; answer: string; category: string; charLimit: number | null; reusedFrom?: string | null }
 export function AnswerEditor({ jobId, initial, onSaved, onCancel, prefix = '' }: { jobId: string; initial?: EditableAnswer; onSaved: () => void | Promise<void>; onCancel?: () => void; prefix?: string }) {

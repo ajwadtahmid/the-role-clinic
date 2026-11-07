@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "The Role Clinic",
+    "version": "0.5.0",
+  "identifier": "com.theroleclinic.desktop",
+  "build": {
+    "beforeDevCommand": "node scripts/prepare-desktop.mjs",
+    "beforeBuildCommand": "node scripts/prepare-desktop.mjs",
+    "frontendDist": "../packaging/desktop-shell"
+  },
+  "app": {
+    "windows": [],
+    "security": { "capabilities": ["desktop-workspace"], "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'" }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["deb", "rpm", "appimage"],
+    "category": "Productivity",
+    "shortDescription": "Local job tracker and resume workspace",
+    "resources": { "../dist/desktop-backend/": "backend/" },
+    "icon": ["icons/icon.png"],
+    "linux": { "deb": { "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0", "xdg-utils"] }, "rpm": { "depends": ["webkit2gtk4.1", "gtk3", "xdg-utils"] }, "appimage": { "bundleMediaFramework": false } }
+  }
+}

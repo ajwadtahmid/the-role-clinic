@@ -1,0 +1,9 @@
+.git
+extra
+node_modules
+dist
+apps/web/dist
+src-tauri/target
+.agents
+.codex
+.env*

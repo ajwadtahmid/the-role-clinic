@@ -10,11 +10,11 @@ import { SerialRunQueue } from './queue.js'
 import { captureJobUrl } from './capture.js'
 
 const temporaryDirectories: string[] = []
-async function fixture(development = false) {
+async function fixture(development = false, desktop = false) {
   const dataDirectory = await mkdtemp(join(tmpdir(), 'role-clinic-test-'))
   temporaryDirectories.push(dataDirectory)
   const { sqlite, db } = createDatabase(dataDirectory)
-  return { dataDirectory, sqlite, db, app: createApp({ dataDirectory, sqlite, db, development, port: 3000, webPort: 5173 }) }
+  return { dataDirectory, sqlite, db, app: createApp({ dataDirectory, sqlite, db, development, port: 3000, webPort: 5173, ...(desktop ? { runtime: { version: 'test', instanceId: 'test', managed: true, desktop: true, shutdown: async () => {} } } : {}) }) }
 }
 function request(app: ReturnType<typeof createApp>, path: string, init: RequestInit = {}) {
   return app.request(`http://127.0.0.1:3000${path}`, {
@@ -49,6 +49,21 @@ describe('local server foundation', () => {
     expect(hostileHost.status).toBe(403)
     expect(noOrigin.status).toBe(403)
     expect(foreignOrigin.status).toBe(403)
+    sqlite.close()
+  })
+
+  it('keeps the exact API origin guard in the desktop shell and supplies its restrictive CSP', async () => {
+    const { app, sqlite } = await fixture(false, true)
+    const status = await request(app, '/api/app/status')
+    expect(await status.json()).toMatchObject({ desktop: true, managed: true })
+    expect(status.headers.get('content-security-policy')).toContain("object-src 'none'")
+    expect(status.headers.get('content-security-policy')).not.toContain("'unsafe-eval'")
+    const allowed = await request(app, '/api/app/welcome', { method: 'POST', headers: sameOrigin, body: '{"acknowledged":true}' })
+    const otherPort = await request(app, '/api/app/welcome', { method: 'POST', headers: { ...sameOrigin, origin: 'http://127.0.0.1:5173' }, body: '{"acknowledged":true}' })
+    const localAsset = await request(app, '/api/app/welcome', { method: 'POST', headers: { ...sameOrigin, origin: 'tauri://localhost' }, body: '{"acknowledged":true}' })
+    expect(allowed.status).toBe(200)
+    expect(otherPort.status).toBe(403)
+    expect(localAsset.status).toBe(403)
     sqlite.close()
   })
 

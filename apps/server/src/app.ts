@@ -152,6 +152,10 @@ export function createApp(options: AppOptions) {
   const pipeline = new PipelineService(options.sqlite, options.dataDirectory, queue, modelRouter)
   const app = new Hono()
   app.use('*', securityMiddleware({ port, webPort, development }))
+  if (options.runtime?.desktop) app.use('*', async (context, next) => {
+    context.header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost; worker-src 'self' blob:; frame-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'self'")
+    await next()
+  })
   app.use('/api/*', (context, next) => {
     const masterRequest = context.req.path.startsWith('/api/master/') || context.req.path === '/api/master'
     const maxSize = context.req.path === '/api/master/import-preview' || context.req.path.endsWith('/submitted-resume') ? 8_100_000 : masterRequest ? 8_000_000 : context.req.path === '/api/jobs' && context.req.method === 'POST' ? 5_000_000 : 1024 * 1024

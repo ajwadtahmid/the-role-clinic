@@ -15,6 +15,10 @@ artifacts/
 .DS_Store
 
 extra/
+AGENTS.md
 CLAUDE.md
 DESIGN.md
 .impeccable/review/
+
+src-tauri/target/
+src-tauri/gen/

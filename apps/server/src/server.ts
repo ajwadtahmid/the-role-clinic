@@ -44,8 +44,8 @@ export async function startServer() {
     databaseBackup(sqlite, dataDirectory, 'auto')
     let version = 'development'
     if (process.env.ROLE_CLINIC_RELEASE_PATH) version = JSON.parse(await readFile(join(process.env.ROLE_CLINIC_RELEASE_PATH, 'manifest.json'), 'utf8')).version
-    app = createApp({ dataDirectory, sqlite, db: database.db, port: actualPort, webPort, runtime: { version, instanceId, managed, shutdown } })
-    const state = { app: 'the-role-clinic', pid: process.pid, port: actualPort, instanceId, version, managed }
+    app = createApp({ dataDirectory, sqlite, db: database.db, port: actualPort, webPort, runtime: { version, instanceId, managed, desktop: process.env.ROLE_CLINIC_DESKTOP === '1', shutdown } })
+    const state = { app: 'the-role-clinic', pid: process.pid, port: actualPort, instanceId, version, managed, ...(process.env.ROLE_CLINIC_DESKTOP === '1' ? { shell: 'desktop' } : {}) }
     const temporary = `${statePath}.${process.pid}.tmp`
     await writeFile(temporary, JSON.stringify(state), { mode: 0o600 }); await rename(temporary, statePath)
     daily = setInterval(() => { try { if (sqlite?.open) databaseBackup(sqlite, dataDirectory, 'auto') } catch (error) { console.error(`Automatic database backup failed: ${(error as Error).message}`) } }, 86400000); daily.unref()

@@ -1,3 +1,5 @@
+import { installDesktopLinks } from './desktop.js'
+import { DesktopNotice } from './desktop-notice.js'
 import React, { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { FirstRun } from './runtime.js'
@@ -7,6 +9,8 @@ import { Workspace } from './workspace.js'
 import { MasterPage, ProfilePage } from './master-page.js'
 import { RunNotices } from './run-notices.js'
 import './style.css'
+
+installDesktopLinks()
 
 function Pages() {
   const [route, setRoute] = useState(location.hash)
@@ -35,4 +39,4 @@ function Pages() {
 
 function App() { return <><Pages /><RunNotices /></> }
 
-createRoot(document.getElementById('root')!).render(<React.StrictMode><FirstRun><App /></FirstRun></React.StrictMode>)
+createRoot(document.getElementById('root')!).render(<React.StrictMode><FirstRun><DesktopNotice /><App /></FirstRun></React.StrictMode>)

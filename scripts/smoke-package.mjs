@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFile as execFileCallback } from 'node:child_process'
 import { promisify } from 'node:util'
-import { mkdtemp, mkdir, readFile, writeFile, readdir, rename, rm, stat, chmod } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, writeFile, readdir, rename, rm, stat, chmod, cp } from 'node:fs/promises'
 import { join, resolve, basename } from 'node:path'
 import { tmpdir } from 'node:os'
 import { pathToFileURL } from 'node:url'
@@ -10,13 +10,17 @@ import { request as httpRequest } from 'node:http'
 import { randomUUID } from 'node:crypto'
 
 const execFile = promisify(execFileCallback)
-const input = resolve(process.argv[2] || 'dist/the-role-clinic-0.1.0-preview.1-linux-x64.tar.gz')
+const version = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')).version
+const input = resolve(process.argv[2] || `dist/the-role-clinic-${version}-linux-x64.tar.gz`)
 const root = await mkdtemp(join(tmpdir(), 'role-clinic-package-'))
 let bundle = input, data = join(root, 'private data'), running = false
 await mkdir(join(root, 'empty-path')); await mkdir(join(root, 'xdg'))
 if (input.endsWith('.tar.gz')) {
   await execFile('/usr/bin/tar', ['-xzf', input, '-C', root])
   bundle = join(root, basename(input, '.tar.gz'))
+} else {
+  bundle = join(root, 'extracted package')
+  await cp(input, bundle, { recursive: true })
 }
 const cleanEnv = () => ({ ...process.env, PATH: join(root, 'empty-path'), XDG_DATA_HOME: join(root, 'xdg'), ROLE_CLINIC_DATA_DIR: data, ROLE_CLINIC_NO_BROWSER: '1', NODE_OPTIONS: '', NODE_PATH: '', PORT: '' })
 async function cli(args, options = {}) {

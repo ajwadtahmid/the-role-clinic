@@ -11,7 +11,8 @@ if (process.platform !== 'linux' || process.arch !== 'x64' || !process.report.ge
 const pinnedNode = (await readFile('.node-version', 'utf8')).trim()
 if (process.version !== `v${pinnedNode}`) throw new Error('Build with Node v24.18.1 so the bundled runtime is pinned and reproducible.')
 const pkg = JSON.parse(await readFile('package.json', 'utf8')), lock = JSON.parse(await readFile('package-lock.json', 'utf8'))
-const name = `the-role-clinic-${pkg.version}-linux-x64`, output = join(root, 'dist', name), archive = `${output}.tar.gz`
+const stageOnly = process.argv.includes('--stage-only')
+const name = stageOnly ? 'desktop-backend' : `the-role-clinic-${pkg.version}-linux-x64`, output = join(root, 'dist', name), archive = `${output}.tar.gz`
 await mkdir(join(root, 'dist'), { recursive: true })
 await rm(output, { recursive: true, force: true }); await rm(archive, { force: true })
 await rm(join(root, 'dist/compiled'), { recursive: true, force: true })
@@ -76,7 +77,9 @@ async function inventory(directory) {
 await inventory(output)
 const manifest = { format: 'the-role-clinic-package', version: pkg.version, target: 'linux-x64-glibc', nodeVersion: process.version, schemaVersion: 7, requirements, packageLockSha256: createHash('sha256').update(await readFile('package-lock.json')).digest('hex'), files }
 await writeFile(join(output, 'manifest.json'), JSON.stringify(manifest, null, 2))
-await c({ file: archive, cwd: join(root, 'dist'), gzip: true, portable: true, noMtime: true }, [name])
-const checksum = createHash('sha256').update(await readFile(archive)).digest('hex')
-await writeFile(`${archive}.sha256`, `${checksum}  ${name}.tar.gz\n`)
-console.log(JSON.stringify({ archive, bytes: (await stat(archive)).size, files: files.length, requirements }, null, 2))
+if (!stageOnly) {
+  await c({ file: archive, cwd: join(root, 'dist'), gzip: true, portable: true, noMtime: true }, [name])
+  const checksum = createHash('sha256').update(await readFile(archive)).digest('hex')
+  await writeFile(`${archive}.sha256`, `${checksum}  ${name}.tar.gz\n`)
+}
+console.log(JSON.stringify({ ...(stageOnly ? { staged: output } : { archive, bytes: (await stat(archive)).size }), files: files.length, requirements }, null, 2))

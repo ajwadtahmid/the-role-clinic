@@ -4,10 +4,34 @@ A local job tracker and résumé workspace. This preview targets **Linux x86_64
 with glibc 2.34 or newer** and the C++ runtime listed in `manifest.json`. It does
 not target Alpine/musl, ARM, macOS or Windows. Other platform packages are planned.
 Smoke-tested on Fedora 44 and in a clean Ubuntu 22.04.5 LTS container. Full
-desktop/browser visual qualification remains open. AI quality evaluation remains
-pending; review all generated résumé claims.
+desktop/browser visual qualification remains open. AI quality fixes and release
+qualification remain pending; review all generated résumé claims.
 
-## Download and launch
+## Desktop preview
+
+The 0.5.0 Tauri preview opens the workspace in its own window. On Ubuntu, open the
+`.deb` with the software installer; on Fedora, use the `.rpm`. Launch **The Role Clinic**
+from your application menu. The installer resolves GTK3, WebKitGTK 4.1 and `xdg-utils`.
+An `.AppImage` is also available: allow execution in file Properties → Permissions,
+then double-click it. It needs FUSE 2 compatibility support and a desktop session.
+Without FUSE, run the file with `--appimage-extract`, then open `squashfs-root/AppRun`.
+Keep that extracted folder together. macOS/Windows packages are planned separately.
+
+Closing the desktop window or pressing **Ctrl+Q** stops its local backend. An active
+run prompts before interruption; choose **Keep working** to continue it. A second
+launch focuses the existing window. Stop an existing browser preview before opening
+the desktop version with the same data folder.
+
+Exports open a native Save dialog; canceling it leaves the recorded export intact.
+PDF proof renders inside the app. Posting and guide links open in your default browser.
+Data and backups use the same locations and formats as the browser preview.
+
+For full-backup/restore commands below, the installed desktop maintenance launcher is
+`/usr/lib/The Role Clinic/backend/role-clinic`. For an extracted AppImage it is
+`squashfs-root/usr/lib/The Role Clinic/backend/role-clinic`. Quote these paths with spaces
+and close the app before running maintenance. Normal app use needs no terminal.
+
+## Browser fallback: download and launch
 
 1. Check the archive with `sha256sum -c <archive>.sha256` in its download folder.
 2. Extract the `.tar.gz` into a folder you own. Keep the extracted files together.
@@ -55,6 +79,10 @@ keeps follow-ups, each job's questions and answers (open them from the Q&A colum
 answer library, Gap trends and spreadsheet exports.
 
 ## Stop and reopen
+
+For the desktop preview, close its window, press **Ctrl+Q**, or choose **Settings →
+Quit app**. Reopen it from the application menu or AppImage. The following commands
+apply to the browser fallback and the desktop maintenance launcher.
 
 Closing the browser tab leaves the local server running. Use **Settings → Stop
 local app**, or run `./role-clinic stop`. Active model runs block an ordinary stop;

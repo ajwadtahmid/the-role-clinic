@@ -2,8 +2,22 @@
 with glibc 2.34 or newer</strong> and the C++ runtime listed in <code>manifest.json</code>. It does
 not target Alpine/musl, ARM, macOS or Windows. Other platform packages are planned.
 Smoke-tested on Fedora 44 and in a clean Ubuntu 22.04.5 LTS container. Full
-desktop/browser visual qualification remains open. AI quality evaluation remains
-pending; review all generated résumé claims.</p><h2 id="download">Download and launch</h2><p>1. Check the archive with <code>sha256sum -c &lt;archive&gt;.sha256</code> in its download folder.
+desktop/browser visual qualification remains open. AI quality fixes and release
+qualification remain pending; review all generated résumé claims.</p><h2 id="desktop">Desktop preview</h2><p>The 0.5.0 Tauri preview opens the workspace in its own window. On Ubuntu, open the
+<code>.deb</code> with the software installer; on Fedora, use the <code>.rpm</code>. Launch <strong>The Role Clinic</strong>
+from your application menu. The installer resolves GTK3, WebKitGTK 4.1 and <code>xdg-utils</code>.
+An <code>.AppImage</code> is also available: allow execution in file Properties → Permissions,
+then double-click it. It needs FUSE 2 compatibility support and a desktop session.
+Without FUSE, run the file with <code>--appimage-extract</code>, then open <code>squashfs-root/AppRun</code>.
+Keep that extracted folder together. macOS/Windows packages are planned separately.</p><p>Closing the desktop window or pressing <strong>Ctrl+Q</strong> stops its local backend. An active
+run prompts before interruption; choose <strong>Keep working</strong> to continue it. A second
+launch focuses the existing window. Stop an existing browser preview before opening
+the desktop version with the same data folder.</p><p>Exports open a native Save dialog; canceling it leaves the recorded export intact.
+PDF proof renders inside the app. Posting and guide links open in your default browser.
+Data and backups use the same locations and formats as the browser preview.</p><p>For full-backup/restore commands below, the installed desktop maintenance launcher is
+<code>/usr/lib/The Role Clinic/backend/role-clinic</code>. For an extracted AppImage it is
+<code>squashfs-root/usr/lib/The Role Clinic/backend/role-clinic</code>. Quote these paths with spaces
+and close the app before running maintenance. Normal app use needs no terminal.</p><h2 id="browser">Browser fallback: download and launch</h2><p>1. Check the archive with <code>sha256sum -c &lt;archive&gt;.sha256</code> in its download folder.
 2. Extract the <code>.tar.gz</code> into a folder you own. Keep the extracted files together.
 3. Open a terminal in that folder and run <code>./role-clinic</code>.
 4. The launcher starts a loopback server and opens your default browser. If opening
@@ -32,7 +46,9 @@ run is waiting, running, finished or failed, and a notice appears on any page wh
 ends. Review generated lines, accept/edit/reject them, and export DOCX or PDF. Record
 what you actually submitted using the explicit application confirmation. The <strong>Tracker</strong>
 keeps follow-ups, each job's questions and answers (open them from the Q&amp;A column), the
-answer library, Gap trends and spreadsheet exports.</p><h2 id="stop">Stop and reopen</h2><p>Closing the browser tab leaves the local server running. Use <strong>Settings → Stop
+answer library, Gap trends and spreadsheet exports.</p><h2 id="stop">Stop and reopen</h2><p>For the desktop preview, close its window, press <strong>Ctrl+Q</strong>, or choose <strong>Settings →
+Quit app</strong>. Reopen it from the application menu or AppImage. The following commands
+apply to the browser fallback and the desktop maintenance launcher.</p><p>Closing the browser tab leaves the local server running. Use <strong>Settings → Stop
 local app</strong>, or run <code>./role-clinic stop</code>. Active model runs block an ordinary stop;
 wait for completion, or explicitly use <code>./role-clinic stop --force</code>. An interrupted
 run is recorded as failed on restart and can be retried where supported.</p><p><code>./role-clinic status</code> reports the running version and port. Reopen with the launcher.</p><h2 id="data">Data location</h2><p>By default, data is in <code>$XDG_DATA_HOME/the-role-clinic</code> or

@@ -1,0 +1,45 @@
+name: Linux desktop preview
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  desktop:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - name: Build on the oldest supported Linux baseline
+        run: |
+          docker build -f packaging/Dockerfile.desktop-linux -t role-clinic-phase8-build .
+          mkdir -p dist/cargo-cache dist/desktop-cache
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" \
+            -e CARGO_HOME=/work/dist/cargo-cache -e XDG_CACHE_HOME=/work/dist/desktop-cache \
+            -e CARGO_TARGET_DIR=/work/dist/desktop-target \
+            -e CARGO_BUILD_JOBS=2 role-clinic-phase8-build npm run desktop:build
+      - name: Test native UI without outbound networking
+        run: |
+          docker run --rm --network none -v "$PWD:/work" \
+            -e TAURI_WEBVIEW_AUTOMATION=true -e DESKTOP_EVIDENCE_DIR=/work/dist/desktop-evidence \
+            -e WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 -e LIBGL_ALWAYS_SOFTWARE=1 \
+            role-clinic-phase8-build sh -c \
+            'dpkg-deb -x /work/dist/desktop-target/release/bundle/deb/*.deb /; dbus-run-session -- xvfb-run -a node scripts/smoke-desktop.mjs'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: the-role-clinic-desktop-linux-x64
+          path: |
+            dist/desktop-target/release/bundle/deb/*.deb
+            dist/desktop-target/release/bundle/rpm/*.rpm
+            dist/desktop-target/release/bundle/appimage/*.AppImage
+            dist/desktop-evidence/
+          if-no-files-found: error
+          retention-days: 14

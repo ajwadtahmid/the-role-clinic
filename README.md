@@ -6,7 +6,7 @@ sent. Everything runs on your own computer: no accounts, no hosted service, no s
 
 ## Status
 
-**Pre-release.** The current version is `0.1.0-preview.1`; the first public release is
+**Pre-release.** The current desktop preview is `0.5.0`; the first public release is
 planned as `1.0.0`.
 
 | Area | State |
@@ -14,9 +14,10 @@ planned as `1.0.0`.
 | Job capture, Jobs list, tracker (with answers and answer library) | Working |
 | Master résumé, profile, tailoring pipeline, review workspace, DOCX/PDF export | Working |
 | Linux x86_64 package (bundled Node runtime, launcher, backup/restore) | Working preview |
-| Desktop app window (Tauri), macOS and Windows | Not started |
-| AI output quality | **Not evaluated.** The pipeline is tested with fake models only; no live Ollama or Claude run has been scored, and the Anthropic adapter has never been run with a real key |
-| Real-browser visual checks | Open; tests cover the server, storage and component behaviour, not rendered layouts |
+| Linux Tauri desktop window, native downloads/clipboard, PDF proof | Implemented; owner acceptance pending |
+| macOS and Windows desktop packages | Phase 9, pending Linux acceptance |
+| AI output quality | Initial local-model validation recorded; quality fixes and release qualification deferred to Phase 10 |
+| Desktop workflow checks | Automated Linux webview checks; owner visual/scaling review remains open |
 
 Job tracking and application answers work with no AI provider at all. Résumé tailoring
 needs either your own Anthropic API key or a local Ollama installation.
@@ -129,7 +130,20 @@ bullets from the same role or project.
   category, with similar past answers and their outcomes, explicit reuse links, a warning
   when a reused answer names a different company, and enforced character limits.
 
-## Linux x86_64 package
+## Linux desktop preview
+
+The Tauri preview wraps the existing UI and bundled Node backend. `.deb` and `.rpm`
+packages register an application-menu entry; an `.AppImage` provides a portable
+alternative. Ordinary users do not need Node, Rust, npm or a developer setup.
+Closing the desktop window stops its backend, active runs require confirmation, exports
+use native Save dialogs, and the exact PDF proof renders inside the app.
+
+See [desktop installation, building and validation](packaging/DESKTOP.md). The Linux
+owner acceptance gate is still open; the browser launcher remains the default fallback.
+The preview is unsigned and has no automatic updater. macOS/Windows qualification is
+Phase 9; AI quality work remains deferred to Phase 10.
+
+## Linux x86_64 browser package
 
 A self-contained preview: bundled Node runtime and production dependencies, an executable
 launcher, a first-run introduction, a local user guide, an optional application-menu
@@ -141,7 +155,7 @@ npm ci --ignore-scripts
 npm test
 npm run build
 npm run package:linux
-npm run test:package -- dist/the-role-clinic-0.1.0-preview.1-linux-x64.tar.gz
+npm run test:package -- dist/the-role-clinic-0.5.0-linux-x64.tar.gz
 ```
 
 Needs Node 24.18.1, `tar` and `readelf` on Linux x86_64. The archive and its checksum
@@ -175,11 +189,12 @@ update, backup, restore and removal.
 | `apps/web/` | Browser UI (Vite and React) |
 | `packages/shared/` | Schemas and types shared by server and UI |
 | `packaging/`, `scripts/` | Linux launcher, user guide, package build and smoke test |
+| `src-tauri/` | Linux desktop shell, owned backend lifecycle and restricted native commands |
 
 ## Roadmap
 
-1. **Tauri on Linux x86_64:** run the existing UI and server in a desktop window; check
-   lifecycle, PDF preview, import and export, clipboard, and data compatibility.
+1. **Tauri on Linux x86_64:** complete owner acceptance of the desktop preview and
+   its lifecycle, PDF preview, import/export, clipboard and data compatibility.
 2. **Tauri on Linux, macOS and Windows:** installers, signing, updates, recovery, and
    clean-machine checks on all three.
 3. **AI quality evaluation and release:** score real models and per-task defaults in the
