@@ -43,6 +43,8 @@ export type RunStatus = z.infer<typeof runStatusSchema>
 export const runEventSchema = z.object({
   id: z.number().int().nonnegative(),
   runId: z.string(),
+  jobId: z.string().optional(),
+  kind: z.string().optional(),
   status: runStatusSchema,
   step: z.string(),
   message: z.string().optional(),

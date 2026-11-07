@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react'
 
-export type NavKey = 'jobs' | 'tracker' | 'answers' | 'resume' | 'settings'
+export type NavKey = 'jobs' | 'tracker' | 'resume' | 'settings'
 const links: Array<[NavKey, string, string]> = [
-  ['jobs', '#jobs', 'Jobs'], ['tracker', '#tracker', 'Tracker'], ['answers', '#answers', 'Answers'],
+  ['jobs', '#jobs', 'Jobs'], ['tracker', '#tracker', 'Tracker'],
   ['resume', '#resume', 'Résumé'], ['settings', '#settings', 'Settings'],
 ]
 
@@ -12,7 +12,7 @@ function skipToMain(event: React.MouseEvent) {
   document.getElementById('main')?.focus()
 }
 
-// One header for every screen: the same five destinations in the same order, with the current one marked.
+// One header for every screen: the same four destinations in the same order, with the current one marked.
 export function AppHeader({ current }: { current: NavKey }) {
   return <>
     <a className="skip-link" href="#main" onClick={skipToMain}>Skip to main content</a>

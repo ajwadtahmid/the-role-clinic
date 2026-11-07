@@ -11,7 +11,7 @@ import { fetch as nodeFetch, Request as NodeRequest, Response as NodeResponse, H
 import { createApp } from '../../server/src/app.js'
 import { createDatabase } from '../../server/src/db.js'
 import { TrackerPage } from './tracker-page.js'
-import { AnswersPage } from './answers.js'
+import { AnswerLibrary } from './answers.js'
 
 const resources: Array<{ server: ReturnType<typeof serve>; sqlite: ReturnType<typeof createDatabase>['sqlite']; directory: string }> = []
 afterEach(async () => {
@@ -57,15 +57,30 @@ describe('tracker browser flows', () => {
     expect((sqlite.prepare('SELECT follow_up_date FROM applications WHERE job_id=?').get(acme))).toEqual({ follow_up_date: null })
     await user.click(within(table).getByRole('button', { name: 'Recorded résumé text' }))
     await screen.findByText('Original résumé text, frozen at submission.')
-    expect(await screen.findByText('I want to join Acme to build reliable systems.')).toBeTruthy()
+    expect((await screen.findAllByText('I want to join Acme to build reliable systems.')).length).toBeGreaterThan(0)
     await user.selectOptions(screen.getByRole('combobox', { name: 'Filter company' }), 'Globex')
     expect(within(table).queryByRole('button', { name: 'Acme Software Engineer' })).toBeNull()
     expect(screen.getByRole('link', { name: 'Export XLSX' }).getAttribute('href')).toContain('company=Globex')
-    expect(within(table).getByRole('link', { name: 'No answers yet' }).getAttribute('href')).toMatch(/#jobs\/.*\?answers/)
+    expect(within(table).getByRole('button', { name: /^No answers yet/ })).toBeTruthy()
+  })
+  it('opens a job’s questions and answers from the Q&A column, edits the working copy, and keeps the submitted snapshot', async () => {
+    const { sqlite, acme, user } = await setup()
+    render(<TrackerPage />)
+    const table = await screen.findByRole('table')
+    await user.click(within(table).getByRole('button', { name: /^1 question/ }))
+    expect(await screen.findByText('Questions and answers (1)')).toBeTruthy()
+    expect(screen.getAllByText('I want to join Acme to build reliable systems.').length).toBeGreaterThan(0)
+    await user.click(screen.getByRole('button', { name: 'Edit' }))
+    const answer = screen.getByRole('textbox', { name: 'Answer' })
+    await user.clear(answer); await user.type(answer, 'I want to build dependable systems at Acme.')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(sqlite.prepare('SELECT answer,submitted_answer AS submitted FROM job_answers WHERE job_id=?').get(acme)).toEqual({ answer: 'I want to build dependable systems at Acme.', submitted: 'I want to join Acme to build reliable systems.' }))
+    await user.click(screen.getByText('Status history'))
+    expect(await screen.findByText(/Interviewing/)).toBeTruthy()
   })
   it('adapts a library answer, flags source-company text, enforces limits, and preserves provenance and submitted text', async () => {
     const { sqlite, acme, globex, sourceAnswerId, user } = await setup()
-    render(<AnswersPage />)
+    render(<AnswerLibrary />)
     await user.click(await screen.findByRole('button', { name: 'Reuse answer' }))
     await user.selectOptions(screen.getByRole('combobox', { name: 'Target application' }), globex)
     expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Mentions Acme — this application is for Globex.')

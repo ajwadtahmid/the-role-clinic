@@ -117,6 +117,25 @@ describe('local server foundation', () => {
     sqlite.close()
   })
 
+  it('names the job and kind on each run event and reports each job’s latest fit check or tailoring run in the list', async () => {
+    const { app, sqlite, db } = await fixture(true)
+    const text = 'A sufficiently long job description with responsibilities, qualifications, and other information for the list.'
+    const created = await request(app, '/api/jobs', { method: 'POST', headers: sameOrigin, body: JSON.stringify({ company: 'Acme', title: 'Engineer', text }) })
+    const { id } = await created.json() as { id: string }
+    const queue = new SerialRunQueue(db)
+    const seen: Array<{ jobId?: string; kind?: string }> = []
+    queue.subscribe((event) => seen.push({ jobId: event.jobId, kind: event.kind }))
+    queue.enqueueWork('extract', id, async () => {})
+    await new Promise((resolve) => setTimeout(resolve, 80))
+    expect(seen.length).toBeGreaterThan(0)
+    expect(seen.every((event) => event.jobId === id && event.kind === 'extract')).toBe(true)
+    sqlite.prepare("INSERT INTO runs(id,job_id,kind,status,step,prompt_versions,created_at,error) VALUES('r-old',?,'tailor','done','complete','{}','2026-10-01T00:00:00.000Z',NULL)").run(id)
+    sqlite.prepare("INSERT INTO runs(id,job_id,kind,status,step,prompt_versions,created_at,error) VALUES('r-new',?,'tailor','failed','drafting','{}','2026-10-02T00:00:00.000Z','The model did not answer.')").run(id)
+    const list = await (await request(app, '/api/jobs?status=')).json() as { jobs: Array<{ latestRun: { kind: string; status: string } | null }> }
+    expect(list.jobs[0].latestRun).toMatchObject({ kind: 'tailor', status: 'failed' })
+    sqlite.close()
+  })
+
   it('replays queue events over the SSE endpoint', async () => {
     const { app, sqlite } = await fixture(true)
     const queued = await request(app, '/api/dev/queue-demo', { method: 'POST', headers: { ...sameOrigin, origin: 'http://127.0.0.1:5173' }, body: '{}' })
@@ -236,6 +255,23 @@ describe('job capture and tracker', () => {
     expect(await afterEdit.json()).toMatchObject({ answers: [{ answer: 'I enjoy solving hard systems problems.', submittedAnswer: 'I enjoy building reliable systems.' }] })
     const editedResults = await request(app, '/api/answers/search?q=solving')
     expect(await editedResults.json()).toMatchObject({ answers: [{ answer: 'I enjoy solving hard systems problems.' }] })
+    sqlite.close()
+  })
+
+  it('groups jobs into active, applied and skipped views and counts each', async () => {
+    const { app, sqlite } = await fixture()
+    const text = 'A sufficiently long job description with responsibilities, qualifications, and other information for the list.'
+    const make = async (company: string, status?: string) => {
+      const created = await request(app, '/api/jobs', { method: 'POST', headers: sameOrigin, body: JSON.stringify({ company, title: 'Engineer', text }) })
+      const { id } = await created.json() as { id: string }
+      if (status) await request(app, `/api/jobs/${id}/status`, { method: 'PUT', headers: sameOrigin, body: JSON.stringify({ status, submittedText: 'sent' }) })
+    }
+    await make('Alpha'); await make('Beta', 'saved'); await make('Gamma', 'applied'); await make('Delta', 'rejected'); await make('Epsilon', 'skipped')
+    const names = async (view: string) => ((await (await request(app, `/api/jobs?status=${view}`)).json()) as { jobs: Array<{ company: string }> }).jobs.map((job) => job.company).sort()
+    expect(await names('active')).toEqual(['Alpha', 'Beta'])
+    expect(await names('applied')).toEqual(['Delta', 'Gamma'])
+    expect(await names('skipped')).toEqual(['Epsilon'])
+    expect(await (await request(app, '/api/jobs/counts')).json()).toMatchObject({ new: 1, active: 2, applied: 2, skipped: 1, all: 5 })
     sqlite.close()
   })
 

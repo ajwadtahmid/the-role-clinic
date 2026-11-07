@@ -54,7 +54,7 @@ export class SerialRunQueue {
   }
 
   private publish(run: RunRecord, message?: string): void {
-    const event: RunEvent = { id: ++this.eventId, runId: run.id, status: run.status, step: run.step, message, timestamp: new Date().toISOString() }
+    const event: RunEvent = { id: ++this.eventId, runId: run.id, jobId: run.jobId, kind: run.kind, status: run.status, step: run.step, message, timestamp: new Date().toISOString() }
     this.recent.push(event)
     if (this.recent.length > 200) this.recent.shift()
     this.emitter.emit('event', event)

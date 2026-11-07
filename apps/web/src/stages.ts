@@ -10,7 +10,7 @@ export const stageLabels: Record<Stage, string> = { review: 'To review', saved: 
 export function stageOf(status: string): Stage { return stageByStatus[status] ?? 'review' }
 export function stageLabel(status: string) { return stageLabels[stageOf(status)] }
 
-export type NextActionId = 'extract' | 'tailor' | 'review' | 'apply' | 'followup' | 'none'
+export type NextActionId = 'extract' | 'track' | 'tailor' | 'review' | 'apply' | 'tracker' | 'none'
 export type NextAction = { id: NextActionId; label: string; hint: string }
 export type JobProgress = { status: string; hasExtraction: boolean; hasDraft: boolean; hasExport: boolean }
 
@@ -18,8 +18,9 @@ export type JobProgress = { status: string; hasExtraction: boolean; hasDraft: bo
 export function nextAction({ status, hasExtraction, hasDraft, hasExport }: JobProgress): NextAction {
   const stage = stageOf(status)
   if (stage === 'closed') return { id: 'none', label: '', hint: 'This job is closed. Change the status under More to reopen it.' }
-  if (stage !== 'review' && stage !== 'saved') return { id: 'followup', label: 'Set follow-up', hint: 'Pick a follow-up date and keep contacts and notes in the tracker.' }
+  if (stage !== 'review' && stage !== 'saved') return { id: 'tracker', label: 'Open in Tracker', hint: 'Follow-ups, contacts, notes and the answers you gave are kept in the tracker.' }
   if (!hasExtraction) return { id: 'extract', label: 'Check fit', hint: 'Finds what the posting requires and compares it with your profile and résumé.' }
+  if (stage === 'review') return { id: 'track', label: 'Track this job', hint: 'Adds this job to the Tracker so you can keep answers and follow-ups with it.' }
   if (!hasDraft) return { id: 'tailor', label: 'Tailor résumé', hint: 'Writes a draft from your master résumé; every line cites its source.' }
   if (!hasExport) return { id: 'review', label: 'Review and export', hint: 'Check each line, then export a DOCX or PDF.' }
   return { id: 'apply', label: 'Mark as applied', hint: 'Choose the exported file you actually sent.' }

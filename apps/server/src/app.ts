@@ -24,6 +24,14 @@ import { assessRequirement } from './pipeline-core.js'
 import type { Requirement } from '../../../packages/shared/src/index.js'
 
 const isLoopback = (host: string) => ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(host.toLowerCase())
+// Named groups of statuses the jobs list can show.
+const jobViews = ['tracker', 'active', 'applied']
+function viewClause(status: string) {
+  if (status === 'tracker') return "COALESCE(a.status,'new') NOT IN ('new','skipped')"
+  if (status === 'active') return "COALESCE(a.status,'new') IN ('new','saved')"
+  if (status === 'applied') return "COALESCE(a.status,'new') NOT IN ('new','saved','skipped')"
+  return status ? "COALESCE(a.status, 'new') = ?" : ''
+}
 const applicationStatuses = ['new', 'saved', 'applied', 'screening', 'interviewing', 'offer', 'accepted', 'rejected', 'withdrawn', 'ghosted', 'skipped'] as const
 const id = () => crypto.randomUUID()
 const cleanText = (value: unknown, max: number) => typeof value === 'string' ? value.trim().slice(0, max) : ''
@@ -193,20 +201,22 @@ export function createApp(options: AppOptions) {
   app.get('/api/jobs', (context) => {
     const query = cleanText(context.req.query('q'), 200)
     const status = cleanText(context.req.query('status'), 30)
-    if (status && status !== 'tracker' && !applicationStatuses.includes(status as typeof applicationStatuses[number])) return context.json({ error: 'Unknown status filter.' }, 400)
-    const clauses = [query ? "(j.company LIKE ? ESCAPE '\\' OR j.title LIKE ? ESCAPE '\\' OR j.text LIKE ? ESCAPE '\\')" : '', status === 'tracker' ? "a.status NOT IN ('new','skipped')" : status ? 'COALESCE(a.status, \'new\') = ?' : ''].filter(Boolean)
+    if (status && !jobViews.includes(status) && !applicationStatuses.includes(status as typeof applicationStatuses[number])) return context.json({ error: 'Unknown status filter.' }, 400)
+    const clauses = [query ? "(j.company LIKE ? ESCAPE '\\' OR j.title LIKE ? ESCAPE '\\' OR j.text LIKE ? ESCAPE '\\')" : '', viewClause(status)].filter(Boolean)
     const params: string[] = []
     // Search for the typed text itself: a literal % or _ must not act as a wildcard.
     const pattern = `%${query.replace(/[\\%_]/g, '\\$&')}%`
     if (query) params.push(pattern, pattern, pattern)
-    if (status && status !== 'tracker') params.push(status)
+    if (status && !jobViews.includes(status)) params.push(status)
     const rows = options.sqlite.prepare(`SELECT j.id,j.company,j.title,j.captured_at AS capturedAt,j.source_url AS sourceUrl,j.canonical_url AS canonicalUrl,j.apply_url AS applyUrl,j.location,j.remote,j.salary,j.source,j.capture_method AS captureMethod,substr(j.text,1,400) AS summary,COALESCE(a.status,'new') AS status,a.applied_at AS appliedAt,a.notes FROM jobs j LEFT JOIN applications a ON a.job_id=j.id ${clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''} ORDER BY j.captured_at DESC`).all(...params) as Array<{ id: string }>
     const master = readMaster(options.sqlite).document, profile = readProfile(options.sqlite).document, synonyms = listSynonyms(options.sqlite)
     const latestRequirements = latestByJob(options.sqlite, 'requirements', 't.document')
+    // The most recent fit check or tailoring run for each job, so the list can show one that is waiting, running or failed.
+    const latestRuns = new Map((options.sqlite.prepare("SELECT job_id AS jobId,kind,status,step FROM runs WHERE rowid IN (SELECT MAX(rowid) FROM runs WHERE kind IN ('extract','tailor') GROUP BY job_id)").all() as Array<{ jobId: string; kind: string; status: string; step: string }>).map((run) => [run.jobId, { kind: run.kind, status: run.status, step: run.step }]))
     const jobs = rows.map((row) => {
       const latest = latestRequirements.get(row.id)
       const requirements = latest ? (JSON.parse(latest) as { requirements: Requirement[] }).requirements : []
-      return { ...row, knockouts: requirements.filter((item) => item.kind === 'knockout').map((item) => ({ quote: item.quote, ...assessRequirement(item, master, profile, synonyms) })) }
+      return { ...row, latestRun: latestRuns.get(row.id) ?? null, knockouts: requirements.filter((item) => item.kind === 'knockout').map((item) => ({ quote: item.quote, ...assessRequirement(item, master, profile, synonyms) })) }
     })
     return context.json({ jobs })
   })
@@ -216,7 +226,8 @@ export function createApp(options: AppOptions) {
     const rows = options.sqlite.prepare("SELECT COALESCE(a.status,'new') AS status, COUNT(*) AS n FROM jobs j LEFT JOIN applications a ON a.job_id=j.id GROUP BY 1").all() as Array<{ status: string; n: number }>
     const count = (status: string) => rows.find((row) => row.status === status)?.n ?? 0
     const all = rows.reduce((sum, row) => sum + row.n, 0)
-    return context.json({ new: count('new'), tracker: all - count('new') - count('skipped'), skipped: count('skipped'), all })
+    // `active` is what is still being worked on (to review or saved); `applied` is everything from applied onward; `tracker` keeps the older meaning, anything past review.
+    return context.json({ new: count('new'), active: count('new') + count('saved'), applied: all - count('new') - count('saved') - count('skipped'), tracker: all - count('new') - count('skipped'), skipped: count('skipped'), all })
   })
 
   app.post('/api/jobs', async (context) => {

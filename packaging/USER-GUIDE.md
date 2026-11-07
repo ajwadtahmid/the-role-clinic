@@ -44,8 +44,9 @@ Ollama processes model requests locally. Private profile and application answers
 stay outside model inputs. Capturing a URL contacts the public job site.
 
 Review generated lines, accept/edit/reject them, and export DOCX or PDF. Record
-what you actually submitted using the explicit application confirmation. Tracker,
-Answers, Gap trends and spreadsheet exports are available from navigation.
+what you actually submitted using the explicit application confirmation. Tracker
+(with each job's questions and answers and the answer library), Gap trends and
+spreadsheet exports are available from navigation.
 
 ## Stop and reopen
 

@@ -11,7 +11,7 @@ planned as `1.0.0`.
 
 | Area | State |
 | --- | --- |
-| Job capture, Jobs list, tracker, answer library | Working |
+| Job capture, Jobs list, tracker (with answers and answer library) | Working |
 | Master résumé, profile, tailoring pipeline, review workspace, DOCX/PDF export | Working |
 | Linux x86_64 package (bundled Node runtime, launcher, backup/restore) | Working preview |
 | Desktop app window (Tauri), macOS and Windows | Not started |
@@ -121,7 +121,8 @@ bullets from the same role or project.
   following the current filters.
 - **Gap trends:** skills that keep showing up as evidence gaps, from the latest draft of
   each tracked job. It runs no model.
-- **Answers:** application questions and answers across all jobs, searchable by text or
+- **Answers:** each tracked job's questions and answers open from the Q&A column of the
+  tracker. An answer library on the same page searches every saved answer by text or
   category, with similar past answers and their outcomes, explicit reuse links, a warning
   when a reused answer names a different company, and enforced character limits.
 

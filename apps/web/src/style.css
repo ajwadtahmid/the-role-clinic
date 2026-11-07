@@ -93,3 +93,20 @@ summary{padding:13px 0}
 .jobs-panel .panel-heading{flex-direction:row;align-items:center}
 .external-link,.backup-row a,.library-answer a,.maintenance-panel a,.welcome-panel a,.applications-table td a,.gap-row a,.button-row a,.panel-heading a,.answer-card a,.submitted-record a,.download-artifact,.tracker-shell a:not([class]),.answers-shell a:not([class]){display:inline-flex;align-items:center;min-height:44px}
 .ready-steps a{color:var(--green)}
+.tracker-job-details .record-answers,.tracker-job-details .record-history{border-top:1px solid var(--line);padding:12px 0;margin-top:12px}
+.tracker-job-details summary,.answer-library-panel>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;color:var(--green);font-size:14px;font-weight:600}
+.answer-library-panel{padding:8px 24px 20px;margin-bottom:22px}
+.answer-library-panel[open]>summary{margin-bottom:10px}
+.run-strip{display:flex;gap:12px;align-items:center;justify-content:space-between;margin:0 0 14px;padding:10px 14px;border-radius:8px;background:#eef2e8;color:var(--ink);font-size:14px;line-height:1.5}
+.run-strip .text-button{flex-shrink:0}
+.run-active,.run-waiting{border-left:4px solid var(--green)}
+.run-done{border-left:4px solid #5f8a63}
+.run-failed{background:#f7e6e1;border-left:4px solid var(--red)}
+.run-badge{justify-self:start;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600}
+.run-badge-active{background:#e1ecd9;color:var(--green-dark)}
+.run-badge-failed{background:#f7e6e1;color:#7a3328}
+.run-notices{position:fixed;right:16px;bottom:16px;z-index:15;display:grid;gap:8px;width:min(420px,calc(100% - 32px))}
+.run-notice{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;padding:12px 14px;background:var(--paper);border:1px solid var(--line);border-left:4px solid var(--green);border-radius:10px;box-shadow:0 12px 32px #34402b22;font-size:14px}
+.run-notice-failed{border-left-color:var(--red)}
+.run-notice span{flex:1 1 100%}
+.run-notice a{display:inline-flex;align-items:center;min-height:44px;color:var(--green)}

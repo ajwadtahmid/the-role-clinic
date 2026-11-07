@@ -24,8 +24,9 @@ an installed local Ollama model or your own Anthropic API key in <strong>Setting
 Claude sends relevant résumé evidence and job text to its API and charges you;
 Ollama processes model requests locally. Private profile and application answers
 stay outside model inputs. Capturing a URL contacts the public job site.</p><p>Review generated lines, accept/edit/reject them, and export DOCX or PDF. Record
-what you actually submitted using the explicit application confirmation. Tracker,
-Answers, Gap trends and spreadsheet exports are available from navigation.</p><h2 id="stop">Stop and reopen</h2><p>Closing the browser tab leaves the local server running. Use <strong>Settings → Stop
+what you actually submitted using the explicit application confirmation. Tracker
+(with each job's questions and answers and the answer library), Gap trends and
+spreadsheet exports are available from navigation.</p><h2 id="stop">Stop and reopen</h2><p>Closing the browser tab leaves the local server running. Use <strong>Settings → Stop
 local app</strong>, or run <code>./role-clinic stop</code>. Active model runs block an ordinary stop;
 wait for completion, or explicitly use <code>./role-clinic stop --force</code>. An interrupted
 run is recorded as failed on restart and can be retried where supported.</p><p><code>./role-clinic status</code> reports the running version and port. Reopen with the launcher.</p><h2 id="data">Data location</h2><p>By default, data is in <code>$XDG_DATA_HOME/the-role-clinic</code> or
