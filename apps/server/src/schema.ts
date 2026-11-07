@@ -29,6 +29,7 @@ export const tailored = sqliteTable('tailored', {
 })
 export const applications = sqliteTable('applications', {
   id: text('id').primaryKey(), jobId: text('job_id').notNull(), status: text('status').notNull(), appliedAt: text('applied_at'), notes: text('notes').notNull(), submittedText: text('submitted_text'),
+  submittedArtifactId: text('submitted_artifact_id'),
 })
 export const statusEvents = sqliteTable('status_events', {
   id: text('id').primaryKey(), applicationId: text('application_id').notNull(), status: text('status').notNull(), createdAt: text('created_at').notNull(),
@@ -38,4 +39,9 @@ export const jobAnswers = sqliteTable('job_answers', {
 })
 export const artifacts = sqliteTable('artifacts', {
   id: text('id').primaryKey(), jobId: text('job_id').notNull(), runId: text('run_id'), filePath: text('file_path').notNull(), mediaType: text('media_type').notNull(), parseCheck: text('parse_check'), createdAt: text('created_at').notNull(),
+  document: text('document'),
+})
+export const reviewDrafts = sqliteTable('review_drafts', {
+  runId: text('run_id').primaryKey(), jobId: text('job_id').notNull(),
+  revision: integer('revision').notNull(), document: text('document').notNull(), updatedAt: text('updated_at').notNull(),
 })

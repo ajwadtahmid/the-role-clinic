@@ -151,5 +151,23 @@ export function createDatabase(dataDirectory: string): { sqlite: Database.Databa
       throw error
     }
   }
+  if (schemaVersion < 6) {
+    try {
+      sqlite.exec(`BEGIN IMMEDIATE;
+      CREATE TABLE review_drafts (
+        run_id TEXT PRIMARY KEY REFERENCES tailored(id) ON DELETE CASCADE,
+        job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+        revision INTEGER NOT NULL, document TEXT NOT NULL, updated_at TEXT NOT NULL
+      );
+      ALTER TABLE artifacts ADD COLUMN document TEXT;
+      ALTER TABLE applications ADD COLUMN submitted_artifact_id TEXT REFERENCES artifacts(id);
+      PRAGMA user_version = 6;
+      COMMIT;`)
+    } catch (error) {
+      sqlite.exec('ROLLBACK;')
+      sqlite.close()
+      throw error
+    }
+  }
   return { sqlite, db: drizzle(sqlite, { schema }) }
 }

@@ -11,3 +11,10 @@ Run `npm run dev:server` from the repository root. See the root README for the
 full development workflow. The API exposes `/api/jobs`, `/api/capture/url`, and
 `/api/answers/search` for the Phase 2 workspace, in addition to settings and
 backup routes.
+
+Phase 5 adds `/api/jobs/:id/review` (GET/PUT), review versions, reverify, preview,
+and export subroutes, plus `/api/jobs/:id/artifacts` and artifact downloads.
+Review writes require the originating tailoring run ID and expected revision;
+stale writes return 409. Schema v6 adds review drafts, immutable artifact
+snapshots, and a submitted-artifact reference. The original tailoring record
+and master snapshot remain available independently of later review edits.

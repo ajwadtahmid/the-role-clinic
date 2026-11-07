@@ -94,3 +94,26 @@ export const tailoredLineSchema = z.object({ outId: identifier, text: z.string()
 export type TailoredLine = z.infer<typeof tailoredLineSchema>
 export const tailoredDocumentSchema = z.object({ jobId: identifier, runId: identifier, snapshotHash: z.string().length(64), summary: z.object({ variantId: identifier, text: short(1200), sourceIds: z.array(identifier), verdict: z.enum(['grounded', 'stretch', 'unsupported']), flags: z.array(short(300)) }).nullable(), skillsLine: z.array(short(100)), lines: z.array(tailoredLineSchema).max(30), scores: z.array(bulletScoreSchema), gaps: z.array(gapSchema), exportReady: z.boolean() }).strict()
 export type TailoredDocument = z.infer<typeof tailoredDocumentSchema>
+
+export const reviewLineSchema = tailoredLineSchema.extend({
+  originalText: z.string(), rationale: z.string().default(''), sectionId: identifier,
+  decision: z.enum(['pending', 'accepted', 'rejected']),
+  verification: z.enum(['checked', 'pending', 'failed']),
+})
+export type ReviewLine = z.infer<typeof reviewLineSchema>
+export const reviewSchema = z.object({
+  jobId: identifier, runId: identifier, revision: z.number().int().positive(),
+  snapshotHash: z.string().length(64), master: masterSchema,
+  lines: z.array(reviewLineSchema).max(30),
+  summaryId: identifier.nullable(), skills: z.array(short(100)).max(300),
+})
+export type Review = z.infer<typeof reviewSchema>
+export interface ResumeBlock { id: string; kind: 'name' | 'contact' | 'heading' | 'section' | 'text' | 'bullet'; text: string }
+export interface ParseCheck { ok: boolean; missing: string[] }
+export interface ReviewWorkspace {
+  review: Review; profile: Profile; summaryWarnings: string[]; blocks: ResumeBlock[]; exportReady: boolean; blockers: string[];
+  replacements: Array<{ id: string; sectionId: string; label: string; text: string; rationale: string }>;
+  sections: Array<{ id: string; label: string }>;
+  verificationEstimate: { estimatedUsd: number; allowed: boolean; capUsd: number } | null;
+  verificationError?: string;
+}
