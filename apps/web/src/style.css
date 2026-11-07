@@ -88,6 +88,8 @@ summary{padding:13px 0}
 .dialog .view-chips{margin:14px 0}
 .dialog-form{display:grid;gap:12px}
 .link-row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end}
-@media(max-width:880px){.workspace-shell{width:calc(100% - 32px)}.jobs-layout{grid-template-columns:minmax(0,1fr)}.jobs-panel{position:static;max-height:none}.jobs-layout.has-selection .jobs-panel{display:none}.jobs-layout:not(.has-selection) .job-pane .job-empty{display:none}.back-button{display:inline-flex}.job-header{position:static}.more-panel{right:auto;left:0}.job-detail{padding:0 16px 18px}}
+@media(max-width:880px){.workspace-shell{width:calc(100% - 32px)}.jobs-layout{grid-template-columns:minmax(0,1fr)}.jobs-panel{position:static;max-height:none}.jobs-layout.has-selection .jobs-panel{display:none}.jobs-layout:not(.has-selection) .job-pane .job-empty{display:none}.back-button{display:inline-flex}.job-header{position:static}.more-panel{right:auto;left:0}.job-detail{padding:0 16px 18px}.job-tab{padding:0 11px}}
 .jobs-panel .chip{padding:0 11px;gap:6px}
 .jobs-panel .panel-heading{flex-direction:row;align-items:center}
+.external-link,.backup-row a,.library-answer a,.maintenance-panel a,.welcome-panel a,.applications-table td a,.gap-row a,.button-row a,.panel-heading a,.answer-card a,.submitted-record a,.download-artifact,.tracker-shell a:not([class]),.answers-shell a:not([class]){display:inline-flex;align-items:center;min-height:44px}
+.ready-steps a{color:var(--green)}

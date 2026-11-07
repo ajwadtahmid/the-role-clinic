@@ -42,7 +42,13 @@ export function Workspace() {
     if (result.extraction) { try { setEstimate(await api<Estimate>(`/api/jobs/${id}/estimate?kind=tailor`)); setEstimateError('') } catch (error) { setEstimate(null); setEstimateError((error as Error).message) } } else { setEstimate(null); setEstimateError('') }
     await loadExports(id)
   }
-  async function loadDetail(id: string) { setDetail(await api<Detail>(`/api/jobs/${id}`)); await loadAnalysis(id) }
+  async function loadDetail(id: string) {
+    const loaded = await api<Detail>(`/api/jobs/${id}`); setDetail(loaded)
+    // A job opened from an address or another page may belong to a different view than the list is showing; switch so it is listed.
+    const view = ['new'].includes(loaded.job.status ?? 'new') ? 'new' : loaded.job.status === 'skipped' ? 'skipped' : 'tracker'
+    setStatusFilter((current) => current === '' || current === view ? current : view)
+    await loadAnalysis(id)
+  }
   function selectJob(id: string) { setSelected(id); setTab('overview'); setShowSubmit(false); if (location.hash !== `#jobs/${id}`) location.hash = `#jobs/${id}` }
   function backToList() { setSelected(null); if (location.hash !== '#jobs') location.hash = '#jobs' }
 

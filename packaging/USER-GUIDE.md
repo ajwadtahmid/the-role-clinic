@@ -36,7 +36,7 @@ Choose **Start tracking jobs**. Paste a posting or fetch a supported public URL,
 then save jobs, change application status, and record answers. These features
 work without a model or API key. The first-run introduction is saved locally.
 
-For optional tailoring: import a PDF/DOCX in **Master résumé**, review the draft,
+For optional tailoring: import a PDF/DOCX in **Résumé → Master résumé**, review the draft,
 and save only true evidence. Fill in your private profile separately. Configure
 an installed local Ollama model or your own Anthropic API key in **Settings**.
 Claude sends relevant résumé evidence and job text to its API and charges you;
