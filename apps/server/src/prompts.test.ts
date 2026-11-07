@@ -1,0 +1,23 @@
+import { createHash } from 'node:crypto'
+import { describe, expect, it } from 'vitest'
+import { prompts, type PromptName } from './prompts.js'
+
+// Append-only record of every prompt version ever shipped. To change a prompt: edit its text, bump its
+// `version` in prompts.ts, and add the new version and hash here. Never edit an existing entry.
+const history: Record<PromptName, Record<string, string>> = {
+  requirementExtraction: { v1: '46b29ecc9b8a0c281240cbfc0a0fd79350f4c17a4758b3ea5ec22fafe0694407' },
+  bulletScoring: { v1: '7779cdec09744e6fdcadd2919132f4087d7f2f09cdbd0b1f40b02e5f4221028c' },
+  resumeDrafting: { v1: '5b4abd614f568c17c7192ba59ea3944155fed8cc35f2010c198e8fa48be0a24f' },
+  claimVerification: { v1: 'f8661ec3c0e2670ccf564afa8d0821cb9b5253707d1e78fcf9d9ffdea2674c93' },
+  antiSlop: { v1: 'aa9e3645cac5ec18c0821a56e823f4b6f958743ef9574350523ade197399cb5e' },
+  reviewVerification: { 'review-v1': '13edf789aac6821466c4d71b3a7468e9d14cc4135712fd8038bd8ea45243a166' },
+}
+
+describe('prompt versions', () => {
+  it.each(Object.keys(prompts) as PromptName[])('%s text matches its recorded version', (name) => {
+    const { version, system } = prompts[name]
+    const recorded = history[name][version]
+    expect(recorded, `${name} ${version} has no recorded hash; add it to the history in this test`).toBeDefined()
+    expect(createHash('sha256').update(system).digest('hex'), `${name} text changed without a new version label`).toBe(recorded)
+  })
+})
