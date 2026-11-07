@@ -28,7 +28,8 @@ needs either your own Anthropic API key or a local Ollama installation.
    pages). LinkedIn, Indeed and Glassdoor are not fetched; paste those. The original page
    is kept next to the cleaned text. Duplicates are caught by URL and by similar
    company and title in the last 60 days.
-2. **Triage** on the Jobs screen. When a model is configured, requirements are extracted, each
+2. **Triage** on the Jobs screen, with one main button for each job's next step and a status
+   strip for fit checks and tailoring runs. When a model is configured, requirements are extracted, each
    tied to an exact span of the posting, and knockouts (years, work authorization,
    education, location) are compared with your private profile and master résumé. They
    are warnings with their basis shown, never blocks.
@@ -36,8 +37,10 @@ needs either your own Anthropic API key or a local Ollama installation.
    written in which every line cites the source bullets it came from.
 4. **Review** each line (accept, reject, edit, copy), see an interactive preview and the
    real PDF with a page meter, and export DOCX or PDF.
-5. **Track** the application, the exact file you sent, and any application questions you
-   answered, and reuse those answers later.
+5. **Track** the job from the moment you commit to it: the application, the exact file you
+   sent, and the questions and answers for it (opened from the tracker), and reuse those
+   answers later. A short welcome walkthrough covers first-time setup and can be shown
+   again from Settings.
 
 ## Privacy
 

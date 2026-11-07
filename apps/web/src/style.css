@@ -116,3 +116,6 @@ summary{padding:13px 0}
 .quickstart-compact .ready-steps{grid-template-columns:repeat(auto-fit,minmax(170px,1fr));margin:0;gap:4px 16px}
 .quickstart-compact .ready-steps li{align-items:center}
 .inline-action{padding:0;min-width:0;justify-content:flex-start;font-size:15px;text-decoration:underline}
+.ready-steps a{display:inline-flex;align-items:center;min-height:44px}
+.quickstart-compact .panel-heading{flex-direction:row;align-items:center}
+@media(max-width:760px){.quickstart-compact .ready-steps{grid-template-columns:1fr 1fr;gap:0 8px}.quickstart-compact .ready-steps li{gap:6px}}

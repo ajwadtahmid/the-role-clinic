@@ -32,9 +32,11 @@ moving the extracted app folder. No autostart or system-wide installation is add
 
 ## First use
 
-Choose **Start tracking jobs**. Paste a posting or fetch a supported public URL,
-then save jobs, change application status, and record answers. These features
-work without a model or API key. The first-run introduction is saved locally.
+The first screen is a three-step welcome: add your résumé, choose a model, add
+your first job. Each step can be skipped, and you can show it again from
+**Settings → Welcome guide**. On **Jobs**, choose **Add job**, then paste a posting or
+fetch a supported public URL. Saving jobs, tracking them and recording answers work
+without a model or API key. The first-run state is saved locally.
 
 For optional tailoring: import a PDF/DOCX in **Résumé → Master résumé**, review the draft,
 and save only true evidence. Fill in your private profile separately. Configure
@@ -43,10 +45,14 @@ Claude sends relevant résumé evidence and job text to its API and charges you;
 Ollama processes model requests locally. Private profile and application answers
 stay outside model inputs. Capturing a URL contacts the public job site.
 
-Review generated lines, accept/edit/reject them, and export DOCX or PDF. Record
-what you actually submitted using the explicit application confirmation. Tracker
-(with each job's questions and answers and the answer library), Gap trends and
-spreadsheet exports are available from navigation.
+On **Jobs**, each posting has one main button for its next step: **Check fit**,
+**Track this job**, **Tailor résumé**, **Review and export**, **Mark as applied**, then
+**Open in Tracker**. A strip under the job header shows whether a fit check or tailoring
+run is waiting, running, finished or failed, and a notice appears on any page when one
+ends. Review generated lines, accept/edit/reject them, and export DOCX or PDF. Record
+what you actually submitted using the explicit application confirmation. The **Tracker**
+keeps follow-ups, each job's questions and answers (open them from the Q&A column), the
+answer library, Gap trends and spreadsheet exports.
 
 ## Stop and reopen
 

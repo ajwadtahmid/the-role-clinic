@@ -16,8 +16,13 @@ function Pages() {
   useEffect(() => {
     if (previousPage.current === page) return
     previousPage.current = page
-    const heading = document.querySelector<HTMLElement>('main h1')
-    if (heading) { heading.tabIndex = -1; heading.focus() }
+    // Pages load their data first and show their heading afterwards, so look for it for a couple of seconds.
+    let tries = 0
+    const timer = window.setInterval(() => {
+      const heading = document.querySelector<HTMLElement>('main h1')
+      if (heading) { heading.tabIndex = -1; heading.focus(); window.clearInterval(timer) } else if (++tries > 40) window.clearInterval(timer)
+    }, 50)
+    return () => window.clearInterval(timer)
   }, [page])
   if (route === '#answers') return <TrackerPage openLibrary />
   if (route.startsWith('#tracker')) return <TrackerPage key={route} />

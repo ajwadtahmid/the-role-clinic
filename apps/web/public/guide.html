@@ -16,17 +16,23 @@ Launching again reopens the existing instance. The default chooses an available
 port; an explicit <code>PORT</code> environment variable requests a particular port and
 fails visibly if occupied. The app listens only on <code>127.0.0.1</code>.</p><p>For an optional application-menu shortcut, run <code>./role-clinic install-desktop</code>.
 Run <code>./role-clinic uninstall-desktop</code> to remove it. Reinstall the shortcut after
-moving the extracted app folder. No autostart or system-wide installation is added.</p><h2 id="first">First use</h2><p>Choose <strong>Start tracking jobs</strong>. Paste a posting or fetch a supported public URL,
-then save jobs, change application status, and record answers. These features
-work without a model or API key. The first-run introduction is saved locally.</p><p>For optional tailoring: import a PDF/DOCX in <strong>Résumé → Master résumé</strong>, review the draft,
+moving the extracted app folder. No autostart or system-wide installation is added.</p><h2 id="first">First use</h2><p>The first screen is a three-step welcome: add your résumé, choose a model, add
+your first job. Each step can be skipped, and you can show it again from
+<strong>Settings → Welcome guide</strong>. On <strong>Jobs</strong>, choose <strong>Add job</strong>, then paste a posting or
+fetch a supported public URL. Saving jobs, tracking them and recording answers work
+without a model or API key. The first-run state is saved locally.</p><p>For optional tailoring: import a PDF/DOCX in <strong>Résumé → Master résumé</strong>, review the draft,
 and save only true evidence. Fill in your private profile separately. Configure
 an installed local Ollama model or your own Anthropic API key in <strong>Settings</strong>.
 Claude sends relevant résumé evidence and job text to its API and charges you;
 Ollama processes model requests locally. Private profile and application answers
-stay outside model inputs. Capturing a URL contacts the public job site.</p><p>Review generated lines, accept/edit/reject them, and export DOCX or PDF. Record
-what you actually submitted using the explicit application confirmation. Tracker
-(with each job's questions and answers and the answer library), Gap trends and
-spreadsheet exports are available from navigation.</p><h2 id="stop">Stop and reopen</h2><p>Closing the browser tab leaves the local server running. Use <strong>Settings → Stop
+stay outside model inputs. Capturing a URL contacts the public job site.</p><p>On <strong>Jobs</strong>, each posting has one main button for its next step: <strong>Check fit</strong>,
+<strong>Track this job</strong>, <strong>Tailor résumé</strong>, <strong>Review and export</strong>, <strong>Mark as applied</strong>, then
+<strong>Open in Tracker</strong>. A strip under the job header shows whether a fit check or tailoring
+run is waiting, running, finished or failed, and a notice appears on any page when one
+ends. Review generated lines, accept/edit/reject them, and export DOCX or PDF. Record
+what you actually submitted using the explicit application confirmation. The <strong>Tracker</strong>
+keeps follow-ups, each job's questions and answers (open them from the Q&amp;A column), the
+answer library, Gap trends and spreadsheet exports.</p><h2 id="stop">Stop and reopen</h2><p>Closing the browser tab leaves the local server running. Use <strong>Settings → Stop
 local app</strong>, or run <code>./role-clinic stop</code>. Active model runs block an ordinary stop;
 wait for completion, or explicitly use <code>./role-clinic stop --force</code>. An interrupted
 run is recorded as failed on restart and can be retried where supported.</p><p><code>./role-clinic status</code> reports the running version and port. Reopen with the launcher.</p><h2 id="data">Data location</h2><p>By default, data is in <code>$XDG_DATA_HOME/the-role-clinic</code> or
