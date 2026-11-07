@@ -110,3 +110,9 @@ summary{padding:13px 0}
 .run-notice-failed{border-left-color:var(--red)}
 .run-notice span{flex:1 1 100%}
 .run-notice a{display:inline-flex;align-items:center;min-height:44px;color:var(--green)}
+.quickstart-compact{padding:12px 18px;margin-bottom:16px}
+.quickstart-compact .panel-heading{margin-bottom:6px}
+.quickstart-compact h2{font-size:16px;margin:0}
+.quickstart-compact .ready-steps{grid-template-columns:repeat(auto-fit,minmax(170px,1fr));margin:0;gap:4px 16px}
+.quickstart-compact .ready-steps li{align-items:center}
+.inline-action{padding:0;min-width:0;justify-content:flex-start;font-size:15px;text-decoration:underline}

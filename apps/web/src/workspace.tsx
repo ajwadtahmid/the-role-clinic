@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { SubmissionForm } from './tracker-page.js'
 import { AppHeader, PageHeader } from './layout.js'
 import { api } from './api.js'
-import { AddJobDialog, GetReady } from './add-job.js'
+import { AddJobDialog, Quickstart, quickstartHiddenKey } from './add-job.js'
 import { JobHeader, JobOverview, RunStrip, latestRun, JobResume, JobTabs, type Analysis, type Detail, type Estimate, type Job, type JobTab } from './job-detail.js'
 import { nextAction, stageLabel, type NextActionId } from './stages.js'
 
@@ -44,7 +44,7 @@ export function Workspace() {
   const [sort, setSort] = useState<'newest' | 'company'>('newest'), [counts, setCounts] = useState<Counts | null>(null)
   const [showSubmit, setShowSubmit] = useState(false), [showAdd, setShowAdd] = useState(false), [reveal, setReveal] = useState<'review' | 'apply' | null>(null)
   const [analysis, setAnalysis] = useState<Analysis | null>(null), [estimate, setEstimate] = useState<Estimate | null>(null), [estimateError, setEstimateError] = useState(''), [hasExport, setHasExport] = useState(false)
-  const [readiness, setReadiness] = useState<Readiness | null>(null), [dismissedRun, setDismissedRun] = useState<string | null>(null)
+  const [readiness, setReadiness] = useState<Readiness | null>(null), [dismissedRun, setDismissedRun] = useState<string | null>(null), [hideQuickstart, setHideQuickstart] = useState(() => { try { return localStorage.getItem(quickstartHiddenKey) === '1' } catch { return false } })
   async function loadReadiness() { setReadiness(await api<Readiness>('/api/onboarding')) }
   async function loadJobs(filter = statusFilter) { const [result, summary] = await Promise.all([api<{ jobs: Job[] }>(`/api/jobs?q=${encodeURIComponent(query)}&status=${encodeURIComponent(filter)}`), api<Counts>('/api/jobs/counts')]); setJobs(result.jobs); setCounts(summary) }
   const sortedJobs = sort === 'company' ? [...jobs].sort((a, b) => (a.company || '').localeCompare(b.company || '') || (a.title || '').localeCompare(b.title || '')) : jobs
@@ -110,6 +110,7 @@ export function Workspace() {
     <AppHeader current="jobs" />
     <PageHeader title="Jobs">Add a posting, check how well it fits, and tailor a résumé for it. Jobs you commit to move to the Tracker.</PageHeader>
     {notice && <div className="notice neutral" role="status">{notice}</div>}
+    {counts && counts.all > 0 && readiness && !hideQuickstart && !(readiness.hasMaster && readiness.configuredModels && readiness.capturedJob) && <Quickstart readiness={readiness} onAdd={() => setShowAdd(true)} onHide={() => { setHideQuickstart(true); try { localStorage.setItem(quickstartHiddenKey, '1') } catch { /* storage may be unavailable */ } }} />}
     <div className={`jobs-layout ${selected ? 'has-selection' : ''}`}>
       <section className="panel jobs-panel" aria-label="Job list"><div className="panel-heading"><div><h2>Jobs <span className="count">{jobs.length}</span></h2></div><button className="button primary" onClick={() => setShowAdd(true)}>Add job</button></div>
         <div className="view-chips" role="group" aria-label="Show jobs">{viewOptions.map(([value, label, key]) => <button key={label} type="button" className={`chip ${statusFilter === value ? 'active' : ''}`} aria-pressed={statusFilter === value} onClick={() => setStatusFilter(value)}>{label}{counts && <span className="chip-count">{counts[key]}</span>}</button>)}</div>
@@ -126,7 +127,7 @@ export function Workspace() {
             {tab === 'overview' && <JobOverview text={detail.job.text} analysis={analysis} busy={busy} canExtract={action.id !== 'extract'} onExtract={() => void startRun('extract')} />}
             {tab === 'resume' && <JobResume jobId={selected!} detail={detail} analysis={analysis} busy={busy} onRetry={(id) => void retryRun(id)} onApplied={() => { void loadDetail(selected!); void loadJobs(); void loadReadiness() }} onExported={() => void loadExports(selected!)} />}
           </div>
-        </div> : selected ? <p className="loading panel job-detail" role="status">Loading job…</p> : counts?.all === 0 ? <GetReady readiness={readiness} onAdd={() => setShowAdd(true)} /> : <div className="panel job-empty"><h2>Select a job</h2><p className="subtle">Pick a job from the list to see its requirements, résumé, answers and history. Use Add job to save a new posting.</p></div>}
+        </div> : selected ? <p className="loading panel job-detail" role="status">Loading job…</p> : counts?.all === 0 ? <Quickstart readiness={readiness} onAdd={() => setShowAdd(true)} /> : <div className="panel job-empty"><h2>Select a job</h2><p className="subtle">Pick a job from the list to see its requirements, résumé, answers and history. Use Add job to save a new posting.</p></div>}
       </section>
     </div>
     {showAdd && <AddJobDialog onClose={() => setShowAdd(false)} onOpenExisting={(id) => { setShowAdd(false); selectJob(id) }} onSaved={async (id) => { setShowAdd(false); setStatusFilter('active'); await loadJobs('active'); selectJob(id); await loadReadiness(); setNotice('Job saved.') }} />}

@@ -21,14 +21,30 @@ async function setup() {
   return { sqlite, shutdown, user: userEvent.setup() }
 }
 describe('first run and maintenance UI', () => {
-  it('introduces tracking without a model, persists first-run completion, and preserves access on reopen', async () => {
+  it('walks through résumé, model and first job, lets every step be skipped, persists completion, and can be shown again', async () => {
     const { user } = await setup()
+    window.location.hash = ''
     const view = render(<FirstRun><p>Workspace ready</p></FirstRun>)
-    await user.click(await screen.findByRole('button', { name: 'Start tracking jobs' }))
-    await screen.findByText('Workspace ready'); view.unmount()
+    expect(await screen.findByRole('heading', { name: 'Add your résumé' })).toBeTruthy()
+    expect(screen.getByText('Step 1 of 3')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    expect(screen.getByRole('heading', { name: 'Choose a model' })).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    expect(screen.getByRole('heading', { name: 'Add your first job' })).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Back' }))
+    expect(screen.getByRole('heading', { name: 'Choose a model' })).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Skip for now' }))
+    await screen.findByText('Workspace ready')
+    expect(window.location.hash).toBe('#jobs')
+    view.unmount()
     render(<FirstRun><p>Workspace reopened</p></FirstRun>)
     await screen.findByText('Workspace reopened')
-    expect(screen.queryByRole('button', { name: 'Start tracking jobs' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Add your résumé' })).toBeNull()
+    window.location.hash = '#welcome'
+    expect(await screen.findByRole('heading', { name: 'Add your résumé' })).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Skip for now' }))
+    await screen.findByText('Workspace reopened')
+    window.location.hash = ''
   })
   it('creates a downloadable database backup and requires explicit confirmation before stopping', async () => {
     const { user, shutdown } = await setup()

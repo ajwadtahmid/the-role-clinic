@@ -2,17 +2,44 @@ import { useEffect, useState } from 'react'
 import { localApi } from './answers.js'
 
 interface Status { version: string; platform: string; arch: string; nodeVersion: string; schemaVersion: number; dataDirectory: string; instanceId: string | null; managed: boolean; canShutdown: boolean; welcomeComplete: boolean; activeRuns: number }
+const welcomeSteps: Array<{ title: string; body: string[]; action: string; target: string }> = [
+  { title: 'Add your résumé', body: ['Tailoring writes only from facts you have confirmed in your master résumé, so start there. Import a PDF or DOCX, review the draft, and save it.', 'You can skip this and still save and track jobs.'], action: 'Open the Résumé page', target: '#resume' },
+  { title: 'Choose a model', body: ['Ollama runs a model on this computer and is a separate optional install. Claude uses your own API key, sends the relevant résumé evidence and job text to its service, and bills you directly.', 'Your private profile and your application answers never go to a model. Review every generated line before using it.'], action: 'Open Settings', target: '#settings' },
+  { title: 'Add your first job', body: ['Paste a job description or fetch it from a link. Check the fit, tailor a résumé, then track the job. The Tracker keeps what you sent, your answers and your follow-ups.', 'Your data is stored outside the app folder, so replacing the app keeps it. Make a full backup before moving to another computer.'], action: 'Go to Jobs', target: '#jobs' },
+]
+// A short walkthrough of the three things to set up. Every step can be skipped, and it can be shown again at `#welcome`.
+export function Welcome({ busy, error, onFinish }: { busy: boolean; error: string; onFinish: (target: string) => void }) {
+  const [step, setStep] = useState(0), current = welcomeSteps[step], last = step === welcomeSteps.length - 1
+  return <main className="shell welcome-shell" id="main" tabIndex={-1}>
+    <header className="topbar"><span className="wordmark">The Role Clinic</span><span className="local-chip">On this device</span></header>
+    <section className="page-header"><h1>Welcome</h1><p className="page-note">Save jobs, tailor a résumé for each one, and keep what you sent together. Everything stays on this device unless you choose Claude.</p></section>
+    <section className="panel welcome-panel" aria-labelledby="welcome-step-title">
+      <p className="subtle" aria-live="polite">Step {step + 1} of {welcomeSteps.length}</p>
+      <h2 id="welcome-step-title">{current.title}</h2>
+      {current.body.map((text) => <p key={text}>{text}</p>)}
+      <div className="button-row">
+        <button className="button primary" disabled={busy} onClick={() => onFinish(current.target)}>{current.action}</button>
+        {last ? <button className="button secondary" disabled={busy} onClick={() => onFinish('#jobs')}>Finish</button> : <button className="button secondary" onClick={() => setStep(step + 1)}>Next</button>}
+        {step > 0 && <button className="text-button" onClick={() => setStep(step - 1)}>Back</button>}
+        <button className="text-button" disabled={busy} onClick={() => onFinish('#jobs')}>Skip for now</button>
+      </div>
+      <p className="subtle"><a href="/guide.html" target="_blank" rel="noreferrer">Read the Linux user guide ↗</a></p>
+      {error && <p role="alert">{error}</p>}
+    </section>
+  </main>
+}
 export function FirstRun({ children }: { children: React.ReactNode }) {
-  const [status, setStatus] = useState<Status | null>(null), [error, setError] = useState(''), [busy, setBusy] = useState(false)
+  const [status, setStatus] = useState<Status | null>(null), [error, setError] = useState(''), [busy, setBusy] = useState(false), [hash, setHash] = useState(location.hash)
   useEffect(() => { let alive = true; void localApi<Status>('/api/app/status').then((value) => { if (alive) setStatus(value) }).catch((error) => { if (alive) setError(error.message) }); return () => { alive = false } }, [])
-  async function proceed(settings = false) {
+  useEffect(() => { const update = () => setHash(location.hash); window.addEventListener('hashchange', update); return () => window.removeEventListener('hashchange', update) }, [])
+  async function finish(target: string) {
     setBusy(true)
-    try { await localApi('/api/app/welcome', { method: 'POST', body: JSON.stringify({ acknowledged: true }) }); setStatus((s) => s ? { ...s, welcomeComplete: true } : s); if (settings) location.hash = '#settings' } catch (error) { setError((error as Error).message) } finally { setBusy(false) }
+    try { await localApi('/api/app/welcome', { method: 'POST', body: JSON.stringify({ acknowledged: true }) }); setStatus((s) => s ? { ...s, welcomeComplete: true } : s); try { localStorage.removeItem('rc-quickstart-hidden') } catch { /* storage may be unavailable */ } location.hash = target } catch (error) { setError((error as Error).message) } finally { setBusy(false) }
   }
   if (error && !status) return <main className="shell"><p role="alert" className="notice error">{error}</p><button className="button secondary" onClick={() => location.reload()}>Reconnect to local app</button></main>
   if (!status) return <main className="shell"><p className="loading">Connecting to your local workspace…</p></main>
-  if (status.welcomeComplete) return <>{children}</>
-  return <main className="shell welcome-shell"><header className="topbar"><span className="wordmark">The Role Clinic</span><span className="local-chip">On this device</span></header><section className="intro"><p className="eyebrow">WELCOME</p><h1>Your job search.<br /><em>Your workspace.</em></h1><p className="lede">Save jobs, track applications, and keep the résumé and answers you actually sent together.</p></section><section className="panel welcome-panel"><h2>Start with tracking</h2><p>Paste a job description or capture a supported public job URL. Tracking and application answers work immediately, without an API key or a model download.</p><h3>Add résumé tailoring when you’re ready</h3><p>Import and review your master résumé, then configure a model in Settings. Ollama runs models locally and is a separate optional installation. Claude uses your API key and sends relevant résumé evidence and job text to its service, with provider charges.</p><p>Your private profile and application answers stay outside model requests. Review generated claims before using them.</p><h3>Keep your data</h3><p>The app stores data separately from the downloaded package. Replacing the app folder preserves your workspace. Use full backups before moving to another computer or restoring data.</p><a href="/guide.html" target="_blank" rel="noreferrer">Read the Linux user guide ↗</a><div className="button-row"><button className="button primary" disabled={busy} onClick={() => void proceed()}>Start tracking jobs</button><button className="button secondary" disabled={busy} onClick={() => void proceed(true)}>Set up a model first</button></div>{error && <p role="alert">{error}</p>}</section></main>
+  if (status.welcomeComplete && hash !== '#welcome') return <>{children}</>
+  return <Welcome busy={busy} error={error} onFinish={(target) => void finish(target)} />
 }
 export function MaintenancePanel() {
   const [status, setStatus] = useState<Status | null>(null), [backups, setBackups] = useState<Array<{ filename: string; bytes: number; createdAt: string }>>([]), [notice, setNotice] = useState(''), [confirmed, setConfirmed] = useState(false), [busy, setBusy] = useState(false)

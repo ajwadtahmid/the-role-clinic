@@ -60,19 +60,22 @@ export function AddJobDialog({ onClose, onSaved, onOpenExisting }: { onClose: ()
 }
 
 type Readiness = { capturedJob: boolean; hasMaster: boolean; hasProfile: boolean; configuredModels: boolean; triedTracker: boolean }
+export const quickstartHiddenKey = 'rc-quickstart-hidden'
 
-// Shown while no job exists yet: what to set up, with progress, and the one thing to do first.
-export function GetReady({ readiness, onAdd }: { readiness: Readiness | null; onAdd: () => void }) {
+// What to set up and where things go. With no jobs yet it fills the job pane; afterwards it is a slim strip above the list that can be hidden.
+export function Quickstart({ readiness, onAdd, onHide }: { readiness: Readiness | null; onAdd: () => void; onHide?: () => void }) {
   const steps: Array<[boolean, string, string, string]> = [
     [!!readiness?.hasMaster, 'Add your résumé', 'Tailoring writes only from facts you have confirmed here.', '#resume'],
-    [!!readiness?.configuredModels, 'Choose a model', 'Pick a local Ollama model or an Anthropic key. Saving jobs works without one.', '#settings'],
+    [!!readiness?.configuredModels, 'Choose a model', 'A local Ollama model or an Anthropic key. Saving jobs works without one.', '#settings'],
   ]
-  return <section className="panel get-ready" aria-labelledby="get-ready-title"><h2 id="get-ready-title">Get ready</h2>
-    <p className="subtle">Three steps and you have a tailored résumé for your first job. Everything stays on this device.</p>
+  const compact = Boolean(onHide)
+  return <section className={`panel quickstart ${compact ? 'quickstart-compact' : 'get-ready'}`} aria-labelledby="quickstart-title"><div className="panel-heading"><h2 id="quickstart-title">Quickstart</h2>{onHide && <button className="text-button" onClick={onHide}>Hide quickstart</button>}</div>
+    {!compact && <p className="subtle">Add a job, check the fit, tailor a résumé, then track it. Everything stays on this device.</p>}
     <ol className="ready-steps">
-      {steps.map(([done, title, note, href]) => <li key={title}><span className="step-mark" aria-hidden="true">{done ? '✓' : '○'}</span><div><a href={href}>{title}</a><span className="sr-only">{done ? ' (done)' : ' (not done)'}</span><p>{note}</p></div></li>)}
-      <li><span className="step-mark" aria-hidden="true">{readiness?.capturedJob ? '✓' : '○'}</span><div><strong>Add a job</strong><p>Paste a posting or fetch it from a link.</p></div></li>
+      {steps.map(([done, title, note, href]) => <li key={title}><span className="step-mark" aria-hidden="true">{done ? '✓' : '○'}</span><div><a href={href}>{title}</a><span className="sr-only">{done ? ' (done)' : ' (not done)'}</span>{!compact && <p>{note}</p>}</div></li>)}
+      <li><span className="step-mark" aria-hidden="true">{readiness?.capturedJob ? '✓' : '○'}</span><div><button className="text-button inline-action" onClick={onAdd}>Add a job</button>{!compact && <p>Paste a posting or fetch it from a link.</p>}</div></li>
+      <li><span className="step-mark" aria-hidden="true">→</span><div><a href="#tracker">Tracker</a>{!compact && <p>Jobs you commit to are followed there, with your answers and follow-ups.</p>}</div></li>
     </ol>
-    <button className="button primary" onClick={onAdd}>Add your first job</button>
+    {!compact && <button className="button primary" onClick={onAdd}>Add your first job</button>}
   </section>
 }

@@ -46,7 +46,7 @@ async function setup(modelRouter?: Pick<ModelRouter, 'complete'>) {
     headers: { ...(init.method && init.method !== 'GET' ? { origin: `http://127.0.0.1:${port}` } : {}), ...init.headers },
   } as Parameters<typeof nodeFetch>[1]))
   render(<Workspace />)
-  await screen.findByRole('heading', { name: 'Get ready' })
+  await screen.findByRole('heading', { name: 'Quickstart' })
   return { user: userEvent.setup(), sqlite }
 }
 
@@ -182,13 +182,24 @@ describe('job workspace flow', () => {
     sqlite.close()
   })
 
-  it('shows the Get ready steps until a first job exists, and the dialog closes with Escape', async () => {
+  it('shows the Quickstart until a first job exists, then a slim one that can be hidden, and the dialog closes with Escape', async () => {
     const { user, sqlite } = await setup()
     expect(screen.getByRole('link', { name: /Add your résumé/ })).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'Add your first job' }))
     expect(screen.getByRole('dialog', { name: 'Add a job' })).toBeTruthy()
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('dialog')).toBeNull()
+    localStorage.removeItem('rc-quickstart-hidden')
+    sqlite.prepare('INSERT INTO jobs(id,company,title,captured_at,raw_snapshot,text) VALUES(?,?,?,?,?,?)').run(randomUUID(), 'Acme', 'Engineer', new Date().toISOString(), 'raw', 'A long enough job description for the list to show.')
+    cleanup()
+    render(<Workspace />)
+    await user.click(await screen.findByRole('button', { name: 'Hide quickstart' }))
+    expect(screen.queryByRole('heading', { name: 'Quickstart' })).toBeNull()
+    expect(localStorage.getItem('rc-quickstart-hidden')).toBe('1')
+    cleanup(); render(<Workspace />)
+    await screen.findByText('Engineer', { selector: '.job-card strong' })
+    expect(screen.queryByRole('heading', { name: 'Quickstart' })).toBeNull()
+    localStorage.removeItem('rc-quickstart-hidden')
     sqlite.close()
   })
 
