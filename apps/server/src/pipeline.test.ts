@@ -12,7 +12,7 @@ import type { ModelRequest } from './model-adapters.js'
 
 const dirs: string[] = []
 const jd = 'TypeScript experience is required. Rust experience is preferred. Candidates need 5+ years of software engineering experience. Must be authorized to work in the US.'
-async function setup(auto = false, failSlop = false, draftText = 'Reduced API latency by 20% using TypeScript and Rust', semanticVerdict: 'grounded' | 'stretch' | 'unsupported' = 'grounded', countedTokens: number | null = null) {
+async function setup(auto = false, failSlop = false, draftText = 'Reduced API latency by 20% using TypeScript and Rust', semanticVerdict: 'grounded' | 'stretch' | 'unsupported' = 'grounded', countedTokens: number | null = null, unusableExtractionReplies = 0) {
   const dir = await mkdtemp(join(tmpdir(), 'clinic-pipeline-')); dirs.push(dir)
   const { sqlite, db } = createDatabase(dir)
   const master = emptyMaster(), bulletId = randomUUID()
@@ -22,9 +22,10 @@ async function setup(auto = false, failSlop = false, draftText = 'Reduced API la
   saveProfile(sqlite, { ...emptyProfile(), email: 'private-secret@example.test', workAuthorization: 'Authorized to work in the US; PRIVATE_PROFILE_MARKER' })
   if (auto) await writeSettings(dir, defaultSettings())
   const calls: TaskName[] = [], inputs: string[] = []
-  let slopFailures = 0
+  let slopFailures = 0, unusableReplies = unusableExtractionReplies
   const modelRouter = { async countInputTokens() { return countedTokens }, async complete(task: TaskName, request: ModelRequest) {
     calls.push(task); inputs.push(request.user)
+    if (task === 'requirementExtraction' && unusableReplies-- > 0) return { text: 'Sure! Here are the requirements you asked for.', provider: 'ollama' as const, model: 'fake-local' }
     let value: unknown
     if (task === 'requirementExtraction') value = { requirements: [
       { quote: 'TypeScript experience is required', kind: 'hard', category: 'skill', skill: 'TypeScript', years: null },
@@ -77,6 +78,25 @@ describe('Phase 4 pipeline', () => {
     expect(calls).toEqual(['requirementExtraction'])
     expect(inputs.join('\n')).not.toContain('private-secret@example.test')
     expect(inputs.join('\n')).not.toContain('PRIVATE_PROFILE_MARKER')
+    sqlite.close()
+  })
+
+  it('gives the model one repair attempt when its first reply is unusable, showing it the problem', async () => {
+    const { sqlite, post, job, calls, inputs } = await setup(false, false, undefined, undefined, null, 1)
+    expect((await post(`/api/jobs/${job.id}/extract`)).status).toBe(202)
+    await waitFor(sqlite, 'extract', 'done')
+    expect(calls).toEqual(['requirementExtraction', 'requirementExtraction'])
+    expect(inputs[1]).toContain('Your previous reply could not be used')
+    expect(inputs[1]).toContain('did not return valid JSON')
+    sqlite.close()
+  })
+
+  it('fails the run, with a clear message, when the repair attempt is also unusable', async () => {
+    const { sqlite, post, job, calls } = await setup(false, false, undefined, undefined, null, 2)
+    expect((await post(`/api/jobs/${job.id}/extract`)).status).toBe(202)
+    const failed = await waitFor(sqlite, 'extract', 'failed')
+    expect(failed.error).toContain('did not return valid JSON')
+    expect(calls).toEqual(['requirementExtraction', 'requirementExtraction'])
     sqlite.close()
   })
 
