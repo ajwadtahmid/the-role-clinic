@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react'
 
-export type NavKey = 'inbox' | 'tracker' | 'answers' | 'master' | 'profile' | 'settings'
+export type NavKey = 'jobs' | 'tracker' | 'answers' | 'master' | 'profile' | 'settings'
 const links: Array<[NavKey, string, string]> = [
-  ['inbox', '#top', 'Inbox'], ['tracker', '#tracker', 'Tracker'], ['answers', '#answers', 'Answers'],
+  ['jobs', '#jobs', 'Jobs'], ['tracker', '#tracker', 'Tracker'], ['answers', '#answers', 'Answers'],
   ['master', '#master', 'Master résumé'], ['profile', '#profile', 'Profile'], ['settings', '#settings', 'Settings'],
 ]
 

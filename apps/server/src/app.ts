@@ -211,7 +211,7 @@ export function createApp(options: AppOptions) {
     return context.json({ jobs })
   })
 
-  // How many jobs each Inbox view holds. Registered before `/api/jobs/:id`, which would otherwise match "counts".
+  // How many jobs each Jobs view holds. Registered before `/api/jobs/:id`, which would otherwise match "counts".
   app.get('/api/jobs/counts', (context) => {
     const rows = options.sqlite.prepare("SELECT COALESCE(a.status,'new') AS status, COUNT(*) AS n FROM jobs j LEFT JOIN applications a ON a.job_id=j.id GROUP BY 1").all() as Array<{ status: string; n: number }>
     const count = (status: string) => rows.find((row) => row.status === status)?.n ?? 0
@@ -248,7 +248,7 @@ export function createApp(options: AppOptions) {
     }
     if (canonicalUrl || sourceUrl) {
       const existing = options.sqlite.prepare('SELECT id FROM jobs WHERE canonical_url=? OR source_url=? OR source_url=?').get(canonicalUrl, sourceUrl, canonicalUrl) as { id: string } | undefined
-      if (existing) return context.json({ error: 'This job URL is already in your Inbox.', duplicateId: existing.id }, 409)
+      if (existing) return context.json({ error: 'This job URL is already saved.', duplicateId: existing.id }, 409)
     }
     if (payload.allowSimilar !== true) {
       const since = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString()

@@ -11,7 +11,7 @@ planned as `1.0.0`.
 
 | Area | State |
 | --- | --- |
-| Job capture, Inbox, tracker, answer library | Working |
+| Job capture, Jobs list, tracker, answer library | Working |
 | Master résumé, profile, tailoring pipeline, review workspace, DOCX/PDF export | Working |
 | Linux x86_64 package (bundled Node runtime, launcher, backup/restore) | Working preview |
 | Desktop app window (Tauri), macOS and Windows | Not started |
@@ -28,7 +28,7 @@ needs either your own Anthropic API key or a local Ollama installation.
    pages). LinkedIn, Indeed and Glassdoor are not fetched; paste those. The original page
    is kept next to the cleaned text. Duplicates are caught by URL and by similar
    company and title in the last 60 days.
-2. **Triage** in the Inbox. When a model is configured, requirements are extracted, each
+2. **Triage** on the Jobs screen. When a model is configured, requirements are extracted, each
    tied to an exact span of the posting, and knockouts (years, work authorization,
    education, location) are compared with your private profile and master résumé. They
    are warnings with their basis shown, never blocks.

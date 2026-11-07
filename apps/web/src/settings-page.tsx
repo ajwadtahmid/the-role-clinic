@@ -111,7 +111,7 @@ export function SettingsPage() {
           <div className="provider-title"><span className="provider-icon claude-icon">✳</span><div><h3>Anthropic API</h3><p>Uses your API account and billing</p></div></div>
           <label className="field-label" htmlFor="anthropic-key">API key {settings.anthropicApiKeyConfigured && <span className="saved-label">· saved</span>}</label>
           <input id="anthropic-key" type="password" autoComplete="new-password" placeholder={settings.anthropicApiKeyConfigured ? 'Saved in your private local data folder' : 'sk-ant-…'} value={settings.anthropicApiKey ?? ''} onChange={(event) => setSettings({ ...settings, anthropicApiKey: event.target.value })} />
-          <div className="button-row"><button className="button secondary" disabled={busy === 'anthropic'} onClick={() => testConnection('anthropic')}>{busy === 'anthropic' ? 'Checking…' : 'Test API key'}</button>{settings.anthropicApiKeyConfigured && <button className="text-button" disabled={busy === 'clear-key'} onClick={clearKey}>Remove key</button>}</div>
+          <div className="button-row"><button className="button secondary" disabled={busy === 'anthropic'} onClick={() => testConnection('anthropic')}>{busy === 'anthropic' ? 'Checking…' : 'Test API key'}</button>{settings.anthropicApiKeyConfigured && <button className="text-button danger" disabled={busy === 'clear-key'} onClick={clearKey}>Remove key</button>}</div>
         </article>
       </div>
     </section>

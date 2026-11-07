@@ -61,7 +61,7 @@ describe('tracker browser flows', () => {
     await user.selectOptions(screen.getByRole('combobox', { name: 'Filter company' }), 'Globex')
     expect(within(table).queryByRole('button', { name: 'Acme Software Engineer' })).toBeNull()
     expect(screen.getByRole('link', { name: 'Export XLSX' }).getAttribute('href')).toContain('company=Globex')
-    expect(within(table).getByRole('link', { name: '0 answer(s)' }).getAttribute('href')).toMatch(/#job\/.*\?answers/)
+    expect(within(table).getByRole('link', { name: 'No answers yet' }).getAttribute('href')).toMatch(/#jobs\/.*\?answers/)
   })
   it('adapts a library answer, flags source-company text, enforces limits, and preserves provenance and submitted text', async () => {
     const { sqlite, acme, globex, sourceAnswerId, user } = await setup()

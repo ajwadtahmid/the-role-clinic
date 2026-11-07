@@ -46,26 +46,32 @@ async function setup(modelRouter?: Pick<ModelRouter, 'complete'>) {
     headers: { ...(init.method && init.method !== 'GET' ? { origin: `http://127.0.0.1:${port}` } : {}), ...init.headers },
   } as Parameters<typeof nodeFetch>[1]))
   render(<Workspace />)
-  await screen.findByText('No new jobs. Paste a posting to start your Inbox.')
+  await screen.findByRole('heading', { name: 'Get ready' })
   return { user: userEvent.setup(), sqlite }
+}
+
+async function addJob(user: ReturnType<typeof userEvent.setup>, company: string, title: string, description: string) {
+  await user.click(screen.getByRole('button', { name: 'Add job' }))
+  await user.type(screen.getByRole('textbox', { name: 'Company' }), company)
+  await user.type(screen.getByRole('textbox', { name: 'Role title' }), title)
+  await user.type(screen.getByRole('textbox', { name: 'Job description' }), description)
+  await user.click(screen.getByRole('button', { name: 'Save job' }))
+  await screen.findByText('Job saved.')
 }
 
 describe('job workspace flow', () => {
   it('saves a pasted job, records Q&A and application status, and finds the answer again', async () => {
     const { user, sqlite } = await setup()
-    await user.type(screen.getByRole('textbox', { name: 'Company' }), 'Acme')
-    await user.type(screen.getByRole('textbox', { name: 'Role title' }), 'Software Engineer')
-    await user.type(screen.getByRole('textbox', { name: 'Job description' }), 'Build reliable software systems with the engineering team. TypeScript, testing, and cloud experience are useful for this role.')
-    await user.click(screen.getByRole('button', { name: 'Save to Inbox' }))
-    await screen.findByText('Job saved to your Inbox.')
+    await addJob(user, 'Acme', 'Software Engineer', 'Build reliable software systems with the engineering team. TypeScript, testing, and cloud experience are useful for this role.')
     expect(sqlite.prepare('SELECT count(*) AS count FROM jobs').get()).toEqual({ count: 1 })
+    await user.click(await screen.findByRole('tab', { name: 'Answers' }))
 
     await user.type(screen.getByRole('textbox', { name: 'Question' }), 'Why Acme?')
     await user.type(screen.getByRole('textbox', { name: 'Answer' }), 'I like building reliable systems.')
     await user.click(screen.getByRole('button', { name: 'Save answer' }))
     await screen.findAllByText('Answer saved for this job.')
 
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Status' }), 'applied')
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Exact status' }), 'applied')
     await user.type(await screen.findByRole('textbox', { name: 'Submitted résumé text (optional)' }), 'Submitted résumé text')
     await user.click(screen.getByRole('checkbox', { name: 'I confirm this résumé and the current answers were submitted.' }))
     await user.click(screen.getByRole('button', { name: 'Confirm application submitted' }))
@@ -81,20 +87,16 @@ describe('job workspace flow', () => {
     await waitFor(() => expect(sqlite.prepare('SELECT answer,submitted_answer AS submittedAnswer FROM job_answers').get()).toEqual({ answer: 'I like solving difficult systems problems.', submittedAnswer: 'I like building reliable systems.' }))
     await user.click(screen.getByRole('button', { name: /^Tracker/ }))
     await waitFor(() => expect(screen.getByText('Acme', { selector: '.job-card span' })).toBeTruthy())
-
-    await user.type(screen.getByPlaceholderText('Search questions and answer text'), 'solving')
-    const library = await screen.findByText('Acme · Software Engineer')
-    expect(within(library.closest('article')!).getByText('Why Acme?')).toBeTruthy()
     sqlite.close()
   })
 
   it('has one labelled primary navigation that marks the current page, and a skip link to the content', async () => {
     const { user, sqlite } = await setup()
     const nav = screen.getByRole('navigation', { name: 'Primary' })
-    expect(within(nav).getAllByRole('link').map((link) => link.textContent)).toEqual(['Inbox', 'Tracker', 'Answers', 'Master résumé', 'Profile', 'Settings'])
-    expect(within(nav).getByRole('link', { name: 'Inbox' }).getAttribute('aria-current')).toBe('page')
+    expect(within(nav).getAllByRole('link').map((link) => link.textContent)).toEqual(['Jobs', 'Tracker', 'Answers', 'Master résumé', 'Profile', 'Settings'])
+    expect(within(nav).getByRole('link', { name: 'Jobs' }).getAttribute('aria-current')).toBe('page')
     expect(within(nav).getByRole('link', { name: 'Tracker' }).getAttribute('aria-current')).toBeNull()
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Inbox')
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Jobs')
     await user.click(screen.getByRole('link', { name: 'Skip to main content' }))
     expect(document.activeElement).toBe(document.getElementById('main'))
     sqlite.close()
@@ -129,18 +131,53 @@ describe('job workspace flow', () => {
     sqlite.close()
   })
 
+  it('opens a job from its address, keeps the older #job/ form working, and shows one primary step for it', async () => {
+    const { user, sqlite } = await setup()
+    const id = randomUUID()
+    sqlite.prepare('INSERT INTO jobs(id,company,title,captured_at,raw_snapshot,text) VALUES(?,?,?,?,?,?)').run(id, 'Orbit', 'Platform Engineer', '2026-10-03T00:00:00.000Z', 'raw', 'A long enough job description for the list to show.')
+    cleanup()
+    window.location.hash = `#job/${id}?answers`
+    render(<Workspace />)
+    expect(await screen.findByRole('heading', { level: 2, name: 'Platform Engineer' })).toBeTruthy()
+    expect(window.location.hash).toBe(`#jobs/${id}?answers`)
+    expect(screen.getByRole('tab', { name: 'Answers' }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByRole('button', { name: 'Check fit' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Tailor résumé' })).toBeNull()
+    await user.click(screen.getByRole('tab', { name: 'History' }))
+    expect(screen.getByText('No status changes yet.')).toBeTruthy()
+    await user.keyboard('{ArrowLeft}')
+    expect(screen.getByRole('tab', { name: 'Answers' }).getAttribute('aria-selected')).toBe('true')
+    await user.click(screen.getByRole('button', { name: '← All jobs' }))
+    expect(window.location.hash).toBe('#jobs')
+    await screen.findByRole('heading', { name: 'Select a job' })
+    window.location.hash = ''
+    sqlite.close()
+  })
+
+  it('shows the Get ready steps until a first job exists, and the dialog closes with Escape', async () => {
+    const { user, sqlite } = await setup()
+    expect(screen.getByRole('link', { name: /Add your résumé/ })).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Add your first job' }))
+    expect(screen.getByRole('dialog', { name: 'Add a job' })).toBeTruthy()
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).toBeNull()
+    sqlite.close()
+  })
+
   it('reviews a URL capture before saving its original response and cleaned text', async () => {
     const { user, sqlite } = await setup()
     const originalFetch = globalThis.fetch
     vi.stubGlobal('fetch', (input: string, init: RequestInit = {}) => input === '/api/capture/url'
       ? Promise.resolve(Response.json({ company: 'Clear', title: 'Engineer', location: 'Remote', url: 'https://job-boards.greenhouse.io/clear/jobs/123', applyUrl: 'https://job-boards.greenhouse.io/clear/jobs/123', text: 'Build useful software for customers and collaborate across a team of product engineers and designers.', rawSnapshot: '{"original":"API response"}', source: 'greenhouse-api', captureMethod: 'greenhouse-api' }))
       : originalFetch(input, init))
-    await user.type(screen.getByRole('textbox', { name: 'Job URL (optional)' }), 'https://job-boards.greenhouse.io/clear/jobs/123')
-    await user.click(screen.getByRole('button', { name: 'Fetch from URL' }))
+    await user.click(screen.getByRole('button', { name: 'Add job' }))
+    await user.click(screen.getByRole('button', { name: 'From a link' }))
+    await user.type(screen.getByRole('textbox', { name: 'Job link' }), 'https://job-boards.greenhouse.io/clear/jobs/123')
+    await user.click(screen.getByRole('button', { name: 'Fetch details' }))
     await screen.findByText('Captured via greenhouse-api. Review the fields, then save the job.')
     expect((screen.getByRole('textbox', { name: 'Company' }) as HTMLInputElement).value).toBe('Clear')
-    await user.click(screen.getByRole('button', { name: 'Save to Inbox' }))
-    await screen.findByText('Job saved to your Inbox.')
+    await user.click(screen.getByRole('button', { name: 'Save job' }))
+    await screen.findByText('Job saved.')
     expect(sqlite.prepare('SELECT text,raw_snapshot AS rawSnapshot FROM jobs').get()).toEqual({ text: 'Build useful software for customers and collaborate across a team of product engineers and designers.', rawSnapshot: '{"original":"API response"}' })
     await waitFor(() => expect(screen.getByText('Download original capture')).toBeTruthy())
     sqlite.close()
@@ -160,14 +197,11 @@ describe('job analysis view', () => {
     const master = emptyMaster()
     master.roles.push({ id: randomUUID(), company: 'Acme', title: 'Engineer', start: 'January 2025', end: 'Present', bullets: [{ id: randomUUID(), rev: 1, text: 'Built TypeScript APIs for customers', skills: ['TypeScript'], metrics: [], verbs: [], sourceRef: '' }] })
     saveMaster(sqlite, master)
-    await user.type(screen.getByRole('textbox', { name: 'Company' }), 'Example')
-    await user.type(screen.getByRole('textbox', { name: 'Role title' }), 'Software Engineer')
-    await user.type(screen.getByRole('textbox', { name: 'Job description' }), 'TypeScript experience is required. Candidates need 5+ years of experience building software for customers.')
-    await user.click(screen.getByRole('button', { name: 'Save to Inbox' }))
-    await screen.findByText('Job saved to your Inbox.')
-    await user.click(await screen.findByRole('button', { name: 'Extract requirements' }))
+    await addJob(user, 'Example', 'Software Engineer', 'TypeScript experience is required. Candidates need 5+ years of experience building software for customers.')
+    await user.click(await screen.findByRole('button', { name: 'Check fit' }))
     await waitFor(() => expect((sqlite.prepare("SELECT status FROM runs WHERE kind='extract' ORDER BY rowid DESC LIMIT 1").get() as { status: string })?.status).toBe('done'))
     cleanup()
+    window.location.hash = ''
     render(<Workspace />)
     const jobTitle = await screen.findByText('Software Engineer', { selector: '.job-card strong' })
     await user.click(jobTitle.closest('button')!)

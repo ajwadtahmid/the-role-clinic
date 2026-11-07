@@ -42,7 +42,7 @@ function LineCard({ line, workspace, busy, active, onFocus, onAction, onCopy }: 
   </article>
 }
 
-export function TailoringWorkspace({ jobId, company, title, onApplied }: { jobId: string; company: string; title: string; onApplied: () => void }) {
+export function TailoringWorkspace({ jobId, company, title, onApplied, onExported }: { jobId: string; company: string; title: string; onApplied: () => void; onExported?: () => void }) {
   const [data, setData] = useState<ReviewWorkspace | null>(null), [runId, setRunId] = useState(''), [versions, setVersions] = useState<Array<{ runId: string; createdAt: string }>>([])
   const [busy, setBusy] = useState(false), [notice, setNotice] = useState(''), [active, setActive] = useState(''), [proof, setProof] = useState<Proof | null>(null), [proofError, setProofError] = useState(''), [showPdf, setShowPdf] = useState(false)
   const [artifacts, setArtifacts] = useState<Artifact[]>([]), [artifactId, setArtifactId] = useState(''), [confirmed, setConfirmed] = useState(false), [download, setDownload] = useState<{ filename: string; downloadUrl: string } | null>(null)
@@ -88,7 +88,7 @@ export function TailoringWorkspace({ jobId, company, title, onApplied }: { jobId
   async function exportFile(format: 'docx' | 'pdf') {
     if (!data) return
     setBusy(true)
-    try { const result = await request<{ id: string; filename: string; downloadUrl: string }>(`${base}/export`, { method: 'POST', body: JSON.stringify({ runId: data.review.runId, revision: data.review.revision, format }) }); setDownload(result); await loadArtifacts(); setArtifactId(result.id); setConfirmed(false); setNotice('Export passed its text and reading-order check. Download it below.') } catch (e) { setNotice((e as Error).message) } finally { setBusy(false) }
+    try { const result = await request<{ id: string; filename: string; downloadUrl: string }>(`${base}/export`, { method: 'POST', body: JSON.stringify({ runId: data.review.runId, revision: data.review.revision, format }) }); setDownload(result); await loadArtifacts(); onExported?.(); setArtifactId(result.id); setConfirmed(false); setNotice('Export passed its text and reading-order check. Download it below.') } catch (e) { setNotice((e as Error).message) } finally { setBusy(false) }
   }
   async function markApplied() {
     if (!confirmed || !artifactId) return

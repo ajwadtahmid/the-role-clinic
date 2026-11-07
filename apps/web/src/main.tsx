@@ -14,7 +14,6 @@ function App() {
   if (route === '#tracker') return <TrackerPage />
   if (route === '#gaps') return <TrackerPage gapsOnly />
   if (route === '#answers') return <AnswersPage />
-  if (route.startsWith('#job/')) return <Workspace key={route} initialJobId={route.slice(5).split('?')[0]} />
   if (route === '#settings') return <SettingsPage />
   if (route.startsWith('#master')) return <MasterPage key={route} />
   if (route === '#profile') return <ProfilePage />
