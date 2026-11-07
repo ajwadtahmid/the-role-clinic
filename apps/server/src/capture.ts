@@ -96,7 +96,7 @@ export async function captureJobUrl(input: string, fetcher: typeof fetchPublic =
   let endpoint = url
   const parts = url.pathname.split('/').filter(Boolean)
   let parser = 'readability'
-  if (/greenhouse\.io$/.test(url.hostname) && parts.length >= 3) {
+  if (/(?:^|\.)greenhouse\.io$/.test(url.hostname) && parts.length >= 3) {
     endpoint = new URL(`/v1/boards/${encodeURIComponent(parts[0])}/jobs/${encodeURIComponent(parts[2])}`, 'https://boards-api.greenhouse.io')
     parser = 'greenhouse-api'
   } else if (url.hostname === 'jobs.lever.co' && parts.length >= 2) {
@@ -115,6 +115,7 @@ export async function captureJobUrl(input: string, fetcher: typeof fetchPublic =
   const response = await fetcher(endpoint)
   let data: any = null
   try { data = JSON.parse(response.body) } catch { /* HTML path below */ }
+  if (parser !== 'readability' && (data === null || typeof data !== 'object')) throw new Error('This job board did not return the expected data. Paste the job description instead.')
   if (parser === 'ashby-api' && data?.jobs) {
     const match = data.jobs.find((job: any) => job.id === parts[1] || job.jobUrl?.includes(parts[1]))
     if (!match) throw new Error('This Ashby job was not found on its public job board.')

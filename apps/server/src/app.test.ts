@@ -174,6 +174,19 @@ describe('Phase 2 capture and tracker foundation', () => {
     sqlite.close()
   })
 
+  it('gives a plain message when a job board answers with something other than JSON', async () => {
+    const fetcher: Parameters<typeof captureJobUrl>[1] = async (url) => ({ url, contentType: 'text/html', body: '<html>Service unavailable</html>' })
+    await expect(captureJobUrl('https://job-boards.greenhouse.io/acme/jobs/123', fetcher)).rejects.toThrow('did not return the expected data')
+    await expect(captureJobUrl('https://jobs.lever.co/acme/abc', fetcher)).rejects.toThrow('did not return the expected data')
+  })
+
+  it('does not treat look-alike hostnames as Greenhouse', async () => {
+    const requested: string[] = []
+    const fetcher: Parameters<typeof captureJobUrl>[1] = async (url) => { requested.push(url.hostname); return { url, contentType: 'text/html', body: '<html><body><article>Build reliable backend systems with a collaborative engineering team and cloud services.</article></body></html>' } }
+    await captureJobUrl('https://notgreenhouse.io/acme/jobs/123', fetcher).catch(() => undefined)
+    expect(requested).toEqual(['notgreenhouse.io'])
+  })
+
   it('migrates a Phase 1 database to Phase 2 without losing saved jobs', async () => {
     const dataDirectory = await mkdtemp(join(tmpdir(), 'role-clinic-migration-'))
     temporaryDirectories.push(dataDirectory)
