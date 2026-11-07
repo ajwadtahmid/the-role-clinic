@@ -211,6 +211,14 @@ export function createApp(options: AppOptions) {
     return context.json({ jobs })
   })
 
+  // How many jobs each Inbox view holds. Registered before `/api/jobs/:id`, which would otherwise match "counts".
+  app.get('/api/jobs/counts', (context) => {
+    const rows = options.sqlite.prepare("SELECT COALESCE(a.status,'new') AS status, COUNT(*) AS n FROM jobs j LEFT JOIN applications a ON a.job_id=j.id GROUP BY 1").all() as Array<{ status: string; n: number }>
+    const count = (status: string) => rows.find((row) => row.status === status)?.n ?? 0
+    const all = rows.reduce((sum, row) => sum + row.n, 0)
+    return context.json({ new: count('new'), tracker: all - count('new') - count('skipped'), skipped: count('skipped'), all })
+  })
+
   app.post('/api/jobs', async (context) => {
     const payload = await context.req.json().catch(() => null) as Record<string, unknown> | null
     if (!payload || typeof payload !== 'object') return context.json({ error: 'Provide a job posting.' }, 400)

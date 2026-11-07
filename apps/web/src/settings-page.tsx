@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { MaintenancePanel } from './runtime.js'
 import { taskNames, type PublicSettings, type TaskName } from '../../../packages/shared/src/index.js'
+import { AppHeader, PageHeader } from './layout.js'
 
 const labels: Record<TaskName, { title: string; description: string }> = {
   requirementExtraction: { title: 'Requirement extraction', description: 'Find required and preferred qualifications in a job posting.' },
@@ -87,24 +88,15 @@ export function SettingsPage() {
 
   if (!settings) return <main className="shell"><p className="loading">Loading local settings…</p></main>
 
-  return <main className="shell">
-    <header className="topbar">
-      <a className="wordmark" href="#top"><span className="mark">RC</span><span>The Role Clinic</span></a>
-      <nav><a href="#top">Inbox</a><a href="#tracker">Tracker</a><a href="#answers">Answers</a><a href="#master">Master résumé</a><a href="#profile">Profile</a><a href="#settings">Settings</a></nav>
-      <span className="local-chip"><span className="green-dot" /> Private · on this device</span>
-    </header>
-
-    <section className="intro" id="top">
-      <p className="eyebrow">LOCAL WORKSPACE · SETTINGS</p>
-      <h1>Make the setup<br /><em>work for you.</em></h1>
-      <p className="lede">Choose a model for each job-search task. Your settings and résumé data stay on this computer.</p>
-    </section>
+  return <main className="shell" id="main" tabIndex={-1}>
+    <AppHeader current="settings" />
+    <PageHeader title="Settings">Choose a model for each job-search task. Your settings and résumé data stay on this computer.</PageHeader>
 
     {notice && <div className={`notice ${notice.kind}`} role="status">{notice.text}</div>}
 
     <section className="panel provider-panel">
       <div className="panel-heading">
-        <div><p className="eyebrow">CONNECTIONS</p><h2>Model providers</h2></div>
+        <div><h2>Model providers</h2></div>
         <span className="subtle">Choose separately for every task below</span>
       </div>
       <div className="provider-grid">
@@ -126,7 +118,7 @@ export function SettingsPage() {
 
     <section className="model-section">
       <div className="panel-heading model-heading">
-        <div><p className="eyebrow">TASK ROUTING</p><h2>Pick a model for each task</h2></div>
+        <div><h2>Pick a model for each task</h2></div>
         <p className="subtle">Local model calls are queued one at a time.</p>
       </div>
       <div className="task-list">
@@ -149,7 +141,7 @@ export function SettingsPage() {
     <MaintenancePanel />
 
     <section className="panel editor-panel cost-panel">
-      <p className="eyebrow">RUN SPENDING</p><h2>Cost estimate and cap</h2>
+      <h2>Cost estimate and cap</h2>
       <p className="subtle">Local Ollama calls have no API charge. Enter your provider’s current per-million-token prices for each selected Anthropic model. Runs check estimates before starting and track reported usage after every call.</p>
       <label>Maximum estimated API spend per run (USD)<input type="number" min="0" max="100" step="0.01" value={settings.costCapUsd} onChange={(event) => setSettings({ ...settings, costCapUsd: Number(event.target.value) })} /></label>
       <label>Maximum API spend per calendar month (USD)<input type="number" min="0" max="10000" step="0.5" value={settings.monthlyCapUsd} onChange={(event) => setSettings({ ...settings, monthlyCapUsd: Number(event.target.value) })} /></label>
