@@ -62,6 +62,12 @@ CREATE TABLE IF NOT EXISTS artifacts (
 PRAGMA user_version = 1;
 `
 
+// If BEGIN itself failed (for example the database is busy) there is nothing to roll back, and a failing
+// ROLLBACK would hide the error that actually matters.
+function rollbackQuietly(sqlite: Database.Database) {
+  if (sqlite.inTransaction) sqlite.exec('ROLLBACK;')
+}
+
 export function createDatabase(dataDirectory: string): { sqlite: Database.Database; db: ClinicDatabase } {
   mkdirSync(dataDirectory, { recursive: true, mode: 0o700 })
   const sqlite = new Database(join(dataDirectory, 'clinic.sqlite'))
@@ -78,7 +84,7 @@ export function createDatabase(dataDirectory: string): { sqlite: Database.Databa
     try {
       sqlite.exec(`BEGIN IMMEDIATE;\n${schemaSql}\nCOMMIT;`)
     } catch (error) {
-      sqlite.exec('ROLLBACK;')
+      rollbackQuietly(sqlite)
       sqlite.close()
       throw error
     }
@@ -103,7 +109,7 @@ export function createDatabase(dataDirectory: string): { sqlite: Database.Databa
         PRAGMA user_version = 2;
       COMMIT;`)
     } catch (error) {
-      sqlite.exec('ROLLBACK;')
+      rollbackQuietly(sqlite)
       sqlite.close()
       throw error
     }
@@ -119,7 +125,7 @@ export function createDatabase(dataDirectory: string): { sqlite: Database.Databa
         PRAGMA user_version = 3;
       COMMIT;`)
     } catch (error) {
-      sqlite.exec('ROLLBACK;')
+      rollbackQuietly(sqlite)
       sqlite.close()
       throw error
     }
@@ -134,7 +140,7 @@ export function createDatabase(dataDirectory: string): { sqlite: Database.Databa
         PRAGMA user_version = 4;
       COMMIT;`)
     } catch (error) {
-      sqlite.exec('ROLLBACK;')
+      rollbackQuietly(sqlite)
       sqlite.close()
       throw error
     }
@@ -154,7 +160,7 @@ export function createDatabase(dataDirectory: string): { sqlite: Database.Databa
         PRAGMA user_version = 5;
       COMMIT;`)
     } catch (error) {
-      sqlite.exec('ROLLBACK;')
+      rollbackQuietly(sqlite)
       sqlite.close()
       throw error
     }
@@ -172,7 +178,7 @@ export function createDatabase(dataDirectory: string): { sqlite: Database.Databa
       PRAGMA user_version = 6;
       COMMIT;`)
     } catch (error) {
-      sqlite.exec('ROLLBACK;')
+      rollbackQuietly(sqlite)
       sqlite.close()
       throw error
     }
@@ -193,7 +199,7 @@ export function createDatabase(dataDirectory: string): { sqlite: Database.Databa
         CREATE INDEX job_answers_job_idx ON job_answers(job_id);
         PRAGMA user_version = 7;
       COMMIT;`)
-    } catch (error) { sqlite.exec('ROLLBACK;'); sqlite.close(); throw error }
+    } catch (error) { rollbackQuietly(sqlite); sqlite.close(); throw error }
   }
   chmodSync(join(dataDirectory, 'clinic.sqlite'), 0o600)
   return { sqlite, db: drizzle(sqlite, { schema }) }

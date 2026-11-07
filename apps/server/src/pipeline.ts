@@ -141,6 +141,7 @@ export class PipelineService {
   retry(id: string) {
     const row = this.sqlite.prepare('SELECT id,kind,job_id AS jobId,status,step,created_at AS createdAt FROM runs WHERE id=?').get(id) as RunRecord | undefined
     if (!row || !row.jobId || !['extract','tailor'].includes(row.kind)) throw new Error('Run not found or not retryable.')
+    if (this.sqlite.prepare("SELECT 1 FROM runs WHERE job_id=? AND kind=? AND status IN ('queued','running') AND id<>? LIMIT 1").get(row.jobId, row.kind, row.id)) throw new Error(`A ${row.kind} run is already queued or running for this job.`)
     return this.queue.retryWork(row, row.kind === 'extract' ? (record, context) => this.extract(record, context) : (record, context) => this.tailor(record, context))
   }
 

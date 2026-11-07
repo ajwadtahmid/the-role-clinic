@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { constants } from 'node:fs'
 import { chmod, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { join, dirname, basename, resolve, relative } from 'node:path'
 import Database from 'better-sqlite3'
@@ -54,7 +55,14 @@ export async function createFullBackup(dataDirectory: string, destination: strin
     await chmod(temporary, 0o600)
     // An explicit destination never overwrites an existing backup.
     const { link, unlink } = await import('node:fs/promises')
-    await link(temporary, destination); await unlink(temporary)
+    // A hard link refuses to replace an existing file. Some filesystems (FAT/exFAT, certain network shares)
+    // have no hard links, so fall back to an exclusive copy, which also refuses to overwrite.
+    try { await link(temporary, destination) }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw error
+      await copyFile(temporary, destination, constants.COPYFILE_EXCL); await chmod(destination, 0o600)
+    }
+    await unlink(temporary)
     return { destination, files: files.length, schemaVersion, apiKeyIncluded: options.includeApiKey === true }
   } finally { await rm(staging, { recursive: true, force: true }); await rm(temporary, { force: true }) }
 }

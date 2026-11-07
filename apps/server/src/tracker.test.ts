@@ -14,7 +14,7 @@ const fixtures: Array<{ directory: string; sqlite: ReturnType<typeof createDatab
 afterEach(async () => { for (const f of fixtures.splice(0)) { if (f.sqlite.open) f.sqlite.close(); await rm(f.directory, { recursive: true, force: true }) } })
 async function setup() {
   const directory = await mkdtemp(join(tmpdir(), 'clinic-tracker-')), { sqlite, db } = createDatabase(directory); fixtures.push({ directory, sqlite })
-  const modelRouter = { async complete() { throw new Error('Phase 6 must not call a model') } }
+  const modelRouter = { async complete() { throw new Error('The tracker must not call a model') } }
   const app = createApp({ dataDirectory: directory, sqlite, db, port: 3000, modelRouter })
   const request = (path: string, init: RequestInit = {}) => app.request(`http://127.0.0.1:3000${path}`, { ...init, headers: { host: '127.0.0.1:3000', origin: 'http://127.0.0.1:3000', ...init.headers } })
   const send = (path: string, value: unknown, method = 'POST') => request(path, { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(value) })
@@ -29,7 +29,7 @@ async function setup() {
   }
   return { directory, sqlite, request, send, job }
 }
-describe('Phase 6 tracker and answers', () => {
+describe('tracker and answers', () => {
   it('migrates v6 submission records to v7 without changing stored answers or artifacts', async () => {
     const f = await setup(), jobId = f.job('Legacy', 'saved')
     await f.send(`/api/jobs/${jobId}/answers`, { question: 'Legacy question?', answer: 'Legacy submitted answer.', category: 'project' })
@@ -147,6 +147,18 @@ describe('Phase 6 tracker and answers', () => {
     await f.send(`/api/jobs/${id}/status`, { status: 'applied', submittedText: 'x'.repeat(33000) }, 'PUT')
     expect((await f.request('/api/tracker/export/xlsx')).status).toBe(422)
     expect((await f.request('/api/tracker/export/applications.csv')).status).toBe(200)
+  })
+
+  it('treats % and _ in a job search as literal text, and only the word "us" as a why-us cue', async () => {
+    const f = await setup()
+    const literal = f.job('Acme 100% Remote'), other = f.job('Acme 1000 Remote')
+    const ids = async (q: string) => ((await (await f.request(`/api/jobs?q=${encodeURIComponent(q)}`)).json()) as { jobs: Array<{ id: string }> }).jobs.map((j) => j.id)
+    expect(await ids('100%')).toEqual([literal])
+    expect(await ids('Acme 100_ Remote')).toEqual([])
+    expect(await ids('Acme')).toHaveLength(2)
+    expect(other).toBeTruthy()
+    expect(suggestAnswerCategory('Why do you want to work with us?')).toBe('why-us')
+    expect(suggestAnswerCategory('Why did you choose a career in business?')).toBe('other')
   })
 
   it('reads the job list and tracker with a fixed number of queries however many jobs exist', async () => {

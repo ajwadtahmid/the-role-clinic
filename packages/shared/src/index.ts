@@ -126,7 +126,7 @@ export function suggestAnswerCategory(question: string): string {
   if (/salary|compensation|pay expectation/i.test(question)) return 'salary'
   if (/leaving|leave your|left your/i.test(question)) return 'why-leaving'
   if (/start date|available|availability|notice period/i.test(question)) return 'availability'
-  if (/why.{0,60}(?:join|company|us|work here|this role)|interest.{0,40}(?:company|role)/i.test(question)) return 'why-us'
+  if (/why.{0,60}(?:\bjoin|\bcompany|\bus\b|work here|this role)|interest.{0,40}(?:company|role)/i.test(question)) return 'why-us'
   if (/project|built|proud/i.test(question)) return 'project'
   if (/strength|skill|bring to/i.test(question)) return 'strengths'
   if (/motivat|career goal/i.test(question)) return 'motivation'

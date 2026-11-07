@@ -194,9 +194,11 @@ export function createApp(options: AppOptions) {
     const query = cleanText(context.req.query('q'), 200)
     const status = cleanText(context.req.query('status'), 30)
     if (status && status !== 'tracker' && !applicationStatuses.includes(status as typeof applicationStatuses[number])) return context.json({ error: 'Unknown status filter.' }, 400)
-    const clauses = [query ? '(j.company LIKE ? OR j.title LIKE ? OR j.text LIKE ?)' : '', status === 'tracker' ? "a.status NOT IN ('new','skipped')" : status ? 'COALESCE(a.status, \'new\') = ?' : ''].filter(Boolean)
+    const clauses = [query ? "(j.company LIKE ? ESCAPE '\\' OR j.title LIKE ? ESCAPE '\\' OR j.text LIKE ? ESCAPE '\\')" : '', status === 'tracker' ? "a.status NOT IN ('new','skipped')" : status ? 'COALESCE(a.status, \'new\') = ?' : ''].filter(Boolean)
     const params: string[] = []
-    if (query) params.push(`%${query}%`, `%${query}%`, `%${query}%`)
+    // Search for the typed text itself: a literal % or _ must not act as a wildcard.
+    const pattern = `%${query.replace(/[\\%_]/g, '\\$&')}%`
+    if (query) params.push(pattern, pattern, pattern)
     if (status && status !== 'tracker') params.push(status)
     const rows = options.sqlite.prepare(`SELECT j.id,j.company,j.title,j.captured_at AS capturedAt,j.source_url AS sourceUrl,j.canonical_url AS canonicalUrl,j.apply_url AS applyUrl,j.location,j.remote,j.salary,j.source,j.capture_method AS captureMethod,substr(j.text,1,400) AS summary,COALESCE(a.status,'new') AS status,a.applied_at AS appliedAt,a.notes FROM jobs j LEFT JOIN applications a ON a.job_id=j.id ${clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''} ORDER BY j.captured_at DESC`).all(...params) as Array<{ id: string }>
     const master = readMaster(options.sqlite).document, profile = readProfile(options.sqlite).document, synonyms = listSynonyms(options.sqlite)

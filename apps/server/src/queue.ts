@@ -37,7 +37,7 @@ export class SerialRunQueue {
     run.status = 'queued'; run.step = 'queued'; run.finishedAt = undefined
     this.db.update(runs).set({ status: 'queued', step: 'queued', error: null, finishedAt: null }).where(eq(runs.id, run.id)).run()
     this.pending.push({ run, work }); this.publish(run, 'Retry queued from the last saved step.')
-    void this.drain()
+    void this.drain().catch((error) => console.error(`[queue] worker stopped unexpectedly: ${(error as Error).message}`))
     return run
   }
 
@@ -49,7 +49,7 @@ export class SerialRunQueue {
     this.db.insert(runs).values({ id: run.id, jobId, kind, status: run.status, step: run.step, promptVersions: '{}', createdAt: run.createdAt }).run()
     this.pending.push({ run, work })
     this.publish(run, kind === 'demo' ? 'Infrastructure test queued; no résumé work will run.' : `${kind} queued.`)
-    void this.drain()
+    void this.drain().catch((error) => console.error(`[queue] worker stopped unexpectedly: ${(error as Error).message}`))
     return run
   }
 
@@ -67,9 +67,9 @@ export class SerialRunQueue {
       while (this.pending.length) {
         const { run, work } = this.pending.shift()!
         run.status = 'running'; run.step = work ? 'starting' : 'queue-smoke-test'; run.startedAt = new Date().toISOString()
-        this.db.update(runs).set({ status: run.status, step: run.step, startedAt: run.startedAt }).where(eq(runs.id, run.id)).run()
-        this.publish(run, 'Queue worker started.')
         try {
+          this.db.update(runs).set({ status: run.status, step: run.step, startedAt: run.startedAt }).where(eq(runs.id, run.id)).run()
+          this.publish(run, 'Queue worker started.')
           if (work) await work(run, { progress: (step, message) => {
             run.step = step
             this.db.update(runs).set({ step }).where(eq(runs.id, run.id)).run()
@@ -83,7 +83,9 @@ export class SerialRunQueue {
         } catch (error) {
           run.status = 'failed'; run.finishedAt = new Date().toISOString()
           run.message = error instanceof Error ? error.message : 'Run failed.'
-          this.db.update(runs).set({ status: 'failed', error: run.message, finishedAt: run.finishedAt }).where(eq(runs.id, run.id)).run()
+          // A failing write here must not stop the worker or leave the queue stuck: report it and move on.
+          try { this.db.update(runs).set({ status: 'failed', error: run.message, finishedAt: run.finishedAt }).where(eq(runs.id, run.id)).run() }
+          catch (writeError) { console.error(`[queue] could not record the failure of run ${run.id}: ${(writeError as Error).message}`) }
           this.publish(run, run.message)
         }
       }

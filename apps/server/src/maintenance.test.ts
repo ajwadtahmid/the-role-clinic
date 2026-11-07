@@ -8,7 +8,7 @@ import { c, x } from 'tar'
 import { createDatabase } from './db.js'
 import { databaseBackup } from './database-backups.js'
 import { createFullBackup, inspectFullBackup, restoreFullBackup } from './maintenance.js'
-import { acquireProcessLock } from './process-lock.js'
+import { acquireProcessLock, lockOwnerAlive, processStart } from './process-lock.js'
 import { defaultSettings, writeSettings } from './settings.js'
 import { createApp } from './app.js'
 
@@ -27,7 +27,7 @@ async function fixture() {
   await writeFile(join(data, 'welcome.json'), JSON.stringify({ acknowledgedAt: '2026-11-06' }))
   return { root, data, id, artifactId, filename, archive: join(root, 'full.tar.gz') }
 }
-describe('Phase 7 full-data recovery', () => {
+describe('full-data recovery', () => {
   it('round-trips records, settings, welcome and exact artifacts into a different data directory', async () => {
     const f = await fixture(); expect(await createFullBackup(f.data, f.archive, { includeApiKey: true })).toMatchObject({ apiKeyIncluded: true })
     expect((await stat(f.archive)).mode & 0o777).toBe(0o600)
@@ -55,6 +55,14 @@ describe('Phase 7 full-data recovery', () => {
     expect(await readFile(join(unpacked, 'settings.json'), 'utf8')).not.toContain('FAKE_LOCAL_KEY')
     const restored = join(f.root, 'restored-without-key')
     await expect(inspectFullBackup(f.archive, restored)).resolves.toMatchObject({ schemaVersion: 7 })
+  })
+  it('does not mistake an unrelated process that reuses a dead lock owner’s id for a live owner', () => {
+    expect(lockOwnerAlive({ pid: process.pid })).toBe(true)
+    expect(lockOwnerAlive({ pid: 0x7ffffffe })).toBe(false)
+    const own = processStart(process.pid)
+    if (own === null) return // start times are read from /proc, so only Linux can tell a reused id apart
+    expect(lockOwnerAlive({ pid: process.pid, started: own })).toBe(true)
+    expect(lockOwnerAlive({ pid: process.pid, started: `${own}0` })).toBe(false)
   })
   it('rejects checksum damage before replacing existing records and retains all original data', async () => {
     const f = await fixture(); await createFullBackup(f.data, f.archive)

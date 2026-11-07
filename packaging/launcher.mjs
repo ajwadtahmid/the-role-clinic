@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto'
 process.umask(0o077)
 const root = dirname(fileURLToPath(import.meta.url)), appRoot = join(root, 'app')
 const { getDataDirectory } = await import(new URL('./app/apps/server/src/data-dir.js', import.meta.url))
-const { acquireProcessLock, processAlive } = await import(new URL('./app/apps/server/src/process-lock.js', import.meta.url))
+const { acquireProcessLock, processAlive, lockOwnerAlive } = await import(new URL('./app/apps/server/src/process-lock.js', import.meta.url))
 const data = resolve(getDataDirectory()), command = process.argv[2] ?? 'start', args = process.argv.slice(3)
 const manifest = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8'))
 const exec = promisify(execFile)
@@ -38,7 +38,7 @@ async function state() {
   } catch (error) {
     if (error.code === 'ENOENT') return null
     if (error instanceof SyntaxError) {
-      try { const owner = JSON.parse(await readFile(join(data, 'server.lock'), 'utf8')); if (processAlive(owner.pid)) throw new Error('A server may be running with a damaged instance record. Inspect app.log before retrying.'); return null }
+      try { const owner = JSON.parse(await readFile(join(data, 'server.lock'), 'utf8')); if (lockOwnerAlive(owner)) throw new Error('A server may be running with a damaged instance record. Inspect app.log before retrying.'); return null }
       catch (lockError) { if (lockError.code === 'ENOENT') return null; throw lockError }
     }
     if (error.name === 'TimeoutError' || error.cause?.code === 'ECONNREFUSED') throw new Error('A recorded app process is not responding. Inspect the local log before retrying; no process was stopped.')
@@ -48,7 +48,7 @@ async function state() {
 async function requireOffline() {
   const running = await state()
   if (running) throw new Error('Stop the app with ./role-clinic stop before creating or restoring a full backup.')
-  try { const owner = JSON.parse(await readFile(join(data, 'server.lock'), 'utf8')); if (processAlive(owner.pid)) throw new Error('The data folder is in use by a server. Stop it before maintenance.') } catch (error) { if (error.code !== 'ENOENT') throw error }
+  try { const owner = JSON.parse(await readFile(join(data, 'server.lock'), 'utf8')); if (lockOwnerAlive(owner)) throw new Error('The data folder is in use by a server. Stop it before maintenance.') } catch (error) { if (error.code !== 'ENOENT') throw error }
 }
 async function browser(url) {
   if (args.includes('--no-browser') || process.env.ROLE_CLINIC_NO_BROWSER === '1') return

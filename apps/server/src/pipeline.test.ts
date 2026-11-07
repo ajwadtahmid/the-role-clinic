@@ -65,7 +65,7 @@ async function waitFor(sqlite: ReturnType<typeof createDatabase>['sqlite'], kind
 }
 afterEach(async () => { await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true }))) })
 
-describe('Phase 4 pipeline', () => {
+describe('extraction and tailoring pipeline', () => {
   it('auto-extracts exact JD spans, shows knockout basis, and keeps profile out of model requests', async () => {
     const { sqlite, request, job, calls, inputs } = await setup(true)
     expect(job.extractionRunId).toBeTruthy()
@@ -170,6 +170,19 @@ describe('Phase 4 pipeline', () => {
     const failed = await waitFor(sqlite, 'extract', 'failed')
     expect(failed.error).toContain('Token-counted cost could exceed')
     expect(calls).toHaveLength(0)
+    sqlite.close()
+  })
+
+  it('refuses to retry a failed run while another run of the same kind is already waiting for that job', async () => {
+    const { sqlite, post, job } = await setup()
+    const failedId = randomUUID(), now = new Date().toISOString()
+    const insert = sqlite.prepare('INSERT INTO runs(id,job_id,kind,status,step,created_at) VALUES(?,?,?,?,?,?)')
+    insert.run(failedId, job.id, 'extract', 'failed', 'queued', now)
+    insert.run(randomUUID(), job.id, 'extract', 'queued', 'queued', now)
+    const response = await post(`/api/runs/${failedId}/retry`)
+    expect(response.status).toBe(409)
+    expect((await response.json() as { error: string }).error).toMatch(/already queued or running/)
+    expect((sqlite.prepare('SELECT status FROM runs WHERE id=?').get(failedId) as { status: string }).status).toBe('failed')
     sqlite.close()
   })
 
