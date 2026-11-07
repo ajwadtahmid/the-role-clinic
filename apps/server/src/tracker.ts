@@ -5,6 +5,12 @@ import { assessRequirement } from './pipeline-core.js'
 
 export const dateOnly = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value
 export const quietStatuses = new Set(['applied', 'screening', 'interviewing'])
+// The newest row of `requirements` or `tailored` for every job, in one query (not one query per job).
+// `expression` picks what to read from each row, for example 't.document' or a json_extract of it.
+export function latestByJob(sqlite: Database.Database, table: 'requirements' | 'tailored', expression: string): Map<string, string | null> {
+  const rows = sqlite.prepare(`SELECT t.job_id AS jobId, ${expression} AS value FROM ${table} t WHERE t.rowid=(SELECT t2.rowid FROM ${table} t2 WHERE t2.job_id=t.job_id ORDER BY t2.created_at DESC,t2.rowid DESC LIMIT 1)`).all() as Array<{ jobId: string; value: string | null }>
+  return new Map(rows.map((row) => [row.jobId, row.value]))
+}
 export function trackerSummary(sqlite: Database.Database, today = calendarDate()): TrackerSummary {
   const jobs = sqlite.prepare(`SELECT j.id,j.company,j.title,j.source_url AS sourceUrl,j.source,j.location,j.remote,j.salary,j.captured_at AS capturedAt,
     COALESCE(a.status,'new') AS status,a.applied_at AS appliedAt,a.follow_up_date AS followUpDate,a.last_contact_at AS lastContactAt,
@@ -16,20 +22,20 @@ export function trackerSummary(sqlite: Database.Database, today = calendarDate()
     FROM jobs j LEFT JOIN applications a ON a.job_id=j.id LEFT JOIN artifacts art ON art.id=a.submitted_artifact_id
     ORDER BY j.captured_at DESC,j.rowid DESC`).all() as TrackerJob[]
   const master = readMaster(sqlite).document, profile = readProfile(sqlite).document, synonyms = listSynonyms(sqlite)
-  const requirementsQuery = sqlite.prepare('SELECT document FROM requirements WHERE job_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1')
+  const requirementDocuments = latestByJob(sqlite, 'requirements', 't.document')
+  const gapDocuments = latestByJob(sqlite, 'tailored', "json_extract(t.document,'$.gaps')")
   const gaps = new Map<string, TrackerSummary['gaps'][number]>()
   let analyzedJobs = 0
   for (const job of jobs) {
     job.hasSubmittedText = Boolean(job.hasSubmittedText)
-    const row = requirementsQuery.get(job.id) as { document: string } | undefined
-    const requirements = row ? (JSON.parse(row.document) as Extraction).requirements : []
+    const requirementDocument = requirementDocuments.get(job.id)
+    const requirements = requirementDocument ? (JSON.parse(requirementDocument) as Extraction).requirements : []
     job.knockouts = requirements.filter((r) => r.kind === 'knockout').map((r) => ({ quote: r.quote, ...assessRequirement(r, master, profile, synonyms) }))
     if (['new', 'skipped'].includes(job.status)) continue
-    const tailored = sqlite.prepare('SELECT document FROM tailored WHERE job_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1').get(job.id) as { document: string } | undefined
-    if (!tailored) continue
+    if (!gapDocuments.has(job.id)) continue
     analyzedJobs++
     const seen = new Set<string>()
-    for (const gap of (JSON.parse(tailored.document) as { gaps: Gap[] }).gaps) {
+    for (const gap of JSON.parse(gapDocuments.get(job.id) ?? '[]') as Gap[]) {
       const requirement = requirements.find((r) => r.id === gap.requirementId)
       const label = requirement?.skill || gap.quote
       const key = label.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}+#.]+/gu, ' ').trim()

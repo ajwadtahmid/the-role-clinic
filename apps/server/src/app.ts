@@ -16,6 +16,7 @@ import { databaseBackup } from './database-backups.js'
 import { registerRuntimeRoutes, type RuntimeInfo } from './runtime-routes.js'
 import { registerMasterRoutes } from './master-routes.js'
 import { registerTrackerRoutes } from './tracker-routes.js'
+import { latestByJob } from './tracker.js'
 import { registerReviewRoutes } from './review-routes.js'
 import { PipelineService } from './pipeline.js'
 import { listSynonyms, readMaster, readProfile } from './master.js'
@@ -199,10 +200,10 @@ export function createApp(options: AppOptions) {
     if (status && status !== 'tracker') params.push(status)
     const rows = options.sqlite.prepare(`SELECT j.id,j.company,j.title,j.captured_at AS capturedAt,j.source_url AS sourceUrl,j.canonical_url AS canonicalUrl,j.apply_url AS applyUrl,j.location,j.remote,j.salary,j.source,j.capture_method AS captureMethod,substr(j.text,1,400) AS summary,COALESCE(a.status,'new') AS status,a.applied_at AS appliedAt,a.notes FROM jobs j LEFT JOIN applications a ON a.job_id=j.id ${clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''} ORDER BY j.captured_at DESC`).all(...params) as Array<{ id: string }>
     const master = readMaster(options.sqlite).document, profile = readProfile(options.sqlite).document, synonyms = listSynonyms(options.sqlite)
-    const requirementQuery = options.sqlite.prepare('SELECT document FROM requirements WHERE job_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1')
+    const latestRequirements = latestByJob(options.sqlite, 'requirements', 't.document')
     const jobs = rows.map((row) => {
-      const latest = requirementQuery.get(row.id) as { document: string } | undefined
-      const requirements = latest ? (JSON.parse(latest.document) as { requirements: Requirement[] }).requirements : []
+      const latest = latestRequirements.get(row.id)
+      const requirements = latest ? (JSON.parse(latest) as { requirements: Requirement[] }).requirements : []
       return { ...row, knockouts: requirements.filter((item) => item.kind === 'knockout').map((item) => ({ quote: item.quote, ...assessRequirement(item, master, profile, synonyms) })) }
     })
     return context.json({ jobs })

@@ -148,4 +148,26 @@ describe('Phase 6 tracker and answers', () => {
     expect((await f.request('/api/tracker/export/xlsx')).status).toBe(422)
     expect((await f.request('/api/tracker/export/applications.csv')).status).toBe(200)
   })
+
+  it('reads the job list and tracker with a fixed number of queries however many jobs exist', async () => {
+    const f = await setup()
+    const withKnockout = f.job('Acme', 'applied')
+    const requirement = { id: randomUUID(), quote: '5+ years required', kind: 'knockout', category: 'years', skill: '', years: 5, start: 0, end: 17, assessment: 'unknown', basis: '' }
+    f.sqlite.prepare('INSERT INTO requirements(id,job_id,document,created_at) VALUES(?,?,?,?)').run(randomUUID(), withKnockout, JSON.stringify({ requirements: [requirement], seniority: '', vocabulary: [], partial: false }), '2026-10-02T00:00:00.000Z')
+    const countQueries = async () => {
+      let count = 0
+      const original = f.sqlite.prepare.bind(f.sqlite)
+      f.sqlite.prepare = ((sql: string) => { count++; return original(sql) }) as typeof f.sqlite.prepare
+      try { trackerSummary(f.sqlite); await f.request('/api/jobs') } finally { f.sqlite.prepare = original as typeof f.sqlite.prepare }
+      return count
+    }
+    const few = await countQueries()
+    for (let i = 0; i < 40; i++) f.job(`Company ${i}`, i % 2 ? 'saved' : 'new')
+    expect(await countQueries()).toBe(few)
+    const tracked = await (await f.request('/api/tracker')).json() as TrackerSummary
+    expect(tracked.jobs.find((j) => j.id === withKnockout)?.knockouts).toHaveLength(1)
+    const listed = await (await f.request('/api/jobs')).json() as { jobs: Array<{ id: string; knockouts: unknown[] }> }
+    expect(listed.jobs.find((j) => j.id === withKnockout)?.knockouts).toHaveLength(1)
+    expect(listed.jobs).toHaveLength(41)
+  })
 })
