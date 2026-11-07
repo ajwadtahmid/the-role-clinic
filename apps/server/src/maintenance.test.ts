@@ -29,7 +29,7 @@ async function fixture() {
 }
 describe('Phase 7 full-data recovery', () => {
   it('round-trips records, settings, welcome and exact artifacts into a different data directory', async () => {
-    const f = await fixture(); await createFullBackup(f.data, f.archive)
+    const f = await fixture(); expect(await createFullBackup(f.data, f.archive, { includeApiKey: true })).toMatchObject({ apiKeyIncluded: true })
     expect((await stat(f.archive)).mode & 0o777).toBe(0o600)
     expect(await inspectFullBackup(f.archive, join(f.root, 'relocated'))).toMatchObject({ files: 4, schemaVersion: 7 })
     const moved = join(f.root, 'relocated'); await mkdir(moved); await writeFile(join(moved, 'old-marker'), 'keep this')
@@ -44,6 +44,17 @@ describe('Phase 7 full-data recovery', () => {
     expect((await stat(join(moved, 'settings.json'))).mode & 0o777).toBe(0o600)
     expect(JSON.parse(await readFile(join(moved, 'welcome.json'), 'utf8')).acknowledgedAt).toBe('2026-11-06')
     await expect(createFullBackup(f.data, f.archive)).rejects.toMatchObject({ code: 'EEXIST' })
+  })
+  it('leaves the API key out of a full backup unless asked, keeping every other setting', async () => {
+    const f = await fixture()
+    expect(await createFullBackup(f.data, f.archive)).toMatchObject({ apiKeyIncluded: false })
+    const unpacked = join(f.root, 'unpacked'); await mkdir(unpacked); await x({ file: f.archive, cwd: unpacked })
+    const saved = JSON.parse(await readFile(join(unpacked, 'settings.json'), 'utf8'))
+    expect(saved.anthropicApiKey).toBeUndefined()
+    expect(saved.ollamaBaseUrl).toBe(defaultSettings().ollamaBaseUrl)
+    expect(await readFile(join(unpacked, 'settings.json'), 'utf8')).not.toContain('FAKE_LOCAL_KEY')
+    const restored = join(f.root, 'restored-without-key')
+    await expect(inspectFullBackup(f.archive, restored)).resolves.toMatchObject({ schemaVersion: 7 })
   })
   it('rejects checksum damage before replacing existing records and retains all original data', async () => {
     const f = await fixture(); await createFullBackup(f.data, f.archive)

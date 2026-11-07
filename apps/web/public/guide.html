@@ -37,7 +37,9 @@ permissions; <code>backups/</code> holds database snapshots. <code>app.log</code
 Do not sync or copy a live SQLite/WAL file as your backup.</p><h2 id="backups">Backups</h2><p><strong>Full backup (recommended for recovery and moving computers):</strong> stop the app first,
 then run <code>./role-clinic backup /absolute/path/role-clinic-data.tar.gz</code>. The archive
 includes a consistent database snapshot, recorded artifacts, settings and first-run
-state. It includes your configured API key. Keep it private; it is not encrypted.
+state. Your Anthropic API key is <strong>left out</strong> by default, so enter it again in
+Settings after a restore; add <code>--include-api-key</code> only if you want it in the archive,
+and then keep the archive private. Archives are not encrypted.
 The command refuses to overwrite an existing archive or omit missing artifacts.
 It has a 2 GiB expanded-data limit. Existing backup history and logs are not included.</p><p><strong>Database snapshots:</strong> the server creates a snapshot at startup and daily, keeping
 14 automatic snapshots. Manual and pre-migration snapshots are retained. Settings

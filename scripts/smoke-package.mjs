@@ -85,7 +85,7 @@ try {
   const fullBackup = join(root, 'full-backup.tar.gz')
   await assert.rejects(cli(['backup', fullBackup]), /Stop the app/)
   await cli(['stop']); running = false
-  await cli(['backup', fullBackup]); assert.equal((await stat(fullBackup)).mode & 0o777, 0o600)
+  await cli(['backup', fullBackup, '--include-api-key']); assert.equal((await stat(fullBackup)).mode & 0o777, 0o600)
   // A previous schema is migrated from a preserved on-disk snapshot during update.
   await databaseWork(`db.exec('DROP TABLE tracker_preferences; DROP INDEX job_answers_job_idx; ALTER TABLE applications DROP COLUMN follow_up_date; ALTER TABLE applications DROP COLUMN last_contact_at; ALTER TABLE applications DROP COLUMN contacts; ALTER TABLE applications DROP COLUMN submitted_job_text; ALTER TABLE job_answers DROP COLUMN submitted_question; ALTER TABLE job_answers DROP COLUMN submitted_category; PRAGMA user_version=6;')`)
   const updated = join(root, 'updated package with spaces'); await rename(bundle, updated); bundle = updated

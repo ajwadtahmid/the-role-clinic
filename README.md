@@ -139,7 +139,8 @@ browser visual checks remain open; these tests cover the actual server and files
 Before migration, the server saves a database snapshot. It also creates startup
 and daily snapshots, retains 14 automatic backups, and refuses newer database
 schemas. Full backups include the database, recorded artifacts, settings and
-first-run state. Full restore validates paths, checksums, settings, SQLite
+first-run state; the Anthropic API key is left out unless you add
+`--include-api-key`. Full restore validates paths, checksums, settings, SQLite
 integrity and schema before replacing data, rebases artifact paths, and keeps the
 prior folder for recovery. Run full backup/restore with the app stopped.
 

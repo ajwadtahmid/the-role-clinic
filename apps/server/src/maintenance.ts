@@ -12,7 +12,17 @@ const MAX_BYTES = 2 * 1024 * 1024 * 1024
 const manifestSchema = z.object({ format: z.literal('the-role-clinic-backup'), version: z.literal(1), createdAt: z.string(), schemaVersion: z.number().int().min(1).max(CURRENT_SCHEMA_VERSION), files: z.array(z.object({ path: z.string(), sha256: z.string().regex(/^[a-f0-9]{64}$/), size: z.number().int().nonnegative() }).strict()).max(20000) }).strict()
 const hash = (buffer: Buffer) => createHash('sha256').update(buffer).digest('hex')
 async function optionalCopy(source: string, target: string) { try { await copyFile(source, target); return true } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; return false } }
-export async function createFullBackup(dataDirectory: string, destination: string) {
+// settings.json holds the Anthropic API key. A backup omits it unless the caller opts in, so an archive that is
+// synced, mailed or moved to another computer does not carry a paid credential by accident.
+async function stagedSettings(source: string, target: string, includeApiKey: boolean) {
+  let text: string
+  try { text = await readFile(source, 'utf8') } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false; throw error }
+  const settings = appSettingsSchema.parse(JSON.parse(text))
+  if (!includeApiKey) delete settings.anthropicApiKey
+  await writeFile(target, JSON.stringify(settings, null, 2), { mode: 0o600 })
+  return true
+}
+export async function createFullBackup(dataDirectory: string, destination: string, options: { includeApiKey?: boolean } = {}) {
   await mkdir(dirname(destination), { recursive: true, mode: 0o700 })
   const staging = await mkdtemp(join(dirname(dataDirectory), '.clinic-backup-'))
   const temporary = `${destination}.${randomUUID()}.partial`
@@ -30,7 +40,7 @@ export async function createFullBackup(dataDirectory: string, destination: strin
         await copyFile(source, join(staging, 'artifacts', name))
       }
     } finally { db.close() }
-    await optionalCopy(join(dataDirectory, 'settings.json'), join(staging, 'settings.json'))
+    await stagedSettings(join(dataDirectory, 'settings.json'), join(staging, 'settings.json'), options.includeApiKey === true)
     await optionalCopy(join(dataDirectory, 'welcome.json'), join(staging, 'welcome.json'))
     const names = ['clinic.sqlite', ...await readdir(staging).then((names) => names.filter((name) => name.endsWith('.json'))), ...(await readdir(join(staging, 'artifacts'))).map((name) => `artifacts/${name}`)]
     const files = []
@@ -45,7 +55,7 @@ export async function createFullBackup(dataDirectory: string, destination: strin
     // An explicit destination never overwrites an existing backup.
     const { link, unlink } = await import('node:fs/promises')
     await link(temporary, destination); await unlink(temporary)
-    return { destination, files: files.length, schemaVersion }
+    return { destination, files: files.length, schemaVersion, apiKeyIncluded: options.includeApiKey === true }
   } finally { await rm(staging, { recursive: true, force: true }); await rm(temporary, { force: true }) }
 }
 async function stageBackup(archive: string, dataDirectory: string) {

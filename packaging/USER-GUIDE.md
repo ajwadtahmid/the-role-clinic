@@ -73,7 +73,9 @@ Do not sync or copy a live SQLite/WAL file as your backup.
 **Full backup (recommended for recovery and moving computers):** stop the app first,
 then run `./role-clinic backup /absolute/path/role-clinic-data.tar.gz`. The archive
 includes a consistent database snapshot, recorded artifacts, settings and first-run
-state. It includes your configured API key. Keep it private; it is not encrypted.
+state. Your Anthropic API key is **left out** by default, so enter it again in
+Settings after a restore; add `--include-api-key` only if you want it in the archive,
+and then keep the archive private. Archives are not encrypted.
 The command refuses to overwrite an existing archive or omit missing artifacts.
 It has a 2 GiB expanded-data limit. Existing backup history and logs are not included.
 

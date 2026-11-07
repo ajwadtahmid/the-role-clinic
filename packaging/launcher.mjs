@@ -17,7 +17,8 @@ const usage = `The Role Clinic ${manifest.version}
   ./role-clinic start --no-browser      Start and print its local URL
   ./role-clinic status                  Show the running instance
   ./role-clinic stop [--force]          Stop the local server
-  ./role-clinic backup /path/data.tar.gz Create a full backup (stop the app first)
+  ./role-clinic backup /path/data.tar.gz Create a full backup (stop the app first); the API key
+                                        is left out unless you add --include-api-key
   ./role-clinic restore /path/data.tar.gz            Validate and inspect a backup
   ./role-clinic restore /path/data.tar.gz --confirm  Restore, preserving a recovery folder
   ./role-clinic verify                  Check installed package files
@@ -132,7 +133,7 @@ try {
         await requireOffline()
         const maintenance = await import(new URL('./app/apps/server/src/maintenance.js', import.meta.url))
         const file = resolve(args[0])
-        const result = command === 'backup' ? await maintenance.createFullBackup(data, file) : args.includes('--confirm') ? await maintenance.restoreFullBackup(file, data) : await maintenance.inspectFullBackup(file, data)
+        const result = command === 'backup' ? await maintenance.createFullBackup(data, file, { includeApiKey: args.includes('--include-api-key') }) : args.includes('--confirm') ? await maintenance.restoreFullBackup(file, data) : await maintenance.inspectFullBackup(file, data)
         console.log(JSON.stringify(result, null, 2))
         if (command === 'restore' && !args.includes('--confirm')) console.log('Validated only. Run the same restore command with --confirm to replace current data and retain a recovery folder.')
       } else throw new Error(usage)
