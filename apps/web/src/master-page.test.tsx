@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -47,8 +47,13 @@ describe('master editor flow', () => {
     await screen.findByText('Master résumé saved locally.')
     const master = JSON.parse((sqlite.prepare('SELECT document FROM master').get() as { document: string }).document)
     expect(master.roles[0].bullets[0]).toMatchObject({ rev: 1, text: 'Reduced API latency by 15%' })
+    const sections = screen.getByRole('navigation', { name: 'Résumé sections' })
+    expect(within(sections).getByRole('link', { name: 'Master résumé' }).getAttribute('aria-current')).toBe('page')
+    expect(within(sections).getByRole('link', { name: 'Profile' }).getAttribute('href')).toBe('#resume/profile')
+    expect(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('link', { name: 'Résumé' }).getAttribute('aria-current')).toBe('page')
     rendered.unmount()
     render(<ProfilePage />)
+    expect(within(await screen.findByRole('navigation', { name: 'Résumé sections' })).getByRole('link', { name: 'Profile' }).getAttribute('aria-current')).toBe('page')
     await user.type(await screen.findByRole('textbox', { name: 'Name' }), 'Jane Example')
     await user.type(screen.getByRole('textbox', { name: 'Email' }), 'jane@example.test')
     await user.type(screen.getByRole('textbox', { name: 'Links (one per line)' }), 'https://example.test\nhttps://github.com/example')

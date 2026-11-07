@@ -5,8 +5,8 @@ per-job Q&A, model settings, master and profile editing, and a saved résumé re
 workspace with interactive and PDF previews and DOCX/PDF exports. The release launcher
 opens it in the user's existing browser.
 
-The hash routes `#tracker`, `#gaps`, `#answers`, `#master`, `#profile`, `#settings` and
-`#jobs/<id>` (and the older `#job/<id>`) open the tracker table, recorded evidence-gap trends, answer library, master
+The hash routes `#tracker`, `#gaps`, `#answers`, `#resume` (master résumé), `#resume/profile`, `#settings` and
+`#jobs/<id>` (and the older `#job/<id>`, `#master`, `#profile`) open the tracker table, recorded evidence-gap trends, answer library, master
 résumé editor, profile, settings and the linked job workspace. The job answer editor is
 shared by the tailoring drawer and the answer library.
 

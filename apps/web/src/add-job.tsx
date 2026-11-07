@@ -64,7 +64,7 @@ type Readiness = { capturedJob: boolean; hasMaster: boolean; hasProfile: boolean
 // Shown while no job exists yet: what to set up, with progress, and the one thing to do first.
 export function GetReady({ readiness, onAdd }: { readiness: Readiness | null; onAdd: () => void }) {
   const steps: Array<[boolean, string, string, string]> = [
-    [!!readiness?.hasMaster, 'Add your résumé', 'Tailoring writes only from facts you have confirmed here.', '#master'],
+    [!!readiness?.hasMaster, 'Add your résumé', 'Tailoring writes only from facts you have confirmed here.', '#resume'],
     [!!readiness?.configuredModels, 'Choose a model', 'Pick a local Ollama model or an Anthropic key. Saving jobs works without one.', '#settings'],
   ]
   return <section className="panel get-ready" aria-labelledby="get-ready-title"><h2 id="get-ready-title">Get ready</h2>

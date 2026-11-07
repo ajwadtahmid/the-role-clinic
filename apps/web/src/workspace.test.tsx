@@ -93,7 +93,7 @@ describe('job workspace flow', () => {
   it('has one labelled primary navigation that marks the current page, and a skip link to the content', async () => {
     const { user, sqlite } = await setup()
     const nav = screen.getByRole('navigation', { name: 'Primary' })
-    expect(within(nav).getAllByRole('link').map((link) => link.textContent)).toEqual(['Jobs', 'Tracker', 'Answers', 'Master résumé', 'Profile', 'Settings'])
+    expect(within(nav).getAllByRole('link').map((link) => link.textContent)).toEqual(['Jobs', 'Tracker', 'Answers', 'Résumé', 'Settings'])
     expect(within(nav).getByRole('link', { name: 'Jobs' }).getAttribute('aria-current')).toBe('page')
     expect(within(nav).getByRole('link', { name: 'Tracker' }).getAttribute('aria-current')).toBeNull()
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Jobs')

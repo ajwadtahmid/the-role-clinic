@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react'
 
-export type NavKey = 'jobs' | 'tracker' | 'answers' | 'master' | 'profile' | 'settings'
+export type NavKey = 'jobs' | 'tracker' | 'answers' | 'resume' | 'settings'
 const links: Array<[NavKey, string, string]> = [
   ['jobs', '#jobs', 'Jobs'], ['tracker', '#tracker', 'Tracker'], ['answers', '#answers', 'Answers'],
-  ['master', '#master', 'Master résumé'], ['profile', '#profile', 'Profile'], ['settings', '#settings', 'Settings'],
+  ['resume', '#resume', 'Résumé'], ['settings', '#settings', 'Settings'],
 ]
 
 // The routes are hash links, so a skip link cannot use `#main` as a real address: it would change the route.
@@ -12,7 +12,7 @@ function skipToMain(event: React.MouseEvent) {
   document.getElementById('main')?.focus()
 }
 
-// One header for every screen: the same six destinations in the same order, with the current one marked.
+// One header for every screen: the same five destinations in the same order, with the current one marked.
 export function AppHeader({ current }: { current: NavKey }) {
   return <>
     <a className="skip-link" href="#main" onClick={skipToMain}>Skip to main content</a>
@@ -22,6 +22,14 @@ export function AppHeader({ current }: { current: NavKey }) {
       <span className="local-chip"><span className="green-dot" aria-hidden="true" /> Private · on this device</span>
     </header>
   </>
+}
+
+// The two halves of the Résumé page: the source résumé, and the private details that never reach a model.
+export function ResumeTabs({ current }: { current: 'master' | 'profile' }) {
+  return <nav className="job-tabs resume-tabs" aria-label="Résumé sections">
+    <a className={`job-tab ${current === 'master' ? 'active' : ''}`} href="#resume" aria-current={current === 'master' ? 'page' : undefined}>Master résumé</a>
+    <a className={`job-tab ${current === 'profile' ? 'active' : ''}`} href="#resume/profile" aria-current={current === 'profile' ? 'page' : undefined}>Profile</a>
+  </nav>
 }
 
 // A compact page title with at most one line of orientation, so the work starts near the top of the screen.
