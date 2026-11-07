@@ -56,7 +56,7 @@ async function setup() {
   return { sqlite, jobId, outId, applied, user }
 }
 
-describe('Phase 5 review UI', () => {
+describe('review UI', () => {
   it('reviews an unsupported line, saves corrected wording, previews, exports and explicitly freezes the submitted file', async () => {
     const { sqlite, user, applied } = await setup()
     await screen.findByRole('button', { name: 'Accept' })

@@ -53,7 +53,7 @@ async function finished(sqlite: ReturnType<typeof createDatabase>['sqlite']) {
   throw new Error('Verification did not finish')
 }
 
-describe('Phase 5 review and exports', () => {
+describe('review and exports', () => {
   it('persists decisions, rejects stale changes and uses frozen evidence after the master changes', async () => {
     const f = await reviewFixture(), initial = await f.load()
     expect(initial.review.lines[0].decision).toBe('pending')

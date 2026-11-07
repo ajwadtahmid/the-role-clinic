@@ -1,115 +1,136 @@
 # The Role Clinic
 
-A local-first workspace for saving jobs, tracking applications, and tailoring résumés from a grounded master résumé.
+A local-first job search workspace. Save a job, check it against your profile, tailor a
+résumé from a master résumé you control, export it, and keep a record of exactly what you
+sent. Everything runs on your own computer: no accounts, no hosted service, no shared data.
 
-The local build plan and other reference material live in the gitignored `extra/` folder. Capture, tracking, master résumé management, and the extraction/tailoring pipeline are implemented. The saved review workspace includes document preview and DOCX/PDF exports. Phase 6 adds a tracker table, follow-ups, submitted-version records, an answer library, and XLSX/CSV exports. Live-model quality evaluation remains deferred until feature work is complete.
+## Status
 
-The Linux x86_64 preview is a downloadable app that runs on each user's computer. Its local server will bind to `127.0.0.1` and open the user's existing browser. There are no hosted accounts or shared data. Job tracking will work without an AI provider; résumé tailoring will use either the user's Claude API key or an optional local Ollama installation.
+**Pre-release.** The current version is `0.1.0-preview.1`; the first public release is
+planned as `1.0.0`.
 
-## Layout
-
-| Path | Purpose |
+| Area | State |
 | --- | --- |
-| `apps/server/` | Local Node API, storage, capture, and exports |
-| `apps/web/` | Browser UI |
-| `packages/shared/` | Types and validation shared by server and UI |
-| `extra/` | Local build plan, references, and AI working files (gitignored) |
+| Job capture, Inbox, tracker, answer library | Working |
+| Master résumé, profile, tailoring pipeline, review workspace, DOCX/PDF export | Working |
+| Linux x86_64 package (bundled Node runtime, launcher, backup/restore) | Working preview |
+| Desktop app window (Tauri), macOS and Windows | Not started |
+| AI output quality | **Not evaluated.** The pipeline is tested with fake models only; no live Ollama or Claude run has been scored, and the Anthropic adapter has never been run with a real key |
+| Real-browser visual checks | Open; tests cover the server, storage and component behaviour, not rendered layouts |
 
-Phase 0 feasibility work is complete and documented in `extra/`. Model selection is configurable per AI task; evaluation has not established a best model for every task.
+Job tracking and application answers work with no AI provider at all. Résumé tailoring
+needs either your own Anthropic API key or a local Ollama installation.
 
-## Run locally
+## What it does
 
-Development requires Node and npm. Use Node **24.18.1** (pinned in `.node-version`)
-to build the Linux package. End users run its bundled runtime and do not install Node.
+1. **Capture** a job by pasting its description or fetching a public posting
+   (Greenhouse, Lever, Ashby, SmartRecruiters, Workday, JSON-LD pages, other readable
+   pages). LinkedIn, Indeed and Glassdoor are not fetched; paste those. The original page
+   is kept next to the cleaned text. Duplicates are caught by URL and by similar
+   company and title in the last 60 days.
+2. **Triage** in the Inbox. When a model is configured, requirements are extracted, each
+   tied to an exact span of the posting, and knockouts (years, work authorization,
+   education, location) are compared with your private profile and master résumé. They
+   are warnings with their basis shown, never blocks.
+3. **Tailor** from your master résumé: bullets are ranked, gaps reported, and a draft
+   written in which every line cites the source bullets it came from.
+4. **Review** each line (accept, reject, edit, copy), see an interactive preview and the
+   real PDF with a page meter, and export DOCX or PDF.
+5. **Track** the application, the exact file you sent, and any application questions you
+   answered, and reuse those answers later.
+
+## Privacy
+
+- The server listens on `127.0.0.1` only, rejects requests for any other host, and checks
+  the origin of every change.
+- Your profile (contact details, work authorization) and your application answers are used
+  in local checks and inserted into documents. They are never sent to a model.
+- With Claude, the relevant master-résumé evidence and job text are sent to Anthropic and
+  billed to your key. With Ollama, model processing stays on your computer.
+- Your API key is stored with owner-only file permissions, is never returned to the
+  browser, and is left out of full backups unless you ask for it.
+- Merely launching the app makes no model or API call.
+
+## Run from source
+
+Requires Node.js 22.12 or newer (the package build pins 24.18.1, see `.node-version`) and npm.
 
 ```sh
 npm install
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173`. The API listens on `127.0.0.1:3000`. Use
-`PORT`, `WEB_PORT`, or `ROLE_CLINIC_DATA_DIR` to change the development ports or
-data directory. The database, settings, and backups live in the current user's
-OS data folder. An Anthropic API key, if configured, is written with
-owner-only file permissions and never returned to the browser.
+Open `http://127.0.0.1:5173`; the API listens on `127.0.0.1:3000`. `PORT`, `WEB_PORT` and
+`ROLE_CLINIC_DATA_DIR` change the ports and the data folder (use a temporary folder for
+experiments). By default data lives in your OS's per-user data folder, apart from the app.
 
-The Inbox accepts pasted job descriptions or captures supported public job
-pages. Jobs can be tracked through application statuses, and per-job Q&A can be
-saved, searched, copied, and snapshotted when marked applied. The Settings screen
-configures providers and models independently for requirement extraction,
-eligibility analysis, evidence selection, résumé drafting, claim verification,
-and writing review. Local model calls use one serial queue. Provider checks do
-not send résumé content. The queue demo tests run events and SSE. Saved jobs can extract requirements and generate cited drafts after you configure a model and add master evidence.
+```sh
+npm run typecheck   # types
+npm test            # all tests, no network, no real models
+npm run build       # typecheck, build the guide and the UI
+npm start           # serve the built UI and API on one port, http://127.0.0.1:3000
+```
 
-Useful checks: `npm run typecheck`, `npm test`, and `npm run build`.
-To serve the built UI and API from one loopback port, run `npm run build` then
-`npm start` (defaults to `http://127.0.0.1:3000`).
+## AI providers and spending
+
+**Settings** chooses a provider and model separately for each task: requirement
+extraction, evidence selection (bullet scoring), résumé drafting, claim verification and
+writing review. Eligibility checks are local rules, not a model. A local Ollama model and
+Claude can be mixed. Local calls run one at a time, and the previous model is unloaded
+before a different one starts.
+
+- Model output is treated as untrusted: it is parsed and validated, and if it is unusable
+  the model gets one repair attempt that shows it what was wrong.
+- For Ollama, the context window is sized from each prompt (up to 32,768 tokens). A prompt
+  that would not fit is refused instead of being silently truncated.
+- Claude steps need you to enter current prices. Before queuing, the app shows an
+  estimate and refuses a run above the **per-run cap** (default $1) or one that would pass
+  the **monthly cap** (default $20, summed from recorded runs). Anthropic input is
+  token-counted before each paid call. Local models are never blocked by a cap.
+- Every prompt has a version label recorded with each run; a test fails if a prompt's
+  wording changes without a new version.
 
 ## Review and export
 
-Open a job with a generated draft to review it. Accept, reject, or edit individual
-lines; only accepted lines enter the document. Source citations, revisioned master
-evidence, factual warnings, and writing flags remain visible. Rejecting a line
-offers unused source bullets from the same role or project. On a focused card,
-use A/R/E/C to accept, reject, edit, or copy.
+Open a job with a draft to review it. On a focused card, **A / R / E / C** accept, reject,
+edit or copy. Only accepted lines enter the document; rejecting a line offers unused
+bullets from the same role or project.
 
-Edits save locally, run deterministic checks immediately, and queue semantic
-verification using the configured claim verifier and spending guard. The screen
-shows an estimated verification cost. A failed model call leaves edits intact.
-Unsupported model wording blocks export; accepted user wording keeps warnings
-visible and can be exported after your review. True new claims can be explicitly
-added to the master as new evidence bullets.
-
-The interactive preview follows accepted content; **View rendered PDF** shows the
-actual output. The page meter is measured from that PDF. DOCX uses embedded Roboto
-fonts and the same content/order; pagination can vary between document editors.
-Every export is parsed back to check the presence and order of all headings and
-lines. Successful exports are saved locally with their exact review snapshot.
-
-The profile/Q&A drawer supplies plain-text copy controls. Exporting does not mark
-an application submitted. In **Export history & mark as applied**, choose the file
-you actually sent and confirm it; the app freezes that version's text and the
-current answers. Existing submitted records remain unchanged by subsequent edits.
-
-See [Phase 5 validation](extra/phase5-validation.md) for verification and limits.
+- **Checks.** Edits are saved locally and checked immediately for changed numbers and
+  dates, tools or companies with no cited evidence, and project work presented as
+  employment. A semantic check by the configured verifier is queued and shows its
+  estimated cost. A failed model call leaves your edits intact.
+- **What blocks export.** Model-written text marked unsupported. Your own edits keep their
+  warnings visible and can be exported after your review; a genuinely new claim can be
+  added to the master as a new evidence bullet.
+- **Preview and files.** The interactive preview follows accepted content; **View rendered
+  PDF** shows the real output and drives the page meter. DOCX embeds Roboto; pagination
+  can differ between editors. Every export is read back to confirm every heading and line
+  is present and in order, then saved with its exact review snapshot.
+- **Mark as applied.** Choose the file you actually sent and confirm it. The app freezes
+  that file's text, the job description and the current answers. Later edits change the
+  working copy only.
 
 ## Tracker and answer library
 
-Use **Tracker** for the application table, company/status/date filters, follow-up
-dates, contacts, notes, and submitted versions. Due reminders appear in the
-**Needs follow-up** strip. Marking a follow-up done records today's last-contact
-date and clears the reminder. Quiet applications suggest `ghosted` after the
-configured interval; statuses change only after your confirmation. The funnel
-counts jobs that reached each stage or later across recorded status history.
-
-**Gap trends** uses only the latest tailored draft per tracked job, counting each
-job once per recorded evidence gap. It does not run a model or reassess skills.
-
-**Answers** searches working questions/answers by text or category, shows the
-source company, role, date and application outcome, and supports editing or
-adapting an answer into another saved job. The same editor appears beside job
-Q&A and in the review drawer. Categories are suggested by keyword rules and
-remain editable. Similar-answer suggestions prefer matching categories, then
-text matches. Reused answers preserve their source link and flag references to
-other captured companies; character limits remain enforced.
-
-From the tracker, **XLSX** exports Applications and Q&A worksheets; CSV links
-export each separately. Exports follow the current filters. The submitted-answer
-column uses the frozen answer for applied jobs, including an empty value for
-answers added only after submission. A separate column preserves the working
-answer. Very long fields that exceed XLSX's cell limit can be exported in CSV.
-
-Validation notes remain local in [extra/phase6-validation.md](extra/phase6-validation.md).
+- **Tracker:** filters by company, status and date; follow-up dates, contacts and notes;
+  **Needs follow-up** reminders (one click records today as the last contact); quiet
+  applications suggest `ghosted` after a configurable number of days and change only when
+  you confirm; a funnel across recorded status history; and a view of the exact version
+  sent. Spreadsheet export: XLSX (Applications and Q&A sheets) or separate CSV files,
+  following the current filters.
+- **Gap trends:** skills that keep showing up as evidence gaps, from the latest draft of
+  each tracked job. It runs no model.
+- **Answers:** application questions and answers across all jobs, searchable by text or
+  category, with similar past answers and their outcomes, explicit reuse links, a warning
+  when a reused answer names a different company, and enforced character limits.
 
 ## Linux x86_64 package
 
-Phase 7 provides a self-contained Linux preview with a bundled Node runtime,
-production dependencies, an executable launcher, first-run introduction, local
-user guide, optional application-menu shortcut, and full-data backup/restore.
-The packaging layout separates platform launchers/runtime from shared app code;
-macOS, Windows, ARM and musl builds remain future work.
-
-Build with Node 24.18.1, npm, `tar` and `readelf` available on Linux x86_64:
+A self-contained preview: bundled Node runtime and production dependencies, an executable
+launcher, a first-run introduction, a local user guide, an optional application-menu
+shortcut, and full-data backup and restore. macOS, Windows, ARM and musl are not
+included.
 
 ```sh
 npm ci --ignore-scripts
@@ -119,33 +140,43 @@ npm run package:linux
 npm run test:package -- dist/the-role-clinic-0.1.0-preview.1-linux-x64.tar.gz
 ```
 
-The archive, checksum and extracted package appear in ignored `dist/`. Packaging
-copies only the locked production dependency closure, compiled server/shared code,
-built UI, runtime and guide. Personal data, `extra/`, development dependencies and
-source tests are excluded. The manifest inventories bundled files, dependency
-lock hash and ELF runtime requirements; third-party licenses remain in the package.
+Needs Node 24.18.1, `tar` and `readelf` on Linux x86_64. The archive and its checksum
+appear in the ignored `dist/`. Only the locked production dependencies, compiled code, the
+built UI, the runtime and the guide are packaged; the manifest lists every file with its
+checksum.
 
-Extract the archive, then run `./role-clinic`. It reopens the existing instance or
-starts a loopback server on an available port. `./role-clinic stop` stops it;
-closing the browser tab leaves it running. Data stays in the per-user data folder
-across package replacement. Settings shows the folder, version, backup downloads
-and a confirmed stop control. No model or API call occurs merely by launching.
+Extract the archive and run `./role-clinic`. It reopens a running instance or starts a
+loopback server on a free port and opens your browser. `./role-clinic stop` stops it;
+closing the tab leaves it running. Your data stays in the per-user data folder, so
+replacing the app folder keeps it.
 
-**Compatibility:** Linux x86_64, glibc **2.34+**, GLIBCXX **3.4.29+**. The package
-was smoke-tested on Fedora 44 and in a clean Ubuntu 22.04.5 LTS container with
-networking disabled, no system Node/npm, and no development toolchain. Desktop
-browser visual checks remain open; these tests cover the actual server and files.
+**Compatibility:** Linux x86_64 with glibc 2.34+ and GLIBCXX 3.4.29+. When the preview was
+built it was smoke-tested on Fedora 44 and in a clean Ubuntu 22.04 container with no
+network, no system Node and no developer tools.
 
-Before migration, the server saves a database snapshot. It also creates startup
-and daily snapshots, retains 14 automatic backups, and refuses newer database
-schemas. Full backups include the database, recorded artifacts, settings and
-first-run state; the Anthropic API key is left out unless you add
-`--include-api-key`. Full restore validates paths, checksums, settings, SQLite
-integrity and schema before replacing data, rebases artifact paths, and keeps the
-prior folder for recovery. Run full backup/restore with the app stopped.
+**Backups.** The server saves a database snapshot before any migration, at startup and
+daily (14 automatic snapshots are kept), and refuses a database from a newer version.
+`./role-clinic backup /path/data.tar.gz` makes a full backup (database, exported files,
+attachments, settings, first-run state) with the app stopped; the Anthropic key is left
+out unless you add `--include-api-key`. `./role-clinic restore` validates paths,
+checksums, settings and database integrity before replacing anything, and keeps the
+previous folder for recovery. See [the user guide](packaging/USER-GUIDE.md) for launch,
+update, backup, restore and removal.
 
-See [the Linux user guide](packaging/USER-GUIDE.md) for launch, update, backup,
-restore and removal commands. CI describes the same clean Ubuntu smoke test;
-it builds preview artifacts without publishing a release. Local validation notes
-remain in [extra/phase7-validation.md](extra/phase7-validation.md). AI quality
-qualification remains deferred before public release.
+## Layout
+
+| Path | Purpose |
+| --- | --- |
+| `apps/server/` | Local Node API (Hono), SQLite storage, capture, pipeline, exports |
+| `apps/web/` | Browser UI (Vite and React) |
+| `packages/shared/` | Schemas and types shared by server and UI |
+| `packaging/`, `scripts/` | Linux launcher, user guide, package build and smoke test |
+
+## Roadmap
+
+1. **Tauri on Linux x86_64:** run the existing UI and server in a desktop window; check
+   lifecycle, PDF preview, import and export, clipboard, and data compatibility.
+2. **Tauri on Linux, macOS and Windows:** installers, signing, updates, recovery, and
+   clean-machine checks on all three.
+3. **AI quality evaluation and release:** score real models and per-task defaults in the
+   finished app, then the platform release checks, ending in version `1.0.0`.

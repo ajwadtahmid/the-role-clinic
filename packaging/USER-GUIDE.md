@@ -127,5 +127,5 @@ force an older app to write a newer database or overwrite the data folder manual
   extracted package. Local data remains. To remove data too, first make any desired
   full backup and then manually delete the exact data folder shown in Settings.
 
-This is a Linux preview. The validation record under the project's ignored `extra/`
-folder distinguishes same-host checks from any independently tested distribution.
+This is a Linux x86_64 preview. It was smoke-tested on Fedora 44 and in a clean
+Ubuntu 22.04 container; other distributions have not been tested.

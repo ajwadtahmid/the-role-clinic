@@ -20,7 +20,7 @@ async function setup() {
   vi.stubGlobal('fetch', (input: string, init: RequestInit = {}) => app.request(`http://127.0.0.1:3000${input}`, { ...init, headers: { host: '127.0.0.1:3000', origin: 'http://127.0.0.1:3000', ...init.headers } }))
   return { sqlite, shutdown, user: userEvent.setup() }
 }
-describe('Phase 7 first run and maintenance UI', () => {
+describe('first run and maintenance UI', () => {
   it('introduces tracking without a model, persists first-run completion, and preserves access on reopen', async () => {
     const { user } = await setup()
     const view = render(<FirstRun><p>Workspace ready</p></FirstRun>)

@@ -28,7 +28,7 @@ afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })))
 })
 
-describe('Phase 1 local foundation', () => {
+describe('local server foundation', () => {
   it('creates the SQLite schema and reports health', async () => {
     const { app, sqlite } = await fixture()
     const response = await request(app, '/api/health')
@@ -140,7 +140,7 @@ describe('Phase 1 local foundation', () => {
   })
 })
 
-describe('Phase 2 capture and tracker foundation', () => {
+describe('job capture and tracker', () => {
   it('parses deterministic fixtures for every ATS route and generic JSON-LD', async () => {
     const cases: Array<{ input: string; body: unknown; parser: string }> = [
       { input: 'https://job-boards.greenhouse.io/acme/jobs/123', body: { title: 'Greenhouse Engineer', content: '<p>Build and maintain reliable services with a collaborative engineering group and modern cloud tools.</p>', location: { name: 'Remote' }, absolute_url: 'https://example.test/apply' }, parser: 'greenhouse-api' },
@@ -187,11 +187,11 @@ describe('Phase 2 capture and tracker foundation', () => {
     expect(requested).toEqual(['notgreenhouse.io'])
   })
 
-  it('migrates a Phase 1 database to Phase 2 without losing saved jobs', async () => {
+  it('migrates the original schema without losing saved jobs', async () => {
     const dataDirectory = await mkdtemp(join(tmpdir(), 'role-clinic-migration-'))
     temporaryDirectories.push(dataDirectory)
     const first = createDatabase(dataDirectory)
-    first.sqlite.prepare('INSERT INTO jobs(id,company,title,captured_at,source_url,raw_snapshot) VALUES(?,?,?,?,?,?)').run('legacy-job', 'Acme', 'Engineer', new Date().toISOString(), null, 'Existing Phase 1 job snapshot')
+    first.sqlite.prepare('INSERT INTO jobs(id,company,title,captured_at,source_url,raw_snapshot) VALUES(?,?,?,?,?,?)').run('legacy-job', 'Acme', 'Engineer', new Date().toISOString(), null, 'Existing job snapshot')
     first.sqlite.close()
     const legacy = new Database(join(dataDirectory, 'clinic.sqlite'))
     legacy.exec(`ALTER TABLE job_answers DROP COLUMN submitted_question; ALTER TABLE job_answers DROP COLUMN submitted_category; DROP TABLE tracker_preferences; DROP INDEX job_answers_job_idx; ALTER TABLE applications DROP COLUMN follow_up_date; ALTER TABLE applications DROP COLUMN last_contact_at; ALTER TABLE applications DROP COLUMN contacts; ALTER TABLE applications DROP COLUMN submitted_job_text; DROP TABLE review_drafts; ALTER TABLE artifacts DROP COLUMN document; ALTER TABLE applications DROP COLUMN submitted_artifact_id; DROP INDEX jobs_canonical_url_idx; DROP INDEX applications_status_idx;
@@ -208,7 +208,7 @@ describe('Phase 2 capture and tracker foundation', () => {
     const migrated = createDatabase(dataDirectory)
     expect(migrated.sqlite.pragma('user_version', { simple: true })).toBe(7)
     expect((migrated.sqlite.prepare('SELECT COUNT(*) AS count FROM synonyms').get() as { count: number }).count).toBe(3)
-    expect(migrated.sqlite.prepare("SELECT company,raw_snapshot,text FROM jobs WHERE id='legacy-job'").get()).toEqual({ company: 'Acme', raw_snapshot: 'Existing Phase 1 job snapshot', text: 'Existing Phase 1 job snapshot' })
+    expect(migrated.sqlite.prepare("SELECT company,raw_snapshot,text FROM jobs WHERE id='legacy-job'").get()).toEqual({ company: 'Acme', raw_snapshot: 'Existing job snapshot', text: 'Existing job snapshot' })
     expect(migrated.sqlite.prepare('PRAGMA table_info(jobs)').all().map((column) => (column as { name: string }).name)).toContain('canonical_url')
     migrated.sqlite.close()
   })

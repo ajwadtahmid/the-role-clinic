@@ -50,7 +50,7 @@ async function setup(modelRouter?: Pick<ModelRouter, 'complete'>) {
   return { user: userEvent.setup(), sqlite }
 }
 
-describe('Phase 2 workspace flow', () => {
+describe('job workspace flow', () => {
   it('saves a pasted job, records Q&A and application status, and finds the answer again', async () => {
     const { user, sqlite } = await setup()
     await user.type(screen.getByRole('textbox', { name: 'Company' }), 'Acme')
@@ -106,7 +106,7 @@ describe('Phase 2 workspace flow', () => {
   })
 })
 
-describe('Phase 4 job analysis view', () => {
+describe('job analysis view', () => {
   it('shows exact JD highlights, knockout basis, gaps, and a tailoring estimate', async () => {
     const modelRouter = { async complete(task: TaskName, _request: ModelRequest) {
       if (task !== 'requirementExtraction') throw new Error('Only extraction should run in this test.')

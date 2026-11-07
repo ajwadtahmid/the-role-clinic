@@ -40,7 +40,7 @@ async function setup() {
   await send(`/api/jobs/${acme}/tracker`, { followUpDate: '2026-01-01', lastContactAt: null, contacts: '', notes: '' }, 'PUT')
   return { sqlite, acme, globex, sourceAnswerId: answer.id as string, user: userEvent.setup() }
 }
-describe('Phase 6 browser flows', () => {
+describe('tracker browser flows', () => {
   it('shows a tracker table, records a follow-up, opens the exact submitted record and filters exports', async () => {
     const { sqlite, acme, user } = await setup()
     render(<TrackerPage />)

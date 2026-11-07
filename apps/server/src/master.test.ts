@@ -19,7 +19,7 @@ async function setup() {
 }
 afterEach(async () => { await Promise.all(dirs.splice(0).map((d) => rm(d, { recursive: true, force: true }))) })
 
-describe('Phase 3 master and profile', () => {
+describe('master and profile', () => {
   it('drafts work and projects separately, preserving uncertain text for review', () => {
     const result = draftMasterFromText(`Jane Example\nhello@example.test\nExperience\nAcme Corp San Jose, CA\nSoftware Engineer January 2024 – Present\n• Built a service with 15% lower latency\nacross two regions\nProjects\nSearch Tool | Python March 2023\n• Indexed 10,000 pages\nTechnical Skills\nLanguages: Python, TypeScript\nHobbies & Interests: Hiking`, 'resume.pdf')
     expect(result.draft.roles).toHaveLength(1)

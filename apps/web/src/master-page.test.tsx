@@ -34,7 +34,7 @@ async function setup() {
   return { sqlite, user: userEvent.setup() }
 }
 
-describe('Phase 3 editor flow', () => {
+describe('master editor flow', () => {
   it('saves a reviewed role and keeps profile contact separate from master evidence', async () => {
     const { sqlite, user } = await setup()
     const rendered = render(<MasterPage />)
