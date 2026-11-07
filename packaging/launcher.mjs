@@ -1,7 +1,7 @@
 import { spawn, execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, resolve, relative, isAbsolute, sep } from 'node:path'
 import { mkdir, open, readFile, rm, writeFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 
@@ -11,6 +11,7 @@ const { getDataDirectory } = await import(new URL('./app/apps/server/src/data-di
 const { acquireProcessLock, processAlive, lockOwnerAlive } = await import(new URL('./app/apps/server/src/process-lock.js', import.meta.url))
 const data = resolve(getDataDirectory()), command = process.argv[2] ?? 'start', args = process.argv.slice(3)
 const manifest = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8'))
+const node = join(root, 'runtime', process.platform === 'win32' ? 'node.exe' : 'node')
 const exec = promisify(execFile)
 const usage = `The Role Clinic ${manifest.version}
   ./role-clinic                         Start or reopen the browser workspace
@@ -52,7 +53,10 @@ async function requireOffline() {
 }
 async function browser(url) {
   if (args.includes('--no-browser') || process.env.ROLE_CLINIC_NO_BROWSER === '1') return
-  try { await exec('xdg-open', [url], { timeout: 10000, env: { ...process.env } }) }
+  try {
+    if (process.platform === 'win32') await exec(join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'rundll32.exe'), ['url.dll,FileProtocolHandler', url], { timeout: 10000, windowsHide: true })
+    else await exec(process.platform === 'darwin' ? '/usr/bin/open' : 'xdg-open', [url], { timeout: 10000, env: { ...process.env } })
+  }
   catch { console.log(`Open this URL in your browser: ${url}`) }
 }
 async function start() {
@@ -74,7 +78,7 @@ async function start() {
     const env = { ...process.env, ROLE_CLINIC_DATA_DIR: data, ROLE_CLINIC_MANAGED: '1', ROLE_CLINIC_RELEASE_PATH: root, NODE_ENV: 'production', PORT: process.env.PORT ?? '0' }
     // Developer injection flags have no place in a downloaded app's runtime.
     delete env.NODE_OPTIONS; delete env.NODE_PATH
-    child = spawn(join(root, 'runtime/node'), [join(appRoot, 'apps/server/src/start-production.js')], { cwd: root, env, detached: true, stdio: ['ignore', log.fd, log.fd, 'ipc'] })
+    child = spawn(node, [join(appRoot, 'apps/server/src/start-production.js')], { cwd: root, env, detached: true, windowsHide: true, stdio: ['ignore', log.fd, log.fd, 'ipc'] })
     const ready = await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error(`Startup timed out. See ${logPath}`)), 20000)
       child.once('error', (error) => { clearTimeout(timer); reject(error) })
@@ -90,6 +94,7 @@ async function start() {
 }
 function desktopQuote(text) { return `"${text.replaceAll('%', '%%').replace(/[\\"`$]/g, '\\$&')}"` }
 async function desktop(install) {
+  if (process.platform !== 'linux') throw new Error('Use the installed desktop app shortcut on this platform. install-desktop is only for the Linux browser archive.')
   if (/[\r\n\0]/.test(root)) throw new Error('Move the app to a path without line breaks before creating a desktop shortcut.')
   const directory = join(process.env.XDG_DATA_HOME || join(process.env.HOME, '.local/share'), 'applications'), file = join(directory, 'the-role-clinic.desktop')
   if (!install) { await rm(file, { force: true }); console.log('Application-menu shortcut removed. Your app files and data are unchanged.'); return }
@@ -98,16 +103,18 @@ async function desktop(install) {
   console.log(`Shortcut installed: ${file}\nKeep the extracted app at ${root}, or reinstall the shortcut after moving it.`)
 }
 try {
-  if (process.platform !== 'linux' || process.arch !== 'x64' || !process.report.getReport().header.glibcVersionRuntime) throw new Error('This package targets Linux x86_64 with glibc. macOS, Windows, ARM and musl packages are not included.')
+  const target = process.platform === 'linux' ? 'linux-x64-glibc' : `${process.platform}-${process.arch}`
+  if (manifest.target !== target || (process.platform === 'linux' && (process.arch !== 'x64' || !process.report.getReport().header.glibcVersionRuntime))) throw new Error(`This package targets ${manifest.target}; the current runtime is ${process.platform}-${process.arch}. Download the matching package.`)
   if (['help', '--help', '-h'].includes(command)) { console.log(usage); process.exit(0) }
   if (command === 'verify') {
     for (const file of manifest.files) {
       const path = resolve(root, file.path)
-      if (!path.startsWith(`${root}/`)) throw new Error('Invalid package manifest path.')
+      const child = relative(root, path)
+      if (!child || child === '..' || child.startsWith(`..${sep}`) || isAbsolute(child)) throw new Error('Invalid package manifest path.')
       const actual = createHash('sha256').update(await readFile(path)).digest('hex')
       if (actual !== file.sha256) throw new Error(`Package file checksum mismatch: ${file.path}`)
     }
-    console.log(`Package verified: ${manifest.files.length} files; Linux x86_64; Node ${manifest.nodeVersion}.`)
+    console.log(`Package verified: ${manifest.files.length} files; ${manifest.target}; Node ${manifest.nodeVersion}.`)
   } else if (command === 'install-desktop' || command === 'uninstall-desktop') await desktop(command === 'install-desktop')
   else {
     await mkdir(dirname(data), { recursive: true, mode: 0o700 }); await mkdir(data, { recursive: true, mode: 0o700 })

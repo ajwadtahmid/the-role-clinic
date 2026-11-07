@@ -1,23 +1,31 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>The Role Clinic — Linux guide</title><style>body{font-family:system-ui,sans-serif;max-width:820px;margin:40px auto;padding:0 22px;color:#242920;background:#fffefa;line-height:1.7}p{white-space:pre-wrap;overflow-wrap:anywhere}h1,h2{color:#315b45}h2{margin-top:2em}code{background:#edf0e7;padding:2px 4px;border-radius:3px;font-size:.9em}</style><main><h1>The Role Clinic — Linux preview</h1><p>A local job tracker and résumé workspace. This preview targets <strong>Linux x86_64
-with glibc 2.34 or newer</strong> and the C++ runtime listed in <code>manifest.json</code>. It does
-not target Alpine/musl, ARM, macOS or Windows. Other platform packages are planned.
-Smoke-tested on Fedora 44 and in a clean Ubuntu 22.04.5 LTS container. Full
-desktop/browser visual qualification remains open. AI quality fixes and release
-qualification remain pending; review all generated résumé claims.</p><h2 id="desktop">Desktop preview</h2><p>The 0.5.0 Tauri preview opens the workspace in its own window. On Ubuntu, open the
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>The Role Clinic — User guide</title><style>body{font-family:system-ui,sans-serif;max-width:820px;margin:40px auto;padding:0 22px;color:#242920;background:#fffefa;line-height:1.7}p{white-space:pre-wrap;overflow-wrap:anywhere}h1,h2{color:#315b45}h2{margin-top:2em}code{background:#edf0e7;padding:2px 4px;border-radius:3px;font-size:.9em}</style><main><h1>The Role Clinic — preview</h1><p>A local job tracker and résumé workspace. Linux x86_64 has automated package and
+native webview checks on Ubuntu 22.04/Fedora 44. macOS Apple Silicon and Windows x64
+packages are being implemented; native and clean-machine qualification remain open.
+AI quality fixes and public-release qualification remain pending; review generated claims.</p><h2 id="desktop">Desktop preview</h2><p>The 0.5.0 Tauri preview opens the workspace in its own window. On Ubuntu, open the
 <code>.deb</code> with the software installer; on Fedora, use the <code>.rpm</code>. Launch <strong>The Role Clinic</strong>
 from your application menu. The installer resolves GTK3, WebKitGTK 4.1 and <code>xdg-utils</code>.
 An <code>.AppImage</code> is also available: allow execution in file Properties → Permissions,
 then double-click it. It needs FUSE 2 compatibility support and a desktop session.
 Without FUSE, run the file with <code>--appimage-extract</code>, then open <code>squashfs-root/AppRun</code>.
-Keep that extracted folder together. macOS/Windows packages are planned separately.</p><p>Closing the desktop window or pressing <strong>Ctrl+Q</strong> stops its local backend. An active
+Keep that extracted folder together. macOS builds use a DMG: drag the app into
+Applications, then open it there. Windows builds use a per-user setup EXE and a Start
+menu shortcut, with WebView2 installation handled by the installer. These new platforms
+are not yet qualified. The Mac runtime requires macOS 13.5+ on Apple Silicon;
+Windows qualification targets Windows 11 x64. Intel Mac and Windows ARM are outside
+this preview. Public Mac downloads still need Developer ID signing/notarization;
+Windows previews are unsigned. Follow OS security checks; do not disable protection.</p><p>Closing the desktop window or pressing <strong>Ctrl+Q</strong> (<strong>Command+Q</strong> on Mac) stops its local backend. An active
 run prompts before interruption; choose <strong>Keep working</strong> to continue it. A second
 launch focuses the existing window. Stop an existing browser preview before opening
 the desktop version with the same data folder.</p><p>Exports open a native Save dialog; canceling it leaves the recorded export intact.
 PDF proof renders inside the app. Posting and guide links open in your default browser.
-Data and backups use the same locations and formats as the browser preview.</p><p>For full-backup/restore commands below, the installed desktop maintenance launcher is
-<code>/usr/lib/The Role Clinic/backend/role-clinic</code>. For an extracted AppImage it is
-<code>squashfs-root/usr/lib/The Role Clinic/backend/role-clinic</code>. Quote these paths with spaces
-and close the app before running maintenance. Normal app use needs no terminal.</p><h2 id="browser">Browser fallback: download and launch</h2><p>1. Check the archive with <code>sha256sum -c &lt;archive&gt;.sha256</code> in its download folder.
+Data and backups use the same locations and formats as the browser preview.</p><p>For full-backup/restore commands below, the Linux desktop maintenance launcher is
+<code>/usr/libexec/the-role-clinic/backend/role-clinic</code>. For an extracted AppImage it is
+<code>squashfs-root/usr/libexec/the-role-clinic/backend/role-clinic</code>. Quote these paths with spaces
+and close the app before running maintenance. On Mac the launcher is inside
+<code>The Role Clinic.app/Contents/Resources/backend/role-clinic</code>; on Windows it is
+<code>backend\role-clinic.cmd</code> inside the installation folder. Use those launchers for
+all maintenance commands below. In PowerShell, prefix a quoted launcher path with <code>&amp;</code>.
+Normal desktop use needs no terminal.</p><h2 id="browser">Browser fallback: download and launch</h2><p>1. Check the archive with <code>sha256sum -c &lt;archive&gt;.sha256</code> in its download folder.
 2. Extract the <code>.tar.gz</code> into a folder you own. Keep the extracted files together.
 3. Open a terminal in that folder and run <code>./role-clinic</code>.
 4. The launcher starts a loopback server and opens your default browser. If opening
@@ -51,12 +59,14 @@ Quit app</strong>. Reopen it from the application menu or AppImage. The followin
 apply to the browser fallback and the desktop maintenance launcher.</p><p>Closing the browser tab leaves the local server running. Use <strong>Settings → Stop
 local app</strong>, or run <code>./role-clinic stop</code>. Active model runs block an ordinary stop;
 wait for completion, or explicitly use <code>./role-clinic stop --force</code>. An interrupted
-run is recorded as failed on restart and can be retried where supported.</p><p><code>./role-clinic status</code> reports the running version and port. Reopen with the launcher.</p><h2 id="data">Data location</h2><p>By default, data is in <code>$XDG_DATA_HOME/the-role-clinic</code> or
-<code>~/.local/share/the-role-clinic</code>. <code>ROLE_CLINIC_DATA_DIR=/absolute/path</code> overrides
+run is recorded as failed on restart and can be retried where supported.</p><p><code>./role-clinic status</code> reports the running version and port. Reopen with the launcher.</p><h2 id="data">Data location</h2><p>On Linux, data is in <code>$XDG_DATA_HOME/the-role-clinic</code> or
+<code>~/.local/share/the-role-clinic</code>. On Mac it is in
+<code>~/Library/Application Support/The Role Clinic</code>; on Windows it is in
+<code>%APPDATA%\The Role Clinic</code>. <code>ROLE_CLINIC_DATA_DIR=/absolute/path</code> overrides
 it. Use the same override for every launch, backup and restore command. Settings
 shows the actual folder. Data is outside the replaceable package.</p><p><code>clinic.sqlite</code> stores jobs, answers and résumé records; <code>artifacts/</code> holds exported
-and attached files; <code>settings.json</code> may contain your API key with owner-only
-permissions; <code>backups/</code> holds database snapshots. <code>app.log</code> records server errors.
+and attached files; <code>settings.json</code> may contain your API key with owner-only POSIX
+permissions or a current-account Windows DACL; <code>backups/</code> holds database snapshots. <code>app.log</code> records server errors.
 Do not sync or copy a live SQLite/WAL file as your backup.</p><h2 id="backups">Backups</h2><p><strong>Full backup (recommended for recovery and moving computers):</strong> stop the app first,
 then run <code>./role-clinic backup /absolute/path/role-clinic-data.tar.gz</code>. The archive
 includes a consistent database snapshot, recorded artifacts, settings and first-run
@@ -78,7 +88,11 @@ artifact files and settings. Full restore uses the full backup archive format.</
    remove the old recovery folder when satisfied.</p><p>Archives with invalid paths, links, duplicate entries, missing files, checksum
 mismatches, invalid settings or an unsupported database version are rejected.
 A checksum protects consistency; it does not prove who created an archive. Restore
-only your own or otherwise trusted backups. Keep recovery folders private too.</p><h2 id="update">Update</h2><p>Stop the running app, make a full backup, extract the new package into a <strong>new</strong>
+only your own or otherwise trusted backups. Keep recovery folders private too.</p><h2 id="update">Update</h2><p>Desktop updates are manual: quit and back up first, replace the AppImage/Mac app or
+run the new DEB/RPM/Windows installer, then reopen and check your saved workspace.
+Uninstalling should leave your data folder in place; native installation, upgrade and
+uninstall checks remain required on each advertised platform.
+There is no automatic updater.</p><p>For the Linux browser archive, stop the running app, make a full backup, extract the new package into a <strong>new</strong>
 folder, and launch its <code>role-clinic</code>. Keep the old package until the update is
 checked. The data directory stays the same. Before a schema upgrade, the app makes
 a pre-migration database snapshot; it refuses to open a database from a newer app.
@@ -94,6 +108,7 @@ force an older app to write a newer database or overwrite the data folder manual
   separately. The launcher never downloads models or makes paid inference calls.
 - To remove the app: stop it, remove the optional desktop shortcut, then delete the
   extracted package. Local data remains. To remove data too, first make any desired
-  full backup and then manually delete the exact data folder shown in Settings.</p><p>This is a Linux x86_64 preview. It was smoke-tested on Fedora 44 and in a clean
-Ubuntu 22.04 container; other distributions have not been tested.
+  full backup and then manually delete the exact data folder shown in Settings.</p><p>Linux x86_64 was smoke-tested on Fedora 44 and in an Ubuntu 22.04 container.
+macOS/Windows builds and native CI are configured but have not been validated here.
+Native rendering, dialogs, updates, removal and clean-install checks remain open.
 </p></main></html>

@@ -83,7 +83,7 @@ describe('local server foundation', () => {
     const stored = await readFile(join(dataDirectory, 'settings.json'), 'utf8')
     expect(stored).toContain('sk-ant-test-secret')
     const permissions = (await stat(join(dataDirectory, 'settings.json'))).mode & 0o777
-    expect(permissions).toBe(0o600)
+    if (process.platform !== 'win32') expect(permissions).toBe(0o600)
     sqlite.close()
   })
 

@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { mkdtemp, readFile, readdir, rm, writeFile, mkdir, symlink, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, win32 } from 'node:path'
+import { createHash } from 'node:crypto'
 import { randomUUID } from 'node:crypto'
 import Database from 'better-sqlite3'
 import { c, x } from 'tar'
@@ -30,7 +31,7 @@ async function fixture() {
 describe('full-data recovery', () => {
   it('round-trips records, settings, welcome and exact artifacts into a different data directory', async () => {
     const f = await fixture(); expect(await createFullBackup(f.data, f.archive, { includeApiKey: true })).toMatchObject({ apiKeyIncluded: true })
-    expect((await stat(f.archive)).mode & 0o777).toBe(0o600)
+    if (process.platform !== 'win32') expect((await stat(f.archive)).mode & 0o777).toBe(0o600)
     expect(await inspectFullBackup(f.archive, join(f.root, 'relocated'))).toMatchObject({ files: 4, schemaVersion: 7 })
     const moved = join(f.root, 'relocated'); await mkdir(moved); await writeFile(join(moved, 'old-marker'), 'keep this')
     const result = await restoreFullBackup(f.archive, moved)
@@ -41,9 +42,25 @@ describe('full-data recovery', () => {
     expect(database.pragma('integrity_check', { simple: true })).toBe('ok'); database.close()
     expect(await readFile(join(moved, 'artifacts', f.filename), 'utf8')).toBe('%PDF-synthetic-preserved-bytes')
     expect(JSON.parse(await readFile(join(moved, 'settings.json'), 'utf8')).anthropicApiKey).toBe('FAKE_LOCAL_KEY')
-    expect((await stat(join(moved, 'settings.json'))).mode & 0o777).toBe(0o600)
+    if (process.platform !== 'win32') expect((await stat(join(moved, 'settings.json'))).mode & 0o777).toBe(0o600)
     expect(JSON.parse(await readFile(join(moved, 'welcome.json'), 'utf8')).acknowledgedAt).toBe('2026-11-06')
     await expect(createFullBackup(f.data, f.archive)).rejects.toMatchObject({ code: 'EEXIST' })
+  })
+  it.each(['Windows', 'POSIX'])('relocates artifacts from %s paths into the current OS data folder', async (sourceOS) => {
+    const f = await fixture(); await createFullBackup(f.data, f.archive)
+    const stage = join(f.root, 'windows-backup'); await mkdir(stage); await x({ file: f.archive, cwd: stage })
+    const db = new Database(join(stage, 'clinic.sqlite'))
+    const sourcePath = sourceOS === 'Windows' ? win32.join('C:\\Users\\Example ü\\AppData\\Roaming\\The Role Clinic\\artifacts', f.filename) : `/Users/example/Library/Application Support/The Role Clinic/artifacts/${f.filename}`
+    db.prepare('UPDATE artifacts SET file_path=?').run(sourcePath); db.close()
+    const manifest = JSON.parse(await readFile(join(stage, 'backup.json'), 'utf8'))
+    const bytes = await readFile(join(stage, 'clinic.sqlite'))
+    Object.assign(manifest.files.find((file: { path: string }) => file.path === 'clinic.sqlite'), { sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.length })
+    await writeFile(join(stage, 'backup.json'), JSON.stringify(manifest))
+    const archive = join(f.root, 'windows.tar.gz'); await c({ cwd: stage, file: archive, gzip: true }, ['backup.json', ...manifest.files.map((file: { path: string }) => file.path)])
+    const target = join(f.root, 'new account ü'); await restoreFullBackup(archive, target)
+    const restored = new Database(join(target, 'clinic.sqlite'))
+    try { expect(restored.prepare('SELECT file_path FROM artifacts').get()).toEqual({ file_path: join(target, 'artifacts', f.filename) }) } finally { restored.close() }
+    expect(await readFile(join(target, 'artifacts', f.filename), 'utf8')).toBe('%PDF-synthetic-preserved-bytes')
   })
   it('leaves the API key out of a full backup unless asked, keeping every other setting', async () => {
     const f = await fixture()
@@ -75,7 +92,7 @@ describe('full-data recovery', () => {
     expect((await readdir(f.root)).some((name) => name.startsWith('.clinic-restore-'))).toBe(false)
   })
   it('rejects links and missing artifact bytes instead of making incomplete backups', async () => {
-    const f = await fixture(), stage = join(f.root, 'links'); await mkdir(stage); await symlink('/etc/passwd', join(stage, 'clinic.sqlite'))
+    const f = await fixture(), stage = join(f.root, 'links'); await mkdir(stage); await symlink(f.data, join(stage, 'clinic.sqlite'), process.platform === 'win32' ? 'junction' : 'dir')
     const bad = join(f.root, 'links.tar.gz'); await c({ cwd: stage, file: bad, gzip: true }, ['clinic.sqlite'])
     await expect(inspectFullBackup(bad, f.data)).rejects.toThrow('unsafe')
     await rm(join(f.data, 'artifacts', f.filename))

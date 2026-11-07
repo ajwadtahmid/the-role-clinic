@@ -15,7 +15,7 @@ planned as `1.0.0`.
 | Master résumé, profile, tailoring pipeline, review workspace, DOCX/PDF export | Working |
 | Linux x86_64 package (bundled Node runtime, launcher, backup/restore) | Working preview |
 | Linux Tauri desktop window, native downloads/clipboard, PDF proof | Implemented; owner acceptance pending |
-| macOS and Windows desktop packages | Phase 9, pending Linux acceptance |
+| macOS Apple Silicon and Windows x64 desktop packages | Native packaging and CI implemented; native builds/acceptance pending |
 | AI output quality | Initial local-model validation recorded; quality fixes and release qualification deferred to Phase 10 |
 | Desktop workflow checks | Automated Linux webview checks; owner visual/scaling review remains open |
 
@@ -51,9 +51,15 @@ needs either your own Anthropic API key or a local Ollama installation.
   in local checks and inserted into documents. They are never sent to a model.
 - With Claude, the relevant master-résumé evidence and job text are sent to Anthropic and
   billed to your key. With Ollama, model processing stays on your computer.
-- Your API key is stored with owner-only file permissions, is never returned to the
+- Your API key uses owner-only POSIX permissions or a current-account Windows DACL, is never returned to the
   browser, and is left out of full backups unless you ask for it.
 - Merely launching the app makes no model or API call.
+
+Desktop builds target Linux x86_64 (AppImage/DEB/RPM), macOS Apple Silicon (DMG/app)
+and Windows x64 (per-user setup EXE with WebView2 provisioning). macOS and Windows
+still need native CI results and clean-machine workflow checks. See
+[installation and build guidance](packaging/DESKTOP.md) and the
+[acceptance checklist](packaging/DESKTOP-ACCEPTANCE.md). No public release or automatic updater is configured.
 
 ## Run from source
 
@@ -130,9 +136,9 @@ bullets from the same role or project.
   category, with similar past answers and their outcomes, explicit reuse links, a warning
   when a reused answer names a different company, and enforced character limits.
 
-## Linux desktop preview
+## Desktop preview
 
-The Tauri preview wraps the existing UI and bundled Node backend. `.deb` and `.rpm`
+The Tauri preview wraps the existing UI and bundled Node backend. Linux `.deb` and `.rpm`
 packages register an application-menu entry; an `.AppImage` provides a portable
 alternative. Ordinary users do not need Node, Rust, npm or a developer setup.
 Closing the desktop window stops its backend, active runs require confirmation, exports
@@ -189,7 +195,7 @@ update, backup, restore and removal.
 | `apps/web/` | Browser UI (Vite and React) |
 | `packages/shared/` | Schemas and types shared by server and UI |
 | `packaging/`, `scripts/` | Linux launcher, user guide, package build and smoke test |
-| `src-tauri/` | Linux desktop shell, owned backend lifecycle and restricted native commands |
+| `src-tauri/` | Desktop shell, platform package configs, owned backend lifecycle and restricted native commands |
 
 ## Roadmap
 

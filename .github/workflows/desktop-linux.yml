@@ -18,6 +18,7 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm test
+      - run: npm run desktop:check
       - name: Build on the oldest supported Linux baseline
         run: |
           docker build -f packaging/Dockerfile.desktop-linux -t role-clinic-phase8-build .
@@ -32,14 +33,22 @@ jobs:
             -e TAURI_WEBVIEW_AUTOMATION=true -e DESKTOP_EVIDENCE_DIR=/work/dist/desktop-evidence \
             -e WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 -e LIBGL_ALWAYS_SOFTWARE=1 \
             role-clinic-phase8-build sh -c \
-            'dpkg-deb -x /work/dist/desktop-target/release/bundle/deb/*.deb /; dbus-run-session -- xvfb-run -a node scripts/smoke-desktop.mjs'
+            'dpkg-deb -x /work/dist/desktop-target/release/bundle/deb/*.deb / && dbus-run-session -- xvfb-run -a node scripts/smoke-desktop.mjs && node scripts/smoke-package.mjs /usr/libexec/the-role-clinic/backend'
+      - name: Check the actual AppImage payload and native launcher
+        run: |
+          docker run --rm --network none -v "$PWD:/work" \
+            -e TAURI_WEBVIEW_AUTOMATION=true -e DESKTOP_EVIDENCE_DIR=/work/dist/appimage-evidence \
+            -e WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 -e LIBGL_ALWAYS_SOFTWARE=1 \
+            role-clinic-phase8-build sh -c \
+            'cd /tmp && /work/dist/desktop-target/release/bundle/appimage/*.AppImage --appimage-extract > /dev/null && node /work/scripts/smoke-package.mjs /tmp/squashfs-root/usr/libexec/the-role-clinic/backend && dbus-run-session -- xvfb-run -a node /work/scripts/smoke-desktop.mjs /tmp/squashfs-root/AppRun /tmp/squashfs-root/usr/libexec/the-role-clinic/backend'
+      - name: Collect development installers and checksums
+        run: node scripts/collect-desktop.mjs dist/desktop-target/release/bundle
       - uses: actions/upload-artifact@v7
         with:
           name: the-role-clinic-desktop-linux-x64
           path: |
-            dist/desktop-target/release/bundle/deb/*.deb
-            dist/desktop-target/release/bundle/rpm/*.rpm
-            dist/desktop-target/release/bundle/appimage/*.AppImage
+            dist/desktop-linux-x64-glibc-*/
             dist/desktop-evidence/
+            dist/appimage-evidence/
           if-no-files-found: error
           retention-days: 14

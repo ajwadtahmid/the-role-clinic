@@ -1,0 +1,84 @@
+name: macOS and Windows desktop previews
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            arch: arm64
+            target: darwin-arm64
+          - os: windows-2022
+            arch: x64
+            target: win32-x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          architecture: ${{ matrix.arch }}
+          cache: npm
+      - name: Check native architecture
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: node -e 'if (process.arch !== process.env.EXPECTED_ARCH) throw Error("Runner/Node architecture mismatch")'
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - run: node --test scripts/desktop-target.checks.mjs
+      - name: Install pinned Rust toolchain
+        run: |
+          toolchain=$(node -e 'process.stdout.write(require("fs").readFileSync("rust-toolchain.toml", "utf8").match(/channel = "([^"]+)"/)[1])')
+          rustup toolchain install "$toolchain" --profile minimal
+      - name: Build native preview
+        env:
+          APPLE_SIGNING_IDENTITY: '-'
+        run: npm run desktop:build
+      - name: Check Rust commands
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+      - name: Install macOS DMG into a temporary Applications folder
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p "$RUNNER_TEMP/Clinic Applications ü" "$RUNNER_TEMP/clinic-volume"
+          dmg=$(find src-tauri/target/release/bundle/dmg -name '*.dmg' -print -quit)
+          hdiutil attach "$dmg" -nobrowse -mountpoint "$RUNNER_TEMP/clinic-volume"
+          ditto "$RUNNER_TEMP/clinic-volume/The Role Clinic.app" "$RUNNER_TEMP/Clinic Applications ü/The Role Clinic.app"
+          hdiutil detach "$RUNNER_TEMP/clinic-volume"
+          codesign --verify --deep --strict "$RUNNER_TEMP/Clinic Applications ü/The Role Clinic.app"
+          node scripts/smoke-package.mjs "$RUNNER_TEMP/Clinic Applications ü/The Role Clinic.app/Contents/Resources/backend"
+          node scripts/smoke-desktop-lifecycle.mjs "$RUNNER_TEMP/Clinic Applications ü/The Role Clinic.app/Contents/MacOS/the-role-clinic-desktop"
+      - name: Install Windows NSIS preview into a temporary per-user folder
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installer = (Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
+          $installation = Join-Path $env:RUNNER_TEMP 'Clinic installation ü'
+          $result = Start-Process -FilePath $installer -ArgumentList "/S /D=$installation" -Wait -PassThru
+          if ($result.ExitCode -ne 0) { throw "Installer failed: $($result.ExitCode)" }
+          & "$installation/backend/role-clinic.cmd" verify
+          if ($LASTEXITCODE -ne 0) { throw 'Maintenance launcher failed' }
+          node scripts/smoke-package.mjs "$installation/backend"
+          if ($LASTEXITCODE -ne 0) { throw 'Backend smoke failed' }
+          node scripts/smoke-desktop-lifecycle.mjs "$installation/the-role-clinic-desktop.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'Native lifecycle smoke failed' }
+          $result = Start-Process -FilePath "$installation/uninstall.exe" -ArgumentList '/S' -Wait -PassThru
+          if ($result.ExitCode -ne 0) { throw 'Uninstall failed' }
+      - name: Collect development installers and checksums
+        run: node scripts/collect-desktop.mjs
+      - uses: actions/upload-artifact@v7
+        with:
+          name: the-role-clinic-desktop-${{ matrix.target }}
+          path: dist/desktop-${{ matrix.target }}-*/
+          if-no-files-found: error
+          retention-days: 14

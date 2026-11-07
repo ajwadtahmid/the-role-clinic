@@ -132,7 +132,7 @@ describe('review and exports', () => {
       expect(bytes.subarray(0, format === 'pdf' ? 5 : 2).toString()).toBe(format === 'pdf' ? '%PDF-' : 'PK')
     }
     const row = f.sqlite.prepare('SELECT file_path,document FROM artifacts WHERE id=?').get(exports[0].id) as { file_path: string; document: string }
-    expect((await stat(row.file_path)).mode & 0o777).toBe(0o600)
+    if (process.platform !== 'win32') expect((await stat(row.file_path)).mode & 0o777).toBe(0o600)
     expect(row.document).not.toContain('PRIVATE_AUTH_MARKER'); expect(row.document).not.toContain('PRIVATE_NOTE_MARKER')
     const status = await f.request(`/api/jobs/${f.jobId}/status`, { method: 'PUT', body: JSON.stringify({ status: 'applied', submittedArtifactId: exports[0].id }) })
     expect(status.status).toBe(200)

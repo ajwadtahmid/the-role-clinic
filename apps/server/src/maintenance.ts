@@ -1,12 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { constants } from 'node:fs'
 import { chmod, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
-import { join, dirname, basename, resolve, relative } from 'node:path'
+import { join, dirname, basename, resolve, relative, win32, sep, isAbsolute } from 'node:path'
 import Database from 'better-sqlite3'
 import { c, t, x } from 'tar'
 import { z } from 'zod'
 import { CURRENT_SCHEMA_VERSION, createDatabase } from './db.js'
 import { appSettingsSchema } from '../../../packages/shared/src/index.js'
+import { protectPrivateFile } from './private-file.js'
 
 const allowed = /^(backup\.json|clinic\.sqlite|settings\.json|welcome\.json|artifacts\/[a-f0-9-]{36}\.(pdf|docx))$/
 const MAX_BYTES = 2 * 1024 * 1024 * 1024
@@ -20,7 +21,9 @@ async function stagedSettings(source: string, target: string, includeApiKey: boo
   try { text = await readFile(source, 'utf8') } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false; throw error }
   const settings = appSettingsSchema.parse(JSON.parse(text))
   if (!includeApiKey) delete settings.anthropicApiKey
-  await writeFile(target, JSON.stringify(settings, null, 2), { mode: 0o600 })
+  await writeFile(target, '', { mode: 0o600, flag: 'wx' })
+  await protectPrivateFile(target)
+  await writeFile(target, JSON.stringify(settings, null, 2))
   return true
 }
 export async function createFullBackup(dataDirectory: string, destination: string, options: { includeApiKey?: boolean } = {}) {
@@ -34,7 +37,7 @@ export async function createFullBackup(dataDirectory: string, destination: strin
       const paths = db.prepare('SELECT id,file_path FROM artifacts').all() as Array<{ id: string; file_path: string }>
       await mkdir(join(staging, 'artifacts'), { mode: 0o700 })
       for (const artifact of paths) {
-        const name = basename(artifact.file_path)
+        const name = win32.basename(basename(artifact.file_path))
         if (!allowed.test(`artifacts/${name}`) || !name.startsWith(`${artifact.id}.`)) throw new Error('An artifact has an unexpected filename; backup stopped without omitting it.')
         const source = join(dataDirectory, 'artifacts', name)
         if (resolve(artifact.file_path) !== resolve(source) || !(await lstat(source)).isFile()) throw new Error('An artifact is outside this data folder or is not a regular file.')
@@ -87,6 +90,7 @@ async function stageBackup(archive: string, dataDirectory: string) {
       const bytes = await readFile(join(staging, file.path))
       if (bytes.length !== file.size || hash(bytes) !== file.sha256) throw new Error(`Backup checksum failed: ${file.path}`)
       await chmod(join(staging, file.path), 0o600)
+      if (file.path === 'settings.json') await protectPrivateFile(join(staging, file.path))
     }
     if (names.has('settings.json')) appSettingsSchema.parse(JSON.parse(await readFile(join(staging, 'settings.json'), 'utf8')))
     const check = new Database(join(staging, 'clinic.sqlite'), { readonly: true })
@@ -97,7 +101,8 @@ async function stageBackup(archive: string, dataDirectory: string) {
     const { sqlite } = createDatabase(staging)
     try {
       for (const artifact of sqlite.prepare('SELECT id,file_path FROM artifacts').all() as Array<{ id: string; file_path: string }>) {
-        const name = basename(artifact.file_path)
+        // Backup records retain their source OS paths until restored here.
+        const name = win32.basename(basename(artifact.file_path))
         if (!allowed.test(`artifacts/${name}`) || !name.startsWith(`${artifact.id}.`) || !seen.has(`artifacts/${name}`)) throw new Error('A recorded artifact is missing from this backup.')
         sqlite.prepare('UPDATE artifacts SET file_path=? WHERE id=?').run(join(dataDirectory, 'artifacts', name), artifact.id)
       }
@@ -114,7 +119,8 @@ export async function inspectFullBackup(archive: string, dataDirectory: string) 
 }
 export async function restoreFullBackup(archive: string, dataDirectory: string) {
   const archivePath = resolve(archive), dataPath = resolve(dataDirectory)
-  if (!relative(dataPath, archivePath).startsWith('..') && relative(dataPath, archivePath) !== '') throw new Error('Move the backup archive outside the data folder before restoring.')
+  const child = relative(dataPath, archivePath)
+  if (!isAbsolute(child) && child !== '..' && !child.startsWith(`..${sep}`)) throw new Error('Move the backup archive outside the data folder before restoring.')
   const { staging, manifest } = await stageBackup(archivePath, dataPath)
   const recovery = `${dataPath}.before-restore-${Date.now()}-${randomUUID()}`
   let moved = false

@@ -92,13 +92,17 @@ fn uuid(s: &str) -> bool {
 fn safe_filename(name: &str) -> String {
     let clean: String = name
         .chars()
-        .filter(|c| !c.is_control() && !['/', '\\', ':'].contains(c))
+        .filter(|c| !c.is_control() && !['/', '\\', ':', '<', '>', '"', '|', '?', '*'].contains(c))
         .take(180)
         .collect();
+    let clean = clean.trim_end_matches(['.', ' ']);
+    let stem = clean.split('.').next().unwrap_or("").to_ascii_uppercase();
+    let reserved = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || ((stem.starts_with("COM") || stem.starts_with("LPT")) && stem.len() == 4 && matches!(stem.as_bytes()[3], b'1'..=b'9'));
     if clean.trim_matches('.').trim().is_empty() {
         "role-clinic-export".into()
     } else {
-        clean
+        if reserved { format!("export-{clean}") } else { clean.to_string() }
     }
 }
 #[tauri::command]
@@ -198,10 +202,8 @@ fn open_external(
     {
         return Err("Only HTTP(S) posting and guide links can be opened".into());
     }
-    #[cfg(target_os = "linux")]
-    {
-        let mut child = Command::new("xdg-open")
-            .arg(url.as_str())
+    let mut opener = external_opener(url.as_str());
+    let mut child = opener
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -210,10 +212,23 @@ fn open_external(
         std::thread::spawn(move || {
             let _ = child.wait();
         });
-    }
-    #[cfg(not(target_os = "linux"))]
-    return Err("This desktop integration currently targets Linux".into());
     Ok(())
+}
+fn external_opener(url: &str) -> Command {
+    #[cfg(target_os = "linux")]
+    let mut command = Command::new("xdg-open");
+    #[cfg(target_os = "macos")]
+    let mut command = Command::new("/usr/bin/open");
+    #[cfg(target_os = "windows")]
+    let mut command = {
+        use std::os::windows::process::CommandExt;
+        let system = std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into());
+        let mut command = Command::new(std::path::PathBuf::from(system).join("System32/rundll32.exe"));
+        command.arg("url.dll,FileProtocolHandler").creation_flags(0x08000000);
+        command
+    };
+    command.arg(url);
+    command
 }
 fn request_quit(app: tauri::AppHandle) {
     let state = app.state::<Desktop>();
@@ -304,13 +319,27 @@ fn quit_app(
 }
 
 fn start_backend(app: &tauri::AppHandle) -> Result<(), String> {
+    #[cfg(debug_assertions)]
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../dist/desktop-backend");
+    // Keep the Linux companion outside usr/lib: linuxdeploy rewrites every ELF it finds there.
+    #[cfg(all(target_os = "linux", not(debug_assertions)))]
+    let root = std::env::current_exe().map_err(|e| e.to_string())?
+        .parent().and_then(|p| p.parent()).ok_or("The installed application path is unavailable")?
+        .join("libexec/the-role-clinic/backend");
+    #[cfg(all(not(target_os = "linux"), not(debug_assertions)))]
     let root = app
         .path()
         .resource_dir()
         .map_err(|e| e.to_string())?
         .join("backend");
-    let node = root.join("runtime/node");
-    let mut child = Command::new(node)
+    let node = root.join(if cfg!(target_os = "windows") { "runtime/node.exe" } else { "runtime/node" });
+    let mut command = Command::new(node);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x08000000);
+    }
+    let mut child = command
         .arg(root.join("app/apps/server/src/start-desktop.js"))
         .current_dir(&root)
         .env_remove("NODE_OPTIONS")
@@ -357,6 +386,7 @@ fn start_backend(app: &tauri::AppHandle) -> Result<(), String> {
         || ready.instance_id.is_empty()
     {
         let _ = child.kill();
+        let _ = child.wait();
         return Err("Unexpected backend identity".into());
     }
     let base = format!("http://127.0.0.1:{}", ready.port);
@@ -385,6 +415,15 @@ fn main() {
         .plugin(tauri_plugin_dialog::init()).plugin(tauri_plugin_clipboard_manager::init())
         .invoke_handler(tauri::generate_handler![save_download, clipboard_write, open_external, quit_app])
         .setup(|app| {
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::menu::{Menu, Submenu, MenuItem, PredefinedMenuItem};
+                let quit = MenuItem::with_id(app, "quit-workspace", "Quit The Role Clinic", true, Some("CmdOrCtrl+Q"))?;
+                let application = Submenu::with_items(app, "The Role Clinic", true, &[&PredefinedMenuItem::about(app, None, None)?, &PredefinedMenuItem::separator(app)?, &quit])?;
+                let edit = Submenu::with_items(app, "Edit", true, &[&PredefinedMenuItem::undo(app, None)?, &PredefinedMenuItem::redo(app, None)?, &PredefinedMenuItem::separator(app)?, &PredefinedMenuItem::cut(app, None)?, &PredefinedMenuItem::copy(app, None)?, &PredefinedMenuItem::paste(app, None)?, &PredefinedMenuItem::select_all(app, None)?])?;
+                app.set_menu(Menu::with_items(app, &[&application, &edit])?)?;
+                app.on_menu_event(|app, event| { if event.id().as_ref() == "quit-workspace" { request_quit(app.clone()); } });
+            }
             let navigation = app.handle().clone();
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into())).title("The Role Clinic").inner_size(1280., 900.).min_inner_size(800., 600.)
                 .on_navigation(move |url| {
@@ -437,5 +476,7 @@ mod tests {
     fn filenames_cannot_set_the_destination_directory() {
         assert_eq!(safe_filename("../../secret\n.txt"), "....secret.txt");
         assert_eq!(safe_filename("..."), "role-clinic-export");
+        assert_eq!(safe_filename("CON.txt"), "export-CON.txt");
+        assert_eq!(safe_filename("Résumé<>|?*.pdf. "), "Résumé.pdf");
     }
 }

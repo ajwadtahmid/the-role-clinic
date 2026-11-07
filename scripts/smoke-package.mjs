@@ -3,7 +3,7 @@ import { execFile as execFileCallback } from 'node:child_process'
 import { promisify } from 'node:util'
 import { mkdtemp, mkdir, readFile, writeFile, readdir, rename, rm, stat, chmod, cp } from 'node:fs/promises'
 import { join, resolve, basename } from 'node:path'
-import { tmpdir } from 'node:os'
+import { tmpdir, release } from 'node:os'
 import { pathToFileURL } from 'node:url'
 import { createServer } from 'node:net'
 import { request as httpRequest } from 'node:http'
@@ -13,19 +13,20 @@ const execFile = promisify(execFileCallback)
 const version = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')).version
 const input = resolve(process.argv[2] || `dist/the-role-clinic-${version}-linux-x64.tar.gz`)
 const root = await mkdtemp(join(tmpdir(), 'role-clinic-package-'))
-let bundle = input, data = join(root, 'private data'), running = false
+let bundle = input, data = join(root, 'private data ü'), running = false
 await mkdir(join(root, 'empty-path')); await mkdir(join(root, 'xdg'))
 if (input.endsWith('.tar.gz')) {
   await execFile('/usr/bin/tar', ['-xzf', input, '-C', root])
   bundle = join(root, basename(input, '.tar.gz'))
 } else {
-  bundle = join(root, 'extracted package')
+  bundle = join(root, 'extracted package ü')
   await cp(input, bundle, { recursive: true })
 }
 const cleanEnv = () => ({ ...process.env, PATH: join(root, 'empty-path'), XDG_DATA_HOME: join(root, 'xdg'), ROLE_CLINIC_DATA_DIR: data, ROLE_CLINIC_NO_BROWSER: '1', NODE_OPTIONS: '', NODE_PATH: '', PORT: '' })
 async function cli(args, options = {}) {
   const env = { ...cleanEnv(), ...options.env }; if (!env.PORT) delete env.PORT
-  return execFile(join(bundle, 'role-clinic'), args, { cwd: root, env, timeout: 45000, maxBuffer: 4 * 1024 * 1024 })
+  const node = join(bundle, 'runtime', process.platform === 'win32' ? 'node.exe' : 'node')
+  return execFile(node, [join(bundle, 'launcher.mjs'), ...args], { cwd: root, env, windowsHide: true, timeout: 45000, maxBuffer: 4 * 1024 * 1024 })
 }
 async function serverState() { return JSON.parse(await readFile(join(data, 'instance.json'), 'utf8')) }
 async function api(path, value, method = 'GET', extraHeaders = {}) {
@@ -36,19 +37,22 @@ async function json(path, value, method = 'GET') { const response = await api(pa
 async function databaseWork(code) {
   const module = pathToFileURL(join(bundle, 'app/node_modules/better-sqlite3/lib/index.js')).href
   const script = `import Database from ${JSON.stringify(module)};const db=new Database(${JSON.stringify(join(data, 'clinic.sqlite'))});try{${code}}finally{db.close()}`
-  return execFile(join(bundle, 'runtime/node'), ['--input-type=module', '-e', script], { env: cleanEnv(), cwd: root, timeout: 10000 })
+  return execFile(join(bundle, 'runtime', process.platform === 'win32' ? 'node.exe' : 'node'), ['--input-type=module', '-e', script], { env: cleanEnv(), cwd: root, timeout: 10000 })
 }
 try {
   await cli(['verify'])
+  if (process.platform !== 'win32') await execFile(join(bundle, 'role-clinic'), ['help'], { env: cleanEnv(), timeout: 10000 })
   const launches = await Promise.all([cli(['start', '--no-browser']), cli(['start', '--no-browser'])]); running = true
   assert.ok(launches.some((r) => r.stdout.includes('Already running')))
   const first = await serverState(); assert.ok(first.port > 0)
+  if (process.platform === 'linux') {
   const browserDir = join(root, 'mock-browser'), browserLog = join(root, 'opened-url')
   await mkdir(browserDir)
   await writeFile(join(browserDir, 'xdg-open'), '#!/bin/sh\nprintf "%s\\n" "$1" > "$ROLE_CLINIC_BROWSER_LOG"\n')
   await chmod(join(browserDir, 'xdg-open'), 0o755)
   await cli([], { env: { PATH: browserDir, ROLE_CLINIC_NO_BROWSER: '0', ROLE_CLINIC_BROWSER_LOG: browserLog } })
   assert.equal((await readFile(browserLog, 'utf8')).trim(), `http://127.0.0.1:${first.port}`)
+  }
   const initial = await json('/api/app/status'); assert.equal(initial.welcomeComplete, false)
   const page = await api('/'); assert.equal(page.status, 200)
   const html = await page.text(), script = html.match(/src="([^"]+\.js)"/)[1]
@@ -57,6 +61,15 @@ try {
   assert.equal((await api('/icon.svg')).status, 200)
   assert.equal((await api('/api/not-a-route')).status, 404)
   assert.equal((await api('/api/app/welcome', { acknowledged: true }, 'POST', { origin: 'https://evil.example' })).status, 403)
+  // A local controlled Ollama responder exercises connection/configuration without inference.
+  const { createServer } = await import('node:http')
+  const ollama = createServer((req, res) => { assert.equal(req.url, '/api/tags'); res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ models: [{ name: 'controlled-model' }] })) })
+  await new Promise((resolve) => ollama.listen(0, '127.0.0.1', resolve))
+  try {
+    const settings = await json('/api/settings')
+    await json('/api/settings', { ...settings, ollamaBaseUrl: `http://127.0.0.1:${ollama.address().port}` }, 'PUT')
+    assert.deepEqual((await json('/api/connections/ollama/test', {}, 'POST')).models, ['controlled-model'])
+  } finally { await new Promise((resolve) => ollama.close(resolve)) }
   const badHost = await new Promise((resolve, reject) => {
     const req = httpRequest({ hostname: '127.0.0.1', port: first.port, path: '/api/health', headers: { host: `evil.example:${first.port}` } }, (res) => { res.resume(); res.on('end', () => resolve(res.statusCode)) }); req.on('error', reject); req.end()
   }); assert.equal(badHost, 403)
@@ -113,7 +126,7 @@ try {
   await writeFile(join(data, 'server.lock'), JSON.stringify({ pid: 2147483647, token: 'stale' }))
   await writeFile(join(data, 'instance.json'), '{interrupted record')
   await cli(['start', '--no-browser']); running = true; await cli(['stop']); running = false
-  const blocker = createServer(); await new Promise((resolve) => blocker.listen(0, '127.0.0.1', resolve))
+  const blocker = (await import('node:net')).createServer(); await new Promise((resolve) => blocker.listen(0, '127.0.0.1', resolve))
   try { await assert.rejects(cli(['start', '--no-browser'], { env: { PORT: String(blocker.address().port) } }), /startup exited/) }
   finally { await new Promise((resolve) => blocker.close(resolve)) }
   await databaseWork('db.pragma("user_version=8")')
@@ -121,9 +134,11 @@ try {
   await assert.rejects(cli(['start', '--no-browser']), /startup exited/)
   assert.ok((await readFile(join(data, 'app.log'), 'utf8')).includes('newer version'))
   assert.ok((await readFile(join(data, 'clinic.sqlite'))).equals(before))
-  await cli(['install-desktop']); assert.ok((await readFile(join(root, 'xdg/applications/the-role-clinic.desktop'), 'utf8')).includes('Exec="'))
-  await cli(['uninstall-desktop'])
-  console.log(JSON.stringify({ passed: true, os: (await readFile('/etc/os-release', 'utf8')).match(/^PRETTY_NAME=(.*)$/m)?.[1], glibcRuntime: process.report.getReport().header.glibcVersionRuntime, runtime: manifest.nodeVersion, requirements: manifest.requirements, isolatedData: true, systemNodeOnPath: false, scenarios: ['concurrent launch', 'browser opener', 'loopback guards', 'first run', 'capture and Q&A', 'real PDF/DOCX/XLSX', 'submitted records', 'update and migration', 'full backup and relocated restore', 'stale lock', 'port collision', 'newer schema refusal', 'desktop shortcut'] }, null, 2))
+  if (process.platform === 'linux') {
+    await cli(['install-desktop']); assert.ok((await readFile(join(root, 'xdg/applications/the-role-clinic.desktop'), 'utf8')).includes('Exec="'))
+    await cli(['uninstall-desktop'])
+  }
+  console.log(JSON.stringify({ passed: true, platform: process.platform, arch: process.arch, os: release(), glibcRuntime: process.report.getReport().header.glibcVersionRuntime, runtime: manifest.nodeVersion, requirements: manifest.requirements, isolatedData: true, systemNodeOnPath: false, scenarios: ['concurrent launch', 'loopback guards', 'first run', 'controlled Ollama connection', 'capture and Q&A', 'real PDF/DOCX/XLSX', 'submitted records', 'update and migration', 'full backup and relocated restore', 'stale lock', 'port collision', 'newer schema refusal', ...(process.platform === 'linux' ? ['browser opener', 'desktop shortcut'] : [])] }, null, 2))
 } catch (error) {
   try { console.error(await readFile(join(data, 'app.log'), 'utf8')) } catch {}
   throw error

@@ -1,11 +1,9 @@
-# The Role Clinic — Linux preview
+# The Role Clinic — preview
 
-A local job tracker and résumé workspace. This preview targets **Linux x86_64
-with glibc 2.34 or newer** and the C++ runtime listed in `manifest.json`. It does
-not target Alpine/musl, ARM, macOS or Windows. Other platform packages are planned.
-Smoke-tested on Fedora 44 and in a clean Ubuntu 22.04.5 LTS container. Full
-desktop/browser visual qualification remains open. AI quality fixes and release
-qualification remain pending; review all generated résumé claims.
+A local job tracker and résumé workspace. Linux x86_64 has automated package and
+native webview checks on Ubuntu 22.04/Fedora 44. macOS Apple Silicon and Windows x64
+packages are being implemented; native and clean-machine qualification remain open.
+AI quality fixes and public-release qualification remain pending; review generated claims.
 
 ## Desktop preview
 
@@ -15,9 +13,15 @@ from your application menu. The installer resolves GTK3, WebKitGTK 4.1 and `xdg-
 An `.AppImage` is also available: allow execution in file Properties → Permissions,
 then double-click it. It needs FUSE 2 compatibility support and a desktop session.
 Without FUSE, run the file with `--appimage-extract`, then open `squashfs-root/AppRun`.
-Keep that extracted folder together. macOS/Windows packages are planned separately.
+Keep that extracted folder together. macOS builds use a DMG: drag the app into
+Applications, then open it there. Windows builds use a per-user setup EXE and a Start
+menu shortcut, with WebView2 installation handled by the installer. These new platforms
+are not yet qualified. The Mac runtime requires macOS 13.5+ on Apple Silicon;
+Windows qualification targets Windows 11 x64. Intel Mac and Windows ARM are outside
+this preview. Public Mac downloads still need Developer ID signing/notarization;
+Windows previews are unsigned. Follow OS security checks; do not disable protection.
 
-Closing the desktop window or pressing **Ctrl+Q** stops its local backend. An active
+Closing the desktop window or pressing **Ctrl+Q** (**Command+Q** on Mac) stops its local backend. An active
 run prompts before interruption; choose **Keep working** to continue it. A second
 launch focuses the existing window. Stop an existing browser preview before opening
 the desktop version with the same data folder.
@@ -26,10 +30,14 @@ Exports open a native Save dialog; canceling it leaves the recorded export intac
 PDF proof renders inside the app. Posting and guide links open in your default browser.
 Data and backups use the same locations and formats as the browser preview.
 
-For full-backup/restore commands below, the installed desktop maintenance launcher is
-`/usr/lib/The Role Clinic/backend/role-clinic`. For an extracted AppImage it is
-`squashfs-root/usr/lib/The Role Clinic/backend/role-clinic`. Quote these paths with spaces
-and close the app before running maintenance. Normal app use needs no terminal.
+For full-backup/restore commands below, the Linux desktop maintenance launcher is
+`/usr/libexec/the-role-clinic/backend/role-clinic`. For an extracted AppImage it is
+`squashfs-root/usr/libexec/the-role-clinic/backend/role-clinic`. Quote these paths with spaces
+and close the app before running maintenance. On Mac the launcher is inside
+`The Role Clinic.app/Contents/Resources/backend/role-clinic`; on Windows it is
+`backend\role-clinic.cmd` inside the installation folder. Use those launchers for
+all maintenance commands below. In PowerShell, prefix a quoted launcher path with `&`.
+Normal desktop use needs no terminal.
 
 ## Browser fallback: download and launch
 
@@ -93,14 +101,16 @@ run is recorded as failed on restart and can be retried where supported.
 
 ## Data location
 
-By default, data is in `$XDG_DATA_HOME/the-role-clinic` or
-`~/.local/share/the-role-clinic`. `ROLE_CLINIC_DATA_DIR=/absolute/path` overrides
+On Linux, data is in `$XDG_DATA_HOME/the-role-clinic` or
+`~/.local/share/the-role-clinic`. On Mac it is in
+`~/Library/Application Support/The Role Clinic`; on Windows it is in
+`%APPDATA%\The Role Clinic`. `ROLE_CLINIC_DATA_DIR=/absolute/path` overrides
 it. Use the same override for every launch, backup and restore command. Settings
 shows the actual folder. Data is outside the replaceable package.
 
 `clinic.sqlite` stores jobs, answers and résumé records; `artifacts/` holds exported
-and attached files; `settings.json` may contain your API key with owner-only
-permissions; `backups/` holds database snapshots. `app.log` records server errors.
+and attached files; `settings.json` may contain your API key with owner-only POSIX
+permissions or a current-account Windows DACL; `backups/` holds database snapshots. `app.log` records server errors.
 Do not sync or copy a live SQLite/WAL file as your backup.
 
 ## Backups
@@ -138,7 +148,13 @@ only your own or otherwise trusted backups. Keep recovery folders private too.
 
 ## Update
 
-Stop the running app, make a full backup, extract the new package into a **new**
+Desktop updates are manual: quit and back up first, replace the AppImage/Mac app or
+run the new DEB/RPM/Windows installer, then reopen and check your saved workspace.
+Uninstalling should leave your data folder in place; native installation, upgrade and
+uninstall checks remain required on each advertised platform.
+There is no automatic updater.
+
+For the Linux browser archive, stop the running app, make a full backup, extract the new package into a **new**
 folder, and launch its `role-clinic`. Keep the old package until the update is
 checked. The data directory stays the same. Before a schema upgrade, the app makes
 a pre-migration database snapshot; it refuses to open a database from a newer app.
@@ -162,5 +178,6 @@ force an older app to write a newer database or overwrite the data folder manual
   extracted package. Local data remains. To remove data too, first make any desired
   full backup and then manually delete the exact data folder shown in Settings.
 
-This is a Linux x86_64 preview. It was smoke-tested on Fedora 44 and in a clean
-Ubuntu 22.04 container; other distributions have not been tested.
+Linux x86_64 was smoke-tested on Fedora 44 and in an Ubuntu 22.04 container.
+macOS/Windows builds and native CI are configured but have not been validated here.
+Native rendering, dialogs, updates, removal and clean-install checks remain open.

@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto'
 
 const execFile = promisify(execFileCallback)
 const binary = resolve(process.argv[2] || '/usr/bin/the-role-clinic-desktop')
-const backend = resolve(process.argv[3] || '/usr/lib/The Role Clinic/backend')
+const backend = resolve(process.argv[3] || '/usr/libexec/the-role-clinic/backend')
 const evidence = process.env.DESKTOP_EVIDENCE_DIR && resolve(process.env.DESKTOP_EVIDENCE_DIR)
 const root = await mkdtemp(join(tmpdir(), 'role-clinic-desktop-'))
 const data = join(root, 'workspace with spaces ü'), checks = [], samples = []

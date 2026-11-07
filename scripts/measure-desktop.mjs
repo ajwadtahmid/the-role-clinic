@@ -7,7 +7,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 const exec = promisify(execCallback), root=await mkdtemp(join(tmpdir(),'role-clinic-measure-'))
-const native=process.argv[2] || '/usr/bin/the-role-clinic-desktop', backend=process.argv[3] || '/usr/lib/The Role Clinic/backend'
+const native=process.argv[2] || '/usr/bin/the-role-clinic-desktop', backend=process.argv[3] || '/usr/libexec/the-role-clinic/backend'
 const browser=process.argv[4] || '/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/MiniBrowser'
 const delay=ms=>new Promise(r=>setTimeout(r,ms)), results=[]
 let driver, session, instance, data, mode

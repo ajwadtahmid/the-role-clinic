@@ -1,7 +1,8 @@
-import { chmod, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { appSettingsSchema, taskNames, type AppSettings, type PublicSettings } from '../../../packages/shared/src/index.js'
+import { protectPrivateFile } from './private-file.js'
 
 const DEFAULT_MODEL = 'gemma4:12b'
 export function defaultSettings(): AppSettings {
@@ -29,9 +30,12 @@ export async function writeSettings(dataDirectory: string, settings: AppSettings
   const validated = appSettingsSchema.parse(settings)
   await mkdir(dataDirectory, { recursive: true, mode: 0o700 })
   const tmp = join(dataDirectory, `.settings-${randomUUID()}.tmp`)
-  await writeFile(tmp, JSON.stringify(validated, null, 2), { mode: 0o600 })
-  await chmod(tmp, 0o600)
-  await rename(tmp, join(dataDirectory, 'settings.json'))
+  try {
+    await writeFile(tmp, '', { mode: 0o600, flag: 'wx' })
+    await protectPrivateFile(tmp)
+    await writeFile(tmp, JSON.stringify(validated, null, 2))
+    await rename(tmp, join(dataDirectory, 'settings.json'))
+  } finally { await rm(tmp, { force: true }) }
 }
 
 export function toPublicSettings(settings: AppSettings): PublicSettings {
