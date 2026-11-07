@@ -48,6 +48,9 @@ function yearsFromRoles(master: Master) {
   }
   return Math.round(merged.reduce((sum, [start, end]) => sum + (end - start) / (365.25 * 86_400_000), 0) * 10) / 10
 }
+// Abbreviations must be standalone (and upper-case) so "Systems", "basic" or "jobs" never count as a degree.
+const bachelorLevel = (text: string) => /\bbachelor/i.test(text) || /\bB\.?(?:S|A|Sc|Eng)\b/.test(text)
+const masterLevel = (text: string) => /\bmaster|\bph\.?d\b|\bdoctorate/i.test(text) || /\bM\.?(?:S|A|Sc|Eng|BA)\b/.test(text)
 export function assessRequirement(requirement: Requirement, master: Master, profile: Profile, synonyms: Synonym[] = []): Pick<Requirement, 'assessment' | 'basis'> {
   const quote = requirement.quote.toLowerCase()
   if (requirement.category === 'years' && requirement.years != null) {
@@ -75,8 +78,8 @@ export function assessRequirement(requirement: Requirement, master: Master, prof
   if (requirement.category === 'education') {
     const degrees = master.education.map((item) => [item.credential, item.field, item.details].join(' ')).join(' ')
     if (!degrees.trim()) return { assessment: 'unknown', basis: 'No degree details recorded in the master résumé.' }
-    if (/bachelor|b\.?s\.?|b\.?a\.?/i.test(quote) && /bachelor|b\.?s\.?|b\.?a\.?/i.test(degrees)) return { assessment: 'met', basis: `Recorded education: ${degrees.slice(0, 250)}` }
-    if (/master|m\.?s\.?|ph\.?d/i.test(quote) && /master|m\.?s\.?|ph\.?d/i.test(degrees)) return { assessment: 'met', basis: `Recorded education: ${degrees.slice(0, 250)}` }
+    if (bachelorLevel(requirement.quote) && bachelorLevel(degrees)) return { assessment: 'met', basis: `Recorded education: ${degrees.slice(0, 250)}` }
+    if (masterLevel(requirement.quote) && masterLevel(degrees)) return { assessment: 'met', basis: `Recorded education: ${degrees.slice(0, 250)}` }
     return { assessment: 'unknown', basis: `Degree requirement needs review against recorded education: ${degrees.slice(0, 250)}` }
   }
   if (requirement.category === 'location') return { assessment: 'unknown', basis: profile.location ? `Profile location: ${profile.location}. Confirm commute, relocation, or remote policy manually.` : 'Profile location is not recorded.' }
@@ -114,7 +117,9 @@ function equivalences(term: string, synonyms: Synonym[]) {
   const lower = term.toLowerCase()
   return [lower, ...synonyms.flatMap((s) => s.term.toLowerCase() === lower ? [s.equivalence.toLowerCase()] : s.equivalence.toLowerCase() === lower ? [s.term.toLowerCase()] : [])]
 }
-function includesTerm(text: string, term: string) { return new RegExp(`(?:^|[^a-z0-9])${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:$|[^a-z0-9])`, 'i').test(text) }
+function includesTerm(text: string, term: string, caseSensitive = false) { return new RegExp(`(?:^|[^a-z0-9])${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:$|[^a-z0-9])`, caseSensitive ? '' : 'i').test(text) }
+// Tool names that are also everyday words: only the exact capitalised form counts as a tool in the output.
+const ambiguousTerms = new Set(['go', 'rest', 'rust', 'swift', 'spring', 'spark', 'express'])
 export function chooseSummary(master: Master, jobText: string) {
   const jobTerms = new Set(tokens(jobText))
   return master.summaries.filter((summary) => summary.text.trim()).sort((a, b) => {
@@ -162,7 +167,7 @@ export function verifyLayer1(output: string, sourceIds: string[], master: Master
   const flags: string[] = []
   for (const value of numeric(output)) if (!numeric(source).includes(value)) flags.push(`New or changed number: ${value}`)
   const known = [...new Set([...techNames, ...master.skills.map((s) => s.name), ...master.projects.flatMap((p) => p.stack)])].filter((term) => term.length >= 2).sort((a, b) => b.length - a.length)
-  for (const term of known) if (includesTerm(output, term) && !equivalences(term, synonyms).some((variant) => includesTerm(source, variant))) flags.push(`Tool or skill lacks cited evidence: ${term}`)
+  for (const term of known) if (includesTerm(output, term, ambiguousTerms.has(term.toLowerCase())) && !equivalences(term, synonyms).some((variant) => includesTerm(source, variant))) flags.push(`Tool or skill lacks cited evidence: ${term}`)
   for (const role of master.roles) if (role.company.length >= 3 && includesTerm(output, role.company) && !includesTerm(source, role.company)) flags.push(`Company lacks cited evidence: ${role.company}`)
   if (rows.every((row) => row.kind === 'project') && /\b(?:employed|employment|my role at|worked at)\b/i.test(output)) flags.push('Project evidence is presented as employment.')
   return [...new Set(flags)]

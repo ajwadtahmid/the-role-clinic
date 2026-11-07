@@ -46,4 +46,20 @@ describe('deterministic pipeline checks', () => {
     expect(chooseSummary(master, jd)?.label).toBe('Backend')
     expect(selectSkillsLine(master, extraction, 'Good Engineer', synonyms)).toEqual(['JavaScript'])
   })
+
+  it('does not treat everyday words that are also tool names as unsupported tools', () => {
+    const prose = 'Led the rest of the team to go beyond the spring release, express concerns early and spark fixes with Kubernetes'
+    expect(verifyLayer1(prose, [bulletId], master, synonyms)).toEqual([])
+    expect(verifyLayer1('Built services in Go with Rust tooling', [bulletId], master, synonyms).join(' ')).toMatch(/Go[\s\S]*Rust|Rust[\s\S]*Go/)
+  })
+
+  it('matches degree levels as whole terms, not letters inside other words', () => {
+    const education = { id: randomUUID(), school: 'State University', credential: 'Bachelor of Science', field: 'Information Systems', start: '', end: '', details: '' }
+    const withDegree = { ...master, education: [education] }
+    const ask = (quote: string): Requirement => ({ id: randomUUID(), quote, kind: 'knockout', category: 'education', skill: '', years: null, start: 0, end: quote.length, assessment: 'unknown', basis: '' })
+    expect(assessRequirement(ask("Master's degree required"), withDegree, emptyProfile(), synonyms).assessment).toBe('unknown')
+    expect(assessRequirement(ask('Bachelor’s degree in a technical field'), withDegree, emptyProfile(), synonyms).assessment).toBe('met')
+    expect(assessRequirement(ask('Basic knowledge of jobs systems'), withDegree, emptyProfile(), synonyms).assessment).toBe('unknown')
+    expect(assessRequirement(ask('BS or MS in Computer Science'), withDegree, emptyProfile(), synonyms).assessment).toBe('met')
+  })
 })
