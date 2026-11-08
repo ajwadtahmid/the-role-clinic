@@ -474,3 +474,7 @@ kbd{font:600 11px ui-monospace,SFMono-Regular,Consolas,monospace;border:1px soli
 .track-facts dt{font:600 12px system-ui;color:var(--muted);margin:0 0 2px}
 .track-facts dd{margin:0;font-size:14px;font-weight:600;overflow-wrap:anywhere}
 .track-facts .due{color:#8a3b2e}
+.editor-panel.block>h2{margin-bottom:6px}
+.editor-panel.block a{color:var(--green)}
+#feed-days,#followup-days{width:140px}
+.cost-panel .form-pair{margin-top:6px}

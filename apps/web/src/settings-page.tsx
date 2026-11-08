@@ -28,10 +28,13 @@ export function SettingsPage() {
   const [settings, setSettings] = useState<SettingsDraft | null>(null)
   const [notice, setNotice] = useState<Notice>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  // What is stored, as text, so the page can tell when something has changed and offer one Save for all of it.
+  const [stored, setStored] = useState('')
+  const adopt = (value: PublicSettings) => { setSettings(value); setStored(JSON.stringify(value)) }
   const [ollamaModels, setOllamaModels] = useState<string[]>([])
 
   useEffect(() => {
-    request<PublicSettings>('/api/settings').then(setSettings).catch((error: Error) => setNotice({ kind: 'error', text: error.message }))
+    request<PublicSettings>('/api/settings').then(adopt).catch((error: Error) => setNotice({ kind: 'error', text: error.message }))
   }, [])
 
   function updateTask(task: TaskName, key: 'provider' | 'model' | 'reasoning' | 'temperature', value: string | number | undefined) {
@@ -55,7 +58,7 @@ export function SettingsPage() {
     try {
       const body = { ...settings, ...(settings.anthropicApiKey ? { anthropicApiKey: settings.anthropicApiKey } : {}) }
       const saved = await request<PublicSettings>('/api/settings', { method: 'PUT', body: JSON.stringify(body) })
-      setSettings(saved)
+      adopt(saved)
       setNotice({ kind: 'success', text: 'Settings saved locally.' })
     } catch (error) { setNotice({ kind: 'error', text: (error as Error).message }) }
     finally { setBusy(null) }
@@ -69,7 +72,7 @@ export function SettingsPage() {
       if (provider === 'anthropic' && settings.anthropicApiKey) {
         const { anthropicApiKey, ...publicSettings } = settings
         const saved = await request<PublicSettings>('/api/settings', { method: 'PUT', body: JSON.stringify({ ...publicSettings, anthropicApiKey }) })
-        setSettings(saved)
+        adopt(saved)
       }
       const result = await request<{ ok: boolean; detail?: string; error?: string; models?: string[] }>(`/api/connections/${provider}/test`, { method: 'POST', body: '{}' })
       if (provider === 'ollama' && result.models) setOllamaModels(result.models)
@@ -82,12 +85,15 @@ export function SettingsPage() {
     setBusy('clear-key')
     try {
       const saved = await request<PublicSettings>('/api/settings/anthropic-key', { method: 'DELETE' })
-      setSettings(saved)
+      adopt(saved)
       setNotice({ kind: 'success', text: 'Anthropic API key removed from local settings.' })
     } catch (error) { setNotice({ kind: 'error', text: (error as Error).message }) }
     finally { setBusy(null) }
   }
 
+  const dirty = Boolean(settings) && (JSON.stringify({ ...settings, anthropicApiKey: undefined }) !== stored || Boolean(settings?.anthropicApiKey))
+  const [confirmDiscard, setConfirmDiscard] = useState(false)
+  const usesClaude = Boolean(settings && (pricedModels.length > 0 || settings.anthropicApiKeyConfigured || settings.anthropicApiKey))
   if (!settings) return <main className="shell"><p className="loading">Loading local settings…</p></main>
 
   return <main className="shell" id="main" tabIndex={-1}>
@@ -96,7 +102,7 @@ export function SettingsPage() {
 
     {notice && <div className={`notice ${notice.kind}`} role="status">{notice.text}</div>}
 
-    <div className="rs-layout"><SectionRail items={[{ id: 'models', label: 'Résumé tailoring' }, { id: 'feed', label: 'Job feed' }, { id: 'followups', label: 'Follow-ups' }, { id: 'help', label: 'Help' }, { id: 'backups', label: 'Backups and data' }, { id: 'costs', label: 'Cost cap' }]} /><div className="content">
+    <div className="rs-layout"><SectionRail items={[{ id: 'models', label: 'Résumé tailoring' }, { id: 'feed', label: 'Job feed' }, { id: 'followups', label: 'Follow-ups' }, { id: 'help', label: 'Help' }, { id: 'backups', label: 'Backups and data' }, ...(usesClaude ? [{ id: 'costs', label: 'Cost cap' }] : [])]} /><div className="content">
     <section className="panel provider-panel block" id="models" tabIndex={-1}>
       <div className="panel-heading">
         <div><h2>Résumé tailoring</h2><p className="note">Set up where the model runs. Then choose which model does each step.</p></div>
@@ -118,8 +124,8 @@ export function SettingsPage() {
       </div>
     </section>
 
-    <details className="model-section adv" open>
-      <summary>Model for each step <span className="muted">· local model calls run one at a time</span></summary>
+    <details className="model-section adv">
+      <summary>Model for each step (advanced) <span className="muted">· local model calls run one at a time</span></summary>
       <div className="task-list">
         {taskNames.map((task) => <article className="task-row" key={task}>
           <div className="task-copy"><h3>{labels[task].title}</h3><p>{labels[task].description}</p></div>
@@ -143,7 +149,7 @@ export function SettingsPage() {
         </article>)}
       </div>
       <datalist id="installed-models">{ollamaModels.map((model) => <option value={model} key={model} />)}</datalist>
-      <div className="save-row"><p>Suggested local starting model: Gemma 4 12B. Change it per task as your evaluations show a better fit.</p><button className="button primary" disabled={busy === 'save'} onClick={saveSettings}>{busy === 'save' ? 'Saving…' : 'Save settings'}</button></div>
+      <p className="subtle">Suggested local starting model: Gemma 4 12B. Change it per task as your evaluations show a better fit.</p>
     </details>
 
     <div id="feed" tabIndex={-1}><FeedSettings /></div>
@@ -152,16 +158,18 @@ export function SettingsPage() {
 
     <div id="backups" tabIndex={-1}><MaintenancePanel /></div>
 
-    <section className="panel block cost-panel" id="costs" tabIndex={-1}>
+    {usesClaude && <section className="panel block editor-panel cost-panel" id="costs" tabIndex={-1}>
       <h2>Cost estimate and cap</h2>
       <p className="subtle">Local Ollama calls have no API charge. Enter your provider’s current per-million-token prices for each selected Anthropic model. Runs check estimates before starting and track reported usage after every call.</p>
-      <label>Maximum estimated API spend per run (USD)<input type="number" min="0" max="100" step="0.01" value={settings.costCapUsd} onChange={(event) => setSettings({ ...settings, costCapUsd: Number(event.target.value) })} /></label>
-      <label>Maximum API spend per calendar month (USD)<input type="number" min="0" max="10000" step="0.5" value={settings.monthlyCapUsd} onChange={(event) => setSettings({ ...settings, monthlyCapUsd: Number(event.target.value) })} /></label>
+      <div className="form-pair">
+        <label>Most to spend on one run (USD)<input type="number" min="0" max="100" step="0.01" value={settings.costCapUsd} onChange={(event) => setSettings({ ...settings, costCapUsd: Number(event.target.value) })} /></label>
+        <label>Most to spend in a calendar month (USD)<input type="number" min="0" max="10000" step="0.5" value={settings.monthlyCapUsd} onChange={(event) => setSettings({ ...settings, monthlyCapUsd: Number(event.target.value) })} /></label>
+      </div>
       {pricedModels.map((model) => <div className="editor-card" key={model}><strong>{model}</strong><div className="form-pair"><label>Input USD / 1M tokens<input type="number" min="0" step="0.01" value={settings.modelPrices[model]?.inputPerMillion ?? ''} onChange={(event) => updatePrice(model, 'inputPerMillion', event.target.value)} /></label><label>Output USD / 1M tokens<input type="number" min="0" step="0.01" value={settings.modelPrices[model]?.outputPerMillion ?? ''} onChange={(event) => updatePrice(model, 'outputPerMillion', event.target.value)} /></label></div></div>)}
       {pricedModels.length > 0 && <p className="subtle">Prices change; confirm them with your provider before using its API. Missing prices prevent a paid run from starting.</p>}
-      <button className="button primary" disabled={busy === 'save'} onClick={saveSettings}>Save settings</button>
-    </section>
+    </section>}
 
     </div></div>
+    {dirty && <div className="savebar" role="group" aria-label="Unsaved settings">{confirmDiscard ? <><span>Discard every unsaved change?</span><button className="button danger small" onClick={() => { adopt(JSON.parse(stored) as PublicSettings); setConfirmDiscard(false) }}>Yes, discard</button><button className="button quiet small" onClick={() => setConfirmDiscard(false)}>Keep editing</button></> : <><span>You have unsaved settings.</span><button className="button primary small" disabled={busy === 'save'} onClick={saveSettings}>{busy === 'save' ? 'Saving…' : 'Save settings'}</button><button className="button quiet small" disabled={busy === 'save'} onClick={() => setConfirmDiscard(true)}>Discard</button></>}</div>}
   </main>
 }

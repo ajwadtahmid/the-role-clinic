@@ -9,7 +9,7 @@ export function FollowUpSettings() {
     event.preventDefault(); setBusy(true); setMessage('')
     try { await api('/api/tracker/preferences', { method: 'PUT', body: JSON.stringify({ ghostedDays: days }) }); setMessage('Follow-up setting saved.') } catch (error) { setMessage((error as Error).message) } finally { setBusy(false) }
   }
-  return <form className="panel editor-panel" aria-labelledby="followup-heading" onSubmit={save}>
+  return <form className="panel block editor-panel" aria-labelledby="followup-heading" onSubmit={save}>
     <h2 id="followup-heading">Follow-ups</h2>
     <p className="subtle">The Tracker reminds you only when something is due. After this many days with no reply, it suggests closing an application as “No reply”. Nothing changes until you confirm.</p>
     <label htmlFor="followup-days">Days with no reply</label>
