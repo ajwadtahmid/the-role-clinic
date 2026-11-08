@@ -12,7 +12,7 @@ import type { ModelRequest } from './model-adapters.js'
 
 const dirs: string[] = []
 const jd = 'TypeScript experience is required. Rust experience is preferred. Candidates need 5+ years of software engineering experience. Must be authorized to work in the US.'
-async function setup(auto = false, failSlop = false, draftText = 'Reduced API latency by 20% using TypeScript and Rust', semanticVerdict: 'grounded' | 'stretch' | 'unsupported' = 'grounded', countedTokens: number | null = null, unusableExtractionReplies = 0) {
+async function setup(auto = false, failSlop = false, draftText = 'Reduced API latency by 20% using TypeScript and Rust', semanticVerdict: 'grounded' | 'stretch' | 'unsupported' = 'grounded', countedTokens: number | null = null, unusableExtractionReplies = 0, truncatedExtractionReplies = 0) {
   const dir = await mkdtemp(join(tmpdir(), 'clinic-pipeline-')); dirs.push(dir)
   const { sqlite, db } = createDatabase(dir)
   const master = emptyMaster(), bulletId = randomUUID()
@@ -22,9 +22,11 @@ async function setup(auto = false, failSlop = false, draftText = 'Reduced API la
   saveProfile(sqlite, { ...emptyProfile(), email: 'private-secret@example.test', workAuthorization: 'Authorized to work in the US; PRIVATE_PROFILE_MARKER' })
   if (auto) await writeSettings(dir, defaultSettings())
   const calls: TaskName[] = [], inputs: string[] = []
-  let slopFailures = 0, unusableReplies = unusableExtractionReplies
+  let slopFailures = 0, unusableReplies = unusableExtractionReplies, truncatedReplies = truncatedExtractionReplies
+  const budgets: number[] = []
   const modelRouter = { async countInputTokens() { return countedTokens }, async complete(task: TaskName, request: ModelRequest) {
-    calls.push(task); inputs.push(request.user)
+    calls.push(task); inputs.push(request.user); budgets.push(request.maxOutputTokens ?? 0)
+    if (task === 'requirementExtraction' && truncatedReplies-- > 0) return { text: '', provider: 'ollama' as const, model: 'fake-local', finishReason: 'length', usage: { inputTokens: 100, outputTokens: 512 } }
     if (task === 'requirementExtraction' && unusableReplies-- > 0) return { text: 'Sure! Here are the requirements you asked for.', provider: 'ollama' as const, model: 'fake-local' }
     let value: unknown
     if (task === 'requirementExtraction') value = { requirements: [
@@ -53,7 +55,7 @@ async function setup(auto = false, failSlop = false, draftText = 'Reduced API la
   const post = (path: string, value: unknown = {}) => request(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(value) })
   const created = await post('/api/jobs', { company: 'Example', title: 'Engineer', text: jd })
   const job = await created.json() as { id: string; extractionRunId: string | null }
-  return { dir, sqlite, request, post, job, calls, inputs, bulletId }
+  return { dir, sqlite, request, post, job, calls, inputs, bulletId, budgets }
 }
 async function waitFor(sqlite: ReturnType<typeof createDatabase>['sqlite'], kind: string, expected: string) {
   for (let attempt = 0; attempt < 150; attempt++) {
@@ -66,6 +68,32 @@ async function waitFor(sqlite: ReturnType<typeof createDatabase>['sqlite'], kind
 afterEach(async () => { await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true }))) })
 
 describe('extraction and tailoring pipeline', () => {
+  it('retries truncated completion once with more space and retains both usage records', async () => {
+    const { sqlite, post, job, calls, budgets } = await setup(false, false, undefined, undefined, null, 0, 1)
+    await post(`/api/jobs/${job.id}/extract`)
+    const row = await waitFor(sqlite, 'extract', 'done')
+    expect(calls).toHaveLength(2); expect(budgets[1]).toBeGreaterThan(budgets[0])
+    const record = sqlite.prepare('SELECT usage FROM runs WHERE id=?').get(row.id) as { usage: string }
+    expect(JSON.parse(record.usage).calls.map((call: { outputTokens: number }) => call.outputTokens)).toEqual([512, 50])
+    sqlite.close()
+  })
+
+  it('stops after the second truncation with a distinct error and no partial extraction', async () => {
+    const { sqlite, post, job, calls } = await setup(false, false, undefined, undefined, null, 0, 2)
+    await post(`/api/jobs/${job.id}/extract`)
+    const row = await waitFor(sqlite, 'extract', 'failed')
+    expect(row.error).toContain('still too long'); expect(calls).toHaveLength(2)
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM requirements').get()).toEqual({ n: 0 })
+    sqlite.close()
+  })
+
+  it('estimates with the same adaptive output budget the calls use', async () => {
+    const { sqlite, request, job } = await setup(true)
+    const estimate = await (await request(`/api/jobs/${job.id}/estimate?kind=extract`)).json() as { lines: Array<{ maxOutputTokens: number }> }
+    expect(estimate.lines[0].maxOutputTokens).toBeGreaterThan(4096)
+    sqlite.close()
+  })
+
   it('auto-extracts exact JD spans, shows knockout basis, and keeps profile out of model requests', async () => {
     const { sqlite, request, job, calls, inputs } = await setup(true)
     expect(job.extractionRunId).toBeTruthy()

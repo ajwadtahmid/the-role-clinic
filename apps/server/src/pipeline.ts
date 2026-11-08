@@ -1,3 +1,4 @@
+import { outputBudget, outputBudgetForChars, TruncatedModelOutput } from './model-wire.js'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
@@ -91,18 +92,22 @@ export class PipelineService {
     if (!job) throw new Error('Job not found.')
     const settings = await readSettings(this.dataDirectory)
     let lines: CostLine[]
-    if (kind === 'extract') lines = [estimateTask(settings, 'requirementExtraction', Math.min(job.text.length, MAX_JD_CHARS) + 2000, taskOutputLimits.requirementExtraction)]
+    // Same output budgets the calls themselves use, so the estimate does not understate a paid run.
+    const budget = (task: TaskName, inputChars: number) => outputBudgetForChars(task, inputChars, taskOutputLimits[task], settings.taskModels[task].model)
+    if (kind === 'extract') { const chars = Math.min(job.text.length, MAX_JD_CHARS) + 2000; lines = [estimateTask(settings, 'requirementExtraction', chars, budget('requirementExtraction', chars))] }
     else {
       const extraction = this.getAnalysis(jobId)?.extraction
       if (!extraction) throw new Error('Extract requirements before tailoring.')
       const master = readMaster(this.sqlite).document
       if (!evidenceRows(master).length) throw new Error('Add at least one active master résumé bullet before tailoring.')
       const sourceChars = evidenceRows(master).map((row) => row.bullet.text.length + row.context.length).reduce((a,b) => a+b, 0)
+      const scoringChars = Math.min(sourceChars, 20_000) + 24_000, draftChars = Math.min(sourceChars, 25_000) + 6000, verifyChars = Math.min(sourceChars, 25_000) + 8000
       lines = [
-        estimateTask(settings, 'bulletScoring', Math.min(sourceChars, 20_000) + 24_000, taskOutputLimits.bulletScoring * 4),
-        estimateTask(settings, 'resumeDrafting', Math.min(sourceChars, 25_000) + 6000, taskOutputLimits.resumeDrafting),
-        estimateTask(settings, 'claimVerification', Math.min(sourceChars, 25_000) + 8000, taskOutputLimits.claimVerification),
-        estimateTask(settings, 'antiSlop', 8000, taskOutputLimits.antiSlop),
+        // Scoring runs in four batches, each with its own budget.
+        estimateTask(settings, 'bulletScoring', scoringChars, budget('bulletScoring', scoringChars / 4) * 4),
+        estimateTask(settings, 'resumeDrafting', draftChars, budget('resumeDrafting', draftChars)),
+        estimateTask(settings, 'claimVerification', verifyChars, budget('claimVerification', verifyChars)),
+        estimateTask(settings, 'antiSlop', 8000, budget('antiSlop', 8000)),
       ]
     }
     const estimatedUsd = Math.ceil(lines.reduce((sum, line) => sum + line.estimatedUsd, 0) * 10_000) / 10_000
@@ -153,7 +158,7 @@ export class PipelineService {
   async estimateReview(review: Review) {
     const settings = await readSettings(this.dataDirectory)
     const chars = this.reviewRequest({ ...review, lines: review.lines.map((line) => ({ ...line, verification: 'pending' as const })) }).user.length
-    const lines = [estimateTask(settings, 'claimVerification', chars + 2000, taskOutputLimits.claimVerification)]
+    const lines = [estimateTask(settings, 'claimVerification', chars + 2000, outputBudgetForChars('claimVerification', chars, taskOutputLimits.claimVerification, settings.taskModels.claimVerification.model))]
     const estimatedUsd = lines.reduce((sum, line) => sum + line.estimatedUsd, 0)
     return { estimatedUsd, capUsd: settings.costCapUsd, allowed: withinCaps(settings, estimatedUsd, spentThisMonth(this.sqlite)) }
   }
@@ -215,27 +220,41 @@ export class PipelineService {
       if (usage.totalUsd + guardedCost > settings.costCapUsd) throw new Error(`Token-counted cost could exceed the $${settings.costCapUsd} run cap. Increase the cap or choose a local model.`)
       if (monthSpent + guardedCost > settings.monthlyCapUsd) throw new Error(`Token-counted cost could take this month's API spend past the $${settings.monthlyCapUsd} monthly cap. Increase the cap or choose a local model.`)
     }
-    const response = await this.router.complete(task, { ...request, maxOutputTokens: outputLimit })
+    const response = await this.router.complete(task, { ...request, maxOutputTokens: outputLimit, allowTruncatedResponse: true })
     const usd = actualCost(settings, task, response)
     usage.calls.push({ task, model: response.model, provider: response.provider, inputTokens: response.usage?.inputTokens ?? 0, outputTokens: response.usage?.outputTokens ?? 0, usd })
     usage.totalUsd += usd
     this.sqlite.prepare('UPDATE runs SET usage=? WHERE id=?').run(JSON.stringify(usage), run.id)
     if (usage.totalUsd > settings.costCapUsd) throw new Error(`The $${settings.costCapUsd} run cap was reached after ${task}; remaining steps were stopped.`)
     if (usd > 0 && spentThisMonth(this.sqlite) > settings.monthlyCapUsd) throw new Error(`The $${settings.monthlyCapUsd} monthly cap was reached after ${task}; remaining steps were stopped.`)
-    if (response.finishReason === 'max_tokens') throw new Error('Anthropic output was truncated at its token limit; charged usage was recorded.')
+    if (response.finishReason === 'max_tokens' || response.finishReason === 'length') throw new TruncatedModelOutput(outputLimit)
     return response
   }
 
   // Model output is untrusted. If it cannot be parsed or validated, give the model one chance to repair it,
   // showing it what was wrong. Both attempts are billed and counted against the cost caps by `call`.
   private async callParsed<T>(run: RunRecord, task: TaskName, request: ModelRequest, outputLimit: number, parse: (text: string) => T): Promise<T> {
-    const first = await this.call(run, task, request, outputLimit)
-    try { return parse(first.text) }
-    catch (error) {
-      const reason = error instanceof z.ZodError ? error.issues.slice(0, 5).map((issue) => `${issue.path.join('.') || 'value'}: ${issue.message}`).join('; ') : (error as Error).message
-      const repaired = await this.call(run, task, { ...request, user: `${request.user}\n\nYour previous reply could not be used (${reason.slice(0, 600)}). Reply again with only the corrected JSON.` }, outputLimit)
-      return parse(repaired.text)
+    const settings = await readSettings(this.dataDirectory)
+    let budget = outputBudget(task, request, outputLimit, settings.taskModels[task].model)
+    let next = request
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let response: ModelResponse
+      try { response = await this.call(run, task, next, budget) }
+      catch (error) {
+        if (!(error instanceof TruncatedModelOutput)) throw error
+        if (attempt === 1) throw new Error('Model output is still too long after a retry; shorten the input.')
+        budget = Math.min(8192, budget * 2)
+        next = { ...request, user: request.user + '\n\nThe previous output was truncated. Return the complete JSON again from the original evidence, concisely. Do not continue or splice partial JSON.' }
+        continue
+      }
+      try { return parse(response.text) }
+      catch (error) {
+        if (attempt === 1) throw error
+        const reason = error instanceof z.ZodError ? error.issues.slice(0, 5).map(issue => `${issue.path.join('.')}: ${issue.message}`).join('; ') : String(error)
+        next = { ...request, user: request.user + `\n\nYour previous reply could not be used (${reason.slice(0, 600)}). Reply again with only the corrected JSON.` }
+      }
     }
+    throw new Error('No valid model response.')
   }
 
   private async extract(run: RunRecord, context: RunContext) {

@@ -39,6 +39,24 @@ describe('deterministic pipeline checks', () => {
     expect(extraction.partial).toBe(true)
   })
 
+  it.each([['-', '\u2010'], ['-', '\u2011'], ['\u2011', '-']])('matches equivalent word hyphens (%s / %s) and stores the exact source spelling', (sourceHyphen, modelHyphen) => {
+    const original = `1+ years hands${sourceHyphen}on AWS experience`, jd = `Requirements:\n${original}.`
+    const quote = `1+ years hands${modelHyphen}on AWS experience`
+    expect(locateQuote(jd, quote)).toEqual({ start: jd.indexOf(original), end: jd.indexOf(original) + original.length })
+    const extraction = normalizeExtraction(JSON.stringify({ requirements: [{ quote, kind: 'hard', category: 'years', skill: 'AWS', years: 1 }] }), jd, master, emptyProfile())
+    expect(extraction.requirements).toHaveLength(1)
+    expect(extraction.requirements[0].quote).toBe(original)
+    expect(extraction.partial).toBe(false)
+  })
+
+  it('still rejects changed numbers, tools and mathematical punctuation in quotes', () => {
+    expect(locateQuote('Minimum 3 years hands-on AWS experience.', 'Minimum 1 years hands\u2011on AWS experience')).toBeNull()
+    expect(locateQuote('Hands-on AWS experience.', 'Hands\u2011on Azure experience')).toBeNull()
+    expect(locateQuote('0–1 years experience.', '0-1 years experience')).toBeNull()
+    expect(locateQuote('A result of −5%.', 'A result of -5%.')).toBeNull()
+    expect(() => normalizeExtraction(JSON.stringify({ requirements: [{ quote: 'Minimum 1 years hands\u2011on AWS experience', kind: 'hard', category: 'years', years: 1 }] }), 'Minimum 3 years hands-on AWS experience.', master, emptyProfile())).toThrow('No model requirements matched exact text')
+  })
+
   it('chooses a user-written summary and whole-term skills by job relevance', () => {
     master.summaries.push({ id: randomUUID(), label: 'Mobile', text: 'Built Android interfaces' }, { id: randomUUID(), label: 'Backend', text: 'Built backend APIs with JavaScript' })
     const jd = 'Good JS experience is required for backend APIs.'

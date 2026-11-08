@@ -1,3 +1,4 @@
+import { aliasRequest } from './model-wire.js'
 import Anthropic from '@anthropic-ai/sdk'
 import type { TaskName } from '../../../packages/shared/src/index.js'
 import type { AppSettings } from '../../../packages/shared/src/index.js'
@@ -10,6 +11,7 @@ export interface ModelRequest {
   maxOutputTokens?: number
   reasoning?: 'auto' | 'off' | 'on' | 'low' | 'medium' | 'high'
   temperature?: number
+  allowTruncatedResponse?: boolean
   seed?: number
 }
 
@@ -18,6 +20,7 @@ export interface ModelResponse {
   usage?: { inputTokens: number; outputTokens: number }
   model: string
   provider: 'ollama' | 'anthropic'
+  reasoningCharacters?: number
   finishReason?: string
 }
 
@@ -81,15 +84,16 @@ export class OllamaAdapter implements ModelAdapter {
       signal: AbortSignal.timeout(180000),
     })
     if (!response.ok) throw new Error(`Ollama request failed with HTTP ${response.status}.`)
-    const payload = await response.json() as { message?: { content?: string }; prompt_eval_count?: number; eval_count?: number; model?: string; done_reason?: string }
+    const payload = await response.json() as { message?: { content?: string; thinking?: string }; prompt_eval_count?: number; eval_count?: number; model?: string; done_reason?: string }
     if (typeof payload.message?.content !== 'string') throw new Error('Ollama returned no message content.')
-    if (payload.done_reason === 'length') throw new Error(payload.message.content.trim() ? 'Ollama output was truncated at its token limit. Increase the task budget or reduce the input.' : 'Ollama exhausted its output budget before returning JSON (empty content; reasoning may have consumed the budget).')
-    if (!payload.message.content.trim()) throw new Error('Ollama returned empty message content.')
+    if (payload.done_reason === 'length' && !request.allowTruncatedResponse) throw new Error(payload.message.content.trim() ? 'Ollama output was truncated at its token limit. Increase the task budget or reduce the input.' : 'Ollama exhausted its output budget before returning JSON (empty content; reasoning may have consumed the budget).')
+    if (!payload.message.content.trim() && !(payload.done_reason === 'length' && request.allowTruncatedResponse)) throw new Error('Ollama returned empty message content.')
     return {
       text: payload.message.content,
       model: payload.model ?? model,
       provider: this.provider,
       finishReason: payload.done_reason,
+      reasoningCharacters: payload.message.thinking?.length ?? 0,
       ...(Number.isFinite(payload.prompt_eval_count) || Number.isFinite(payload.eval_count)
         ? { usage: { inputTokens: payload.prompt_eval_count ?? 0, outputTokens: payload.eval_count ?? 0 } }
         : {}),
@@ -182,7 +186,9 @@ export class ModelRouter {
         await this.adapters.ollama.unload?.(this.activeLocalModel.model, this.activeLocalModel.baseUrl)
       }
       this.activeLocalModel = nextLocal
-      return this.adapters[choice.provider].complete(choice.model, { ...request, reasoning: request.reasoning ?? choice.reasoning, temperature: request.temperature ?? choice.temperature })
+      const wire = aliasRequest({ ...request, reasoning: request.reasoning ?? choice.reasoning, temperature: request.temperature ?? choice.temperature })
+      const response = await this.adapters[choice.provider].complete(choice.model, wire.request)
+      return { ...response, text: wire.restore(response.text) }
     })
   }
 
@@ -191,6 +197,6 @@ export class ModelRouter {
     const choice = settings.taskModels[task]
     if (choice.provider !== 'anthropic') return null
     if (!this.adapters.anthropic.countInputTokens) throw new Error('This Anthropic adapter cannot count input tokens before a paid run.')
-    return this.adapters.anthropic.countInputTokens(choice.model, request)
+    return this.adapters.anthropic.countInputTokens(choice.model, aliasRequest(request).request)
   }
 }

@@ -24,7 +24,7 @@ function normalizeWithOffsets(value: string) {
     if (/\s/.test(char)) {
       if (!space && normalized) { normalized += ' '; offsets.push(i) }
       space = true
-    } else { normalized += char.toLowerCase(); offsets.push(i); space = false }
+    } else { normalized += /[\u2010\u2011]/.test(char) ? '-' : char.toLowerCase(); offsets.push(i); space = false }
   }
   return { normalized: normalized.trimEnd(), offsets }
 }
@@ -200,6 +200,7 @@ export function verifyLayer1(output: string, sourceIds: string[], master: Master
   }
   const attributions = [...output.matchAll(/\b(?:worked at|employed by|employment at)\s+([^,;.]+)|^At\s+([^,;.]+)[,;]/gim)]
   for (const match of attributions) {
+    if (/^scale(?:$|\s+(?:building|designing|developing|processing|operating|supporting|on|with|to)\b)/.test(match[1] ?? match[2])) continue
     const employer = (match[1] ?? match[2]).split(/\s+(?:from|in|during|as|where)\s+/i)[0].trim()
     if (!citedRoles.some((role) => sameEmployer(employer, role.company))) flags.push(`Employer attribution lacks cited role evidence: ${employer}`)
   }

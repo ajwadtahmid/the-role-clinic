@@ -17,6 +17,8 @@ artifacts/
 extra/
 AGENTS.md
 CLAUDE.md
+PRODUCT.md
+.impeccable/
 !job-search/AGENTS.md
 !job-search/CLAUDE.md
 DESIGN.md
