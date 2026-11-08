@@ -217,6 +217,19 @@ describe('job workspace flow', () => {
     sqlite.close()
   })
 
+  it('opens the first job by itself on a wide screen and leaves the list alone on a phone', async () => {
+    const { sqlite } = await setup()
+    sqlite.prepare('INSERT INTO jobs(id,company,title,captured_at,raw_snapshot,text) VALUES(?,?,?,?,?,?)').run(randomUUID(), 'Acme', 'Engineer', new Date().toISOString(), 'raw', 'A long enough job description for the list to show.')
+    const matches = (wide: boolean) => vi.stubGlobal('matchMedia', () => ({ matches: wide, addEventListener() {}, removeEventListener() {} }))
+    matches(false); location.hash = '#jobs'; cleanup(); render(<Workspace />)
+    await screen.findByText('Engineer', { selector: '.job-card strong' })
+    expect(document.querySelector('.job-card[aria-current="true"]')).toBeNull()
+    matches(true); cleanup(); render(<Workspace />)
+    await waitFor(() => expect(document.querySelector('.job-card[aria-current="true"]')).not.toBeNull())
+    location.hash = ''
+    sqlite.close()
+  })
+
   it('lists a long stage 50 at a time and shows an applied job on its own with a way back to the Tracker', async () => {
     const { sqlite } = await setup()
     const now = new Date().toISOString()

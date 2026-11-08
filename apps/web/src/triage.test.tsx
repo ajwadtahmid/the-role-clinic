@@ -69,7 +69,7 @@ describe('Jobs from a job feed', () => {
     sqlite.close()
   })
 
-  it('shows the finder notes as unverified and offers Save, Already applied and Skip, then moves on to the next job', async () => {
+  it('shows the finder notes as unverified and offers Save and Skip, with Already applied under More, then moves on to the next job', async () => {
     const { user, sqlite } = await setup()
     await user.click((await screen.findByText('Platform Engineer', { selector: '.job-card strong' })).closest('button')!)
     const panel = await screen.findByRole('region', { name: 'From your job finder' })
@@ -90,6 +90,7 @@ describe('Jobs from a job feed', () => {
   it('records an application with no résumé file, as the master résumé', async () => {
     const { user, sqlite } = await setup()
     await user.click((await screen.findByText('Data Analyst', { selector: '.job-card strong' })).closest('button')!)
+    await user.click(await screen.findByText('More', { selector: '.more-menu summary' }))
     await user.click(await screen.findByRole('button', { name: 'Already applied' }))
     expect(await screen.findByRole('option', { name: 'No file: I used my master résumé' })).toBeTruthy()
     await user.click(screen.getByLabelText(/I confirm this résumé/))

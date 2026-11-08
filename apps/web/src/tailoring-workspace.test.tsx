@@ -80,7 +80,8 @@ describe('review UI', () => {
     await user.type(screen.getByRole('textbox', { name: 'Application answer' }), 'I enjoy building reliable systems.')
     await user.click(screen.getByRole('button', { name: 'Add application answer' }))
     await screen.findByText('Answer saved.')
-    await user.click(screen.getByText('Export history & mark as applied'))
+    // The export offers the next step right where it finished, instead of in a drawer further down.
+    await user.click(screen.getByRole('button', { name: 'Mark as applied' }))
     const mark = screen.getByRole('button', { name: 'Mark as applied with this export' }) as HTMLButtonElement
     expect(mark.disabled).toBe(true)
     await user.click(screen.getByRole('checkbox', { name: 'I submitted this exported version.' }))

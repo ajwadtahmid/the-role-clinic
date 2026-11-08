@@ -469,3 +469,4 @@ kbd{font:600 11px ui-monospace,SFMono-Regular,Consolas,monospace;border:1px soli
 .button,.button.small,.text-button,.text-button.small,.chip,.seg button,.rail button,.applications-table select,.file-button,.savebar .button,.job-tab,summary{min-height:44px}
 .jr-actions .button,.jr-actions .text-button{min-width:44px}
 }
+.rv-sent{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
