@@ -186,7 +186,7 @@ export function Workspace() {
   const action = detail ? nextAction({ status: detail.job.status ?? 'new', hasExtraction: !!analysis?.extraction, hasDraft: !!analysis?.tailored, hasExport }) : null
   const noJobs = counts?.all === 0 && !selected
   const listing = !noJobs && !detailOnly
-  return <main className="shell" id="main" tabIndex={-1}>
+  return <main className={`shell${selected ? ' detail-open' : ''}`} id="main" tabIndex={-1}>
     <AppHeader current="jobs" />
     <PageHeader title="Jobs" actions={<>{feed?.configured && <>{feed.lastCheckedAt && <span className="subtle feed-checked">Last checked {new Date(feed.lastCheckedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>}<button className="button secondary" disabled={checking} onClick={() => void checkFeed(true)}>{checking ? 'Checking…' : 'Check for new jobs'}</button></>}<button className="button primary" onClick={() => setShowAdd(true)}><Icon name="plus" />Add job</button></>}>Jobs you have not applied to yet. Applied jobs are in the <a href="#tracker">Tracker</a>{counts && counts.applied > 0 ? ` (${counts.applied})` : ''}.</PageHeader>
     {notice && <div className="notice neutral" role="status">{notice}</div>}

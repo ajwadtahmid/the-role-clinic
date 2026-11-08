@@ -453,3 +453,19 @@ kbd{font:600 11px ui-monospace,SFMono-Regular,Consolas,monospace;border:1px soli
 .get-ready .actions{align-items:center;gap:14px}
 .get-ready .actions a{color:var(--green)}
 .menu .pop .button{justify-content:flex-start}
+
+/* Phones: an open job or application is the page. The list, search and filters return with the back button. */
+@media(max-width:880px){.shell.detail-open>.page-header,.shell.detail-open>.toolbar,.shell.detail-open>.chips{display:none}}
+@media(max-width:860px){.tracker-shell.detail-open>.tracker-reminders,.tracker-shell.detail-open>.answer-library-panel{display:none}}
+@media(max-width:760px){
+.page-header{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
+.page-header .page-note{flex-basis:100%;order:3;margin:0}
+.page-header h1{flex:1 1 auto}
+.page-actions{display:flex;flex-wrap:nowrap;gap:8px;align-items:center;margin:0}
+.page-actions .feed-checked{display:none}
+}
+/* Touch targets are at least 44px on phones and touch screens. */
+@media(max-width:760px),(pointer:coarse){
+.button,.button.small,.text-button,.text-button.small,.chip,.seg button,.rail button,.applications-table select,.file-button,.savebar .button,.job-tab,summary{min-height:44px}
+.jr-actions .button,.jr-actions .text-button{min-width:44px}
+}
