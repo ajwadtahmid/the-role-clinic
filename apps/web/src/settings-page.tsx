@@ -32,12 +32,12 @@ export function SettingsPage() {
     request<PublicSettings>('/api/settings').then(setSettings).catch((error: Error) => setNotice({ kind: 'error', text: error.message }))
   }, [])
 
-  function updateTask(task: TaskName, key: 'provider' | 'model', value: string) {
+  function updateTask(task: TaskName, key: 'provider' | 'model' | 'reasoning' | 'temperature', value: string | number | undefined) {
     setSettings((current) => current ? {
       ...current,
       taskModels: {
         ...current.taskModels,
-        [task]: { ...current.taskModels[task], [key]: value },
+        [task]: { ...current.taskModels[task], ...(['provider', 'model'].includes(key) ? { reasoning: 'auto' as const } : {}), [key]: value },
       },
     } : current)
   }
@@ -131,6 +131,15 @@ export function SettingsPage() {
             </select>
             <label className="sr-only" htmlFor={`${task}-model`}>Model for {labels[task].title}</label>
             <input id={`${task}-model`} value={settings.taskModels[task].model} list="installed-models" onChange={(event) => updateTask(task, 'model', event.target.value)} placeholder="Model ID" />
+            {settings.taskModels[task].provider === 'ollama' && <label>Reasoning
+              <select value={settings.taskModels[task].reasoning ?? 'auto'} onChange={(event) => updateTask(task, 'reasoning', event.target.value)}>
+                <option value="auto">Automatic</option>
+                {/^gpt-oss(?::|$)/i.test(settings.taskModels[task].model) ? <><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></> : <><option value="off">Off</option><option value="on">On</option></>}
+              </select>
+            </label>}
+            <label>Temperature
+              <input type="number" min="0" max={settings.taskModels[task].provider === 'anthropic' ? 1 : 2} step="0.1" placeholder={settings.taskModels[task].provider === 'ollama' ? 'Auto (0.2)' : 'Provider default'} value={settings.taskModels[task].temperature ?? ''} onChange={(event) => updateTask(task, 'temperature', event.target.value === '' ? undefined : Number(event.target.value))} />
+            </label>
           </div>}
         </article>)}
       </div>

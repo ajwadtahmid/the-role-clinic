@@ -15,6 +15,8 @@ export type TaskName = z.infer<typeof taskNameSchema>
 export const modelChoiceSchema = z.object({
   provider: z.enum(['ollama', 'anthropic']),
   model: z.string().trim().min(1).max(160),
+  reasoning: z.enum(['auto', 'off', 'on', 'low', 'medium', 'high']).optional(),
+  temperature: z.number().min(0).max(2).optional(),
 })
 
 export const appSettingsSchema = z.object({

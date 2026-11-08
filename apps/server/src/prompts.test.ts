@@ -5,8 +5,8 @@ import { prompts, type PromptName } from './prompts.js'
 // Append-only record of every prompt version ever shipped. To change a prompt: edit its text, bump its
 // `version` in prompts.ts, and add the new version and hash here. Never edit an existing entry.
 const history: Record<PromptName, Record<string, string>> = {
-  requirementExtraction: { v1: '46b29ecc9b8a0c281240cbfc0a0fd79350f4c17a4758b3ea5ec22fafe0694407' },
-  bulletScoring: { v1: '7779cdec09744e6fdcadd2919132f4087d7f2f09cdbd0b1f40b02e5f4221028c' },
+  requirementExtraction: { v1: '46b29ecc9b8a0c281240cbfc0a0fd79350f4c17a4758b3ea5ec22fafe0694407', v2: 'eaee1b3fb6fad219846057d4edd5a24e509a1cd3734f2a4815fb49b9093f565c' },
+  bulletScoring: { v1: '7779cdec09744e6fdcadd2919132f4087d7f2f09cdbd0b1f40b02e5f4221028c', v2: '28e7091225cfde216f807539832fc1816ad9a83a87a67a3de911e50f1580de54' },
   resumeDrafting: { v1: '5b4abd614f568c17c7192ba59ea3944155fed8cc35f2010c198e8fa48be0a24f' },
   claimVerification: { v1: 'f8661ec3c0e2670ccf564afa8d0821cb9b5253707d1e78fcf9d9ffdea2674c93' },
   antiSlop: { v1: 'aa9e3645cac5ec18c0821a56e823f4b6f958743ef9574350523ade197399cb5e' },

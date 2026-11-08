@@ -1,8 +1,7 @@
 import { randomUUID } from 'node:crypto'
-import { z } from 'zod'
 import { extractionSchema, type BulletScore, type Extraction, type Gap, type Master, type Profile, type Requirement, type Synonym, type TailoredLine } from '../../../packages/shared/src/index.js'
+import { extractionCandidatesSchema } from './model-schemas.js'
 
-const candidateSchema = z.object({ requirements: z.array(z.object({ quote: z.string().min(3).max(2000), kind: z.enum(['knockout', 'hard', 'nice']), category: z.enum(['years', 'skill', 'location', 'work_authorization', 'clearance', 'education', 'other']), skill: z.string().max(100).optional(), years: z.number().nonnegative().max(80).nullable().optional() })).max(100), seniority: z.string().max(100).optional(), vocabulary: z.array(z.string().max(100)).max(100).optional() })
 const stop = new Set('a an and are as at be by for from has have in into is of on or our the their to with you your will required preferred experience ability knowledge skills strong working using use including'.split(' '))
 const techNames = ['JavaScript','TypeScript','Python','Java','C++','C#','Go','Rust','Kotlin','Swift','React','React Native','Node.js','Express','Flask','Django','Spring','PostgreSQL','Postgres','MySQL','SQLite','Redis','MongoDB','Docker','Kubernetes','k8s','AWS','Azure','GCP','Terraform','Linux','GitHub Actions','GraphQL','REST','gRPC','Flutter','Dart','Android','iOS','Kafka','Spark','PyTorch','TensorFlow']
 const now = () => new Date().toISOString()
@@ -54,14 +53,22 @@ const masterLevel = (text: string) => /\bmaster|\bph\.?d\b|\bdoctorate/i.test(te
 export function assessRequirement(requirement: Requirement, master: Master, profile: Profile, synonyms: Synonym[] = []): Pick<Requirement, 'assessment' | 'basis'> {
   const quote = requirement.quote.toLowerCase()
   if (requirement.category === 'years' && requirement.years != null) {
+    const months = quote.match(/(\d+(?:\.\d+)?)\s*months?/)
+    const threshold = months ? Number(months[1]) / 12 : requirement.years
+    const upper = /\b(?:at most|no more than|maximum|up to|not exceed|less than|fewer than)\b/.test(quote)
+    const strict = /\b(?:less than|fewer than|more than|over)\b/.test(quote) && !/no more than/.test(quote)
+    const compare = (years: number) => upper ? strict ? years < threshold : years <= threshold : strict ? years > threshold : years >= threshold
     if (requirement.skill) {
       const names = equivalences(requirement.skill, synonyms)
       const skill = master.skills.find((item) => names.includes(item.name.toLowerCase()))
-      if (skill?.years != null) return { assessment: skill.years >= requirement.years ? 'met' : 'gap', basis: `${skill.years} years recorded for ${skill.name} in the master; requirement: ${requirement.years}.` }
+      if (skill?.years != null && !/professional|employment|commercial|industry/.test(quote)) return { assessment: compare(skill.years) ? 'met' : 'gap', basis: `${skill.years} years recorded for ${skill.name} in the master; requirement: ${requirement.quote}` }
       return { assessment: 'unknown', basis: `No verified years recorded for ${requirement.skill}. A skill listing or project date is not employment duration.` }
     }
-    const years = yearsFromRoles(master)
-    if (years > 0) return { assessment: years >= requirement.years ? 'met' : 'gap', basis: `${years} years across dated employment roles; requirement: ${requirement.years}. Overlapping roles counted once.` }
+    const qualifier = /software|programming|development|coding/.test(quote) ? /software|developer|programmer|front.?end|back.?end|full.?stack/i : /regulatory/.test(quote) ? /regulatory/i : /hardware|electrical|mechanical|data scien/.test(quote) ? new RegExp(quote.match(/hardware|electrical|mechanical|data scien/)![0], 'i') : null
+    const roles = qualifier ? master.roles.filter((role) => qualifier.test(role.title)) : master.roles
+    const years = yearsFromRoles({ ...master, roles })
+    if (years > 0) return { assessment: compare(years) ? 'met' : 'gap', basis: `${years} years across dated${qualifier ? ' matching' : ''} employment roles; requirement: ${requirement.quote}. Overlapping roles counted once.` }
+    if (qualifier) return { assessment: 'unknown', basis: 'No dated employment role establishes the requested experience qualifier; unrelated employment and projects cannot prove it.' }
     return { assessment: 'unknown', basis: 'No dated employment roles available to calculate total years.' }
   }
   if (requirement.category === 'work_authorization') {
@@ -78,6 +85,9 @@ export function assessRequirement(requirement: Requirement, master: Master, prof
   if (requirement.category === 'education') {
     const degrees = master.education.map((item) => [item.credential, item.field, item.details].join(' ')).join(' ')
     if (!degrees.trim()) return { assessment: 'unknown', basis: 'No degree details recorded in the master résumé.' }
+    if (/graduat|enroll|student|pursu|expected|within|between|\b(?:19|20)\d{2}\b|\band\b|minimum|gpa/.test(quote)) return { assessment: 'unknown', basis: `This compound education condition also contains a date, status or other constraint; the degree alone does not establish every part. Recorded education: ${degrees.slice(0, 250)}` }
+    const field = quote.match(/\bin\s+([^.;]+?)(?:\s+(?:required|preferred|or equivalent|or a related|with)\b|$)/)?.[1]
+    if (field && !/technical|related|relevant|any|equivalent/.test(field) && !master.education.some((education) => includesTerm(field, education.field) || includesTerm(education.field, field))) return { assessment: 'unknown', basis: `The requested field is not established by the recorded degree: ${degrees.slice(0, 250)}` }
     if (bachelorLevel(requirement.quote) && bachelorLevel(degrees)) return { assessment: 'met', basis: `Recorded education: ${degrees.slice(0, 250)}` }
     if (masterLevel(requirement.quote) && masterLevel(degrees)) return { assessment: 'met', basis: `Recorded education: ${degrees.slice(0, 250)}` }
     return { assessment: 'unknown', basis: `Degree requirement needs review against recorded education: ${degrees.slice(0, 250)}` }
@@ -85,6 +95,10 @@ export function assessRequirement(requirement: Requirement, master: Master, prof
   if (requirement.category === 'location') return { assessment: 'unknown', basis: profile.location ? `Profile location: ${profile.location}. Confirm commute, relocation, or remote policy manually.` : 'Profile location is not recorded.' }
   if (requirement.category === 'clearance') return { assessment: 'unknown', basis: 'Clearance status is not recorded as a verified field.' }
   if (requirement.category === 'skill' && requirement.skill) {
+    if (/\s+or\s+/i.test(requirement.skill)) {
+      const alternatives = requirement.skill.split(/\s+or\s+/i).map((skill) => assessRequirement({ ...requirement, skill }, master, profile, synonyms))
+      return alternatives.find((result) => result.assessment === 'met') ?? { assessment: 'unknown', basis: 'No listed alternative has verified active evidence; review the alternatives manually.' }
+    }
     const names = equivalences(requirement.skill, synonyms)
     const evidence = evidenceRows(master).find((row) => names.some((name) => includesTerm(`${row.bullet.text} ${row.bullet.skills.join(' ')}`, name)))
     if (evidence) return { assessment: 'met', basis: `Master bullet ${evidence.bullet.id}: ${evidence.bullet.text.slice(0, 220)}` }
@@ -94,12 +108,15 @@ export function assessRequirement(requirement: Requirement, master: Master, prof
   return { assessment: 'unknown', basis: 'Compare this requirement against the cited résumé evidence.' }
 }
 export function normalizeExtraction(modelText: string, jobText: string, master: Master, profile: Profile, synonyms: Synonym[] = []): Extraction {
-  const parsed = candidateSchema.parse(parseModelJson(modelText))
+  const parsed = extractionCandidatesSchema.parse(parseModelJson(modelText))
   const requirements: Requirement[] = []
   const seen = new Set<string>()
   for (const candidate of parsed.requirements) {
     const range = locateQuote(jobText, candidate.quote)
     if (!range) continue
+    const context = jobText.slice(jobText.lastIndexOf('\n', range.start) + 1, range.end)
+    const instruction = /\b(?:ignore|disregard|override)\b.{0,90}\b(?:instruction|prompt|rule|previous|evidence)|\b(?:assistant|system)\s*:|\b(?:system prompt|return (?:only |no other |a verdict|grounded)|claim (?:the candidate|that|a citizenship)|fabricate|pretend|mark.{0,30}grounded)\b/i
+    if (instruction.test(candidate.quote) || instruction.test(context)) continue
     const key = `${range.start}:${range.end}:${candidate.category}`
     if (seen.has(key)) continue
     seen.add(key)
@@ -159,16 +176,39 @@ export function findGaps(extraction: Extraction, scores: BulletScore[], master: 
     return [{ requirementId: requirement.id, quote: requirement.quote, reason, evidenceIds: support.map((s) => s.bulletId) }]
   })
 }
-const numeric = (text: string) => [...new Set((text.match(/\b\d[\d,]*(?:\.\d+)?(?:%|\+|\s+percent)?/gi) ?? []).map((value) => value.replaceAll(',', '').replace(/\s+percent$/i, '%')))]
+const numeric = (text: string) => {
+  const normalized = text.replace(/(\d[\d,]*(?:\.\d+)?)\s+percent\b/gi, '$1%')
+    .replace(/\b(?:no more than|at most|under|less than)\s+(\d[\d,]*(?:\.\d+)?%?)/gi, '$1≤')
+    .replace(/\b(?:over|more than|at least)\s+(\d[\d,]*(?:\.\d+)?%?)/gi, '$1+')
+  return [...new Set((normalized.match(/\b\d[\d,]*(?:\.\d+)?%?[+≤]?/gi) ?? []).map((value) => value.replaceAll(',', '')))]
+}
 export function verifyLayer1(output: string, sourceIds: string[], master: Master, synonyms: Synonym[]): string[] {
   const rows = evidenceRows(master).filter((row) => sourceIds.includes(row.bullet.id))
   if (!rows.length) return ['No valid source bullet was cited.']
   const source = rows.map((row) => `${row.context} ${row.bullet.text} ${row.bullet.skills.join(' ')} ${row.bullet.metrics.join(' ')}`).join('\n')
   const flags: string[] = []
+  const missing = sourceIds.filter((id) => !rows.some((row) => row.bullet.id === id))
+  if (missing.length) flags.push(`Unmatched source IDs: ${missing.join(', ')}`)
   for (const value of numeric(output)) if (!numeric(source).includes(value)) flags.push(`New or changed number: ${value}`)
   const known = [...new Set([...techNames, ...master.skills.map((s) => s.name), ...master.projects.flatMap((p) => p.stack)])].filter((term) => term.length >= 2).sort((a, b) => b.length - a.length)
   for (const term of known) if (includesTerm(output, term, ambiguousTerms.has(term.toLowerCase())) && !equivalences(term, synonyms).some((variant) => includesTerm(source, variant))) flags.push(`Tool or skill lacks cited evidence: ${term}`)
   for (const role of master.roles) if (role.company.length >= 3 && includesTerm(output, role.company) && !includesTerm(source, role.company)) flags.push(`Company lacks cited evidence: ${role.company}`)
+  const citedRoles = master.roles.filter((role) => role.bullets.some((bullet) => sourceIds.includes(bullet.id)))
+  const sameEmployer = (name: string, company: string) => {
+    const normalize = (value: string) => value.replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+    return includesTerm(normalize(name), normalize(company)) || (normalize(name).length >= 3 && includesTerm(normalize(company), normalize(name)))
+  }
+  const attributions = [...output.matchAll(/\b(?:worked at|employed by|employment at)\s+([^,;.]+)|^At\s+([^,;.]+)[,;]/gim)]
+  for (const match of attributions) {
+    const employer = (match[1] ?? match[2]).split(/\s+(?:from|in|during|as|where)\s+/i)[0].trim()
+    if (!citedRoles.some((role) => sameEmployer(employer, role.company))) flags.push(`Employer attribution lacks cited role evidence: ${employer}`)
+  }
+  const titles = [...output.matchAll(/\b(?:worked|served|employed)\s+as\s+(?:an?\s+)?([^,;.]+?)\s+(?:at|for)\s+([^,;\n]+)/gi),
+    ...[...output.matchAll(/\b([A-Z][a-zA-Z]*(?:[ /-][A-Z][a-zA-Z]*){0,6})\s+at\s+([^,;\n]+)/g)].filter((match) => /\b(?:Engineer|Developer|Associate|Manager|Analyst|Scientist|Architect|Consultant|Officer|President|Director|Coordinator|Administrator|Technician|Intern|CEO|CTO|CFO|COO|SRE|VP)\b/.test(match[1]))]
+  for (const match of titles) {
+    const title = match[1].replace(/^At\s+|^As\s+|^Worked\s+as\s+/i, '').trim()
+    if (!citedRoles.some((role) => role.title.toLowerCase() === title.toLowerCase() && sameEmployer(match[2], role.company))) flags.push(`Job title/employer attribution lacks cited role evidence: ${title} at ${match[2]}`)
+  }
   if (rows.every((row) => row.kind === 'project') && /\b(?:employed|employment|my role at|worked at)\b/i.test(output)) flags.push('Project evidence is presented as employment.')
   return [...new Set(flags)]
 }

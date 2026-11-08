@@ -60,6 +60,7 @@ describe('deterministic pipeline checks', () => {
     expect(assessRequirement(ask("Master's degree required"), withDegree, emptyProfile(), synonyms).assessment).toBe('unknown')
     expect(assessRequirement(ask('Bachelor’s degree in a technical field'), withDegree, emptyProfile(), synonyms).assessment).toBe('met')
     expect(assessRequirement(ask('Basic knowledge of jobs systems'), withDegree, emptyProfile(), synonyms).assessment).toBe('unknown')
-    expect(assessRequirement(ask('BS or MS in Computer Science'), withDegree, emptyProfile(), synonyms).assessment).toBe('met')
+    expect(assessRequirement(ask('BS or MS in Computer Science'), withDegree, emptyProfile(), synonyms).assessment).toBe('unknown')
+    expect(assessRequirement(ask('BS or MS in Information Systems'), withDegree, emptyProfile(), synonyms).assessment).toBe('met')
   })
 })

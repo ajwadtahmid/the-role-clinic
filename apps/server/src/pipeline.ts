@@ -3,10 +3,11 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type Database from 'better-sqlite3'
 import { z } from 'zod'
-import { bulletScoreSchema, tailoredDocumentSchema, tailoredLineSchema, type AppSettings, type BulletScore, type Extraction, type Gap, type Master, type TailoredDocument, type TailoredLine, type TaskName, type Review } from '../../../packages/shared/src/index.js'
+import { tailoredDocumentSchema, tailoredLineSchema, type AppSettings, type BulletScore, type Extraction, type Gap, type Master, type TailoredDocument, type TailoredLine, type TaskName, type Review } from '../../../packages/shared/src/index.js'
 import { readMaster, readProfile, listSynonyms, snapshotMaster } from './master.js'
 import { readSettings } from './settings.js'
-import type { ModelRouter, ModelRequest, ModelResponse } from './model-adapters.js'
+import { taskOutputLimits, type ModelRouter, type ModelRequest, type ModelResponse } from './model-adapters.js'
+import { scoreResponseSchema, verdictResponseSchema, slopResponseSchema, modelFormats, requireIds, parseDraft } from './model-schemas.js'
 import { type RunContext, type RunRecord, SerialRunQueue } from './queue.js'
 import { prompts } from './prompts.js'
 import { antiSlop, assessRequirement, chooseSummary, evidenceRows, findGaps, normalizeExtraction, parseModelJson, scoreEvidence, selectSkillsLine, verifyLayer1 } from './pipeline-core.js'
@@ -15,16 +16,7 @@ const promptVersions = { requirementExtraction: prompts.requirementExtraction.ve
 const MAX_JD_CHARS = 18_000
 const jobRow = (sqlite: Database.Database, id: string) => sqlite.prepare('SELECT id,company,title,text,location FROM jobs WHERE id=?').get(id) as { id: string; company: string; title: string; text: string; location: string } | undefined
 const selectLatest = (sqlite: Database.Database, table: 'requirements' | 'tailored', jobId: string) => sqlite.prepare(`SELECT document FROM ${table} WHERE job_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1`).get(jobId) as { document: string } | undefined
-const candidatesSchema = z.object({ lines: z.array(z.object({ text: z.string().trim().min(1).max(4000), sourceIds: z.array(z.string().uuid()).min(1).max(10) })).min(1).max(12) })
-const scoreResponseSchema = z.object({ scores: z.array(bulletScoreSchema).max(40) })
-const verdictResponseSchema = z.object({ verdicts: z.array(z.object({ outId: z.string().uuid(), verdict: z.enum(['grounded', 'stretch', 'unsupported']), reason: z.string().max(1000) })).max(20) })
-const slopResponseSchema = z.object({ flags: z.array(z.object({ outId: z.string().uuid(), flags: z.array(z.string().max(300)).max(10) })).max(20) })
-const jsonSchema = (properties: Record<string, unknown>, required: string[]) => ({ type: 'object', properties, required, additionalProperties: false })
-const extractionFormat = jsonSchema({ requirements: { type: 'array', items: jsonSchema({ quote: { type: 'string' }, kind: { type: 'string', enum: ['knockout','hard','nice'] }, category: { type: 'string', enum: ['years','skill','location','work_authorization','clearance','education','other'] }, skill: { type: 'string' }, years: { type: ['number','null'] } }, ['quote','kind','category','skill','years']) }, seniority: { type: 'string' }, vocabulary: { type: 'array', items: { type: 'string' } } }, ['requirements','seniority','vocabulary'])
-const draftFormat = jsonSchema({ lines: { type: 'array', items: jsonSchema({ text: { type: 'string' }, sourceIds: { type: 'array', items: { type: 'string' } } }, ['text','sourceIds']) } }, ['lines'])
-const scoreFormat = jsonSchema({ scores: { type: 'array', items: jsonSchema({ bulletId: { type: 'string' }, score: { type: 'number' }, requirementIds: { type: 'array', items: { type: 'string' } }, rationale: { type: 'string' } }, ['bulletId','score','requirementIds','rationale']) } }, ['scores'])
-const verdictFormat = jsonSchema({ verdicts: { type: 'array', items: jsonSchema({ outId: { type: 'string' }, verdict: { type: 'string', enum: ['grounded','stretch','unsupported'] }, reason: { type: 'string' } }, ['outId','verdict','reason']) } }, ['verdicts'])
-const slopFormat = jsonSchema({ flags: { type: 'array', items: jsonSchema({ outId: { type: 'string' }, flags: { type: 'array', items: { type: 'string' } } }, ['outId','flags']) } }, ['flags'])
+const extractionFormat = modelFormats.extraction, draftFormat = modelFormats.draft, scoreFormat = modelFormats.score, verdictFormat = modelFormats.verdict, slopFormat = modelFormats.slop
 
 interface CostLine { task: TaskName; provider: string; model: string; estimatedInputTokens: number; maxOutputTokens: number; estimatedUsd: number }
 function estimateTask(settings: AppSettings, task: TaskName, inputChars: number, maxOutputTokens: number): CostLine {
@@ -99,7 +91,7 @@ export class PipelineService {
     if (!job) throw new Error('Job not found.')
     const settings = await readSettings(this.dataDirectory)
     let lines: CostLine[]
-    if (kind === 'extract') lines = [estimateTask(settings, 'requirementExtraction', Math.min(job.text.length, MAX_JD_CHARS) + 2000, 2048)]
+    if (kind === 'extract') lines = [estimateTask(settings, 'requirementExtraction', Math.min(job.text.length, MAX_JD_CHARS) + 2000, taskOutputLimits.requirementExtraction)]
     else {
       const extraction = this.getAnalysis(jobId)?.extraction
       if (!extraction) throw new Error('Extract requirements before tailoring.')
@@ -107,10 +99,10 @@ export class PipelineService {
       if (!evidenceRows(master).length) throw new Error('Add at least one active master résumé bullet before tailoring.')
       const sourceChars = evidenceRows(master).map((row) => row.bullet.text.length + row.context.length).reduce((a,b) => a+b, 0)
       lines = [
-        estimateTask(settings, 'bulletScoring', Math.min(sourceChars, 20_000) + 6000, 1400),
-        estimateTask(settings, 'resumeDrafting', Math.min(sourceChars, 25_000) + 6000, 2200),
-        estimateTask(settings, 'claimVerification', Math.min(sourceChars, 25_000) + 8000, 1500),
-        estimateTask(settings, 'antiSlop', 8000, 800),
+        estimateTask(settings, 'bulletScoring', Math.min(sourceChars, 20_000) + 24_000, taskOutputLimits.bulletScoring * 4),
+        estimateTask(settings, 'resumeDrafting', Math.min(sourceChars, 25_000) + 6000, taskOutputLimits.resumeDrafting),
+        estimateTask(settings, 'claimVerification', Math.min(sourceChars, 25_000) + 8000, taskOutputLimits.claimVerification),
+        estimateTask(settings, 'antiSlop', 8000, taskOutputLimits.antiSlop),
       ]
     }
     const estimatedUsd = Math.ceil(lines.reduce((sum, line) => sum + line.estimatedUsd, 0) * 10_000) / 10_000
@@ -161,7 +153,7 @@ export class PipelineService {
   async estimateReview(review: Review) {
     const settings = await readSettings(this.dataDirectory)
     const chars = this.reviewRequest({ ...review, lines: review.lines.map((line) => ({ ...line, verification: 'pending' as const })) }).user.length
-    const lines = [estimateTask(settings, 'claimVerification', chars + 2000, 2400)]
+    const lines = [estimateTask(settings, 'claimVerification', chars + 2000, taskOutputLimits.claimVerification)]
     const estimatedUsd = lines.reduce((sum, line) => sum + line.estimatedUsd, 0)
     return { estimatedUsd, capUsd: settings.costCapUsd, allowed: withinCaps(settings, estimatedUsd, spentThisMonth(this.sqlite)) }
   }
@@ -188,7 +180,7 @@ export class PipelineService {
         review.lines = review.lines.filter((line) => matching.has(line.outId))
         if (!review.lines.some((line) => line.verification === 'pending')) return
         context.progress('claimVerification', 'Checking edited lines against their frozen evidence.')
-        const verdicts = await this.callParsed(record, 'claimVerification', this.reviewRequest(review), 2400, (text) => new Map(verdictResponseSchema.parse(parseModelJson(text)).verdicts.map((v) => [v.outId, v])))
+        const verdicts = await this.callParsed(record, 'claimVerification', this.reviewRequest(review), taskOutputLimits.claimVerification, (text) => { const value = verdictResponseSchema.parse(parseModelJson(text)); requireIds(value.verdicts.map((item) => item.outId), new Set(review.lines.filter((line) => line.verification === 'pending').map((line) => line.outId)), 'Verification lines', true); return new Map(value.verdicts.map((item) => [item.outId, item])) })
         for (const line of review.lines.filter((line) => line.verification === 'pending')) {
           const result = verdicts.get(line.outId)
           line.verdict = line.layer1Flags.length ? 'unsupported' : result?.verdict ?? 'stretch'
@@ -230,6 +222,7 @@ export class PipelineService {
     this.sqlite.prepare('UPDATE runs SET usage=? WHERE id=?').run(JSON.stringify(usage), run.id)
     if (usage.totalUsd > settings.costCapUsd) throw new Error(`The $${settings.costCapUsd} run cap was reached after ${task}; remaining steps were stopped.`)
     if (usd > 0 && spentThisMonth(this.sqlite) > settings.monthlyCapUsd) throw new Error(`The $${settings.monthlyCapUsd} monthly cap was reached after ${task}; remaining steps were stopped.`)
+    if (response.finishReason === 'max_tokens') throw new Error('Anthropic output was truncated at its token limit; charged usage was recorded.')
     return response
   }
 
@@ -252,7 +245,7 @@ export class PipelineService {
       context.progress('requirementExtraction', 'Extracting cited requirements from the job description.')
       const excerpt = job.text.slice(0, MAX_JD_CHARS)
       const master = readMaster(this.sqlite).document, profile = readProfile(this.sqlite).document, synonyms = listSynonyms(this.sqlite)
-      extraction = await this.callParsed(run, 'requirementExtraction', { tier: 'fast', system: prompts.requirementExtraction.system, user: JSON.stringify({ company: job.company, title: job.title, jobText: excerpt }), schema: extractionFormat }, 2048, (text) => normalizeExtraction(text, excerpt, master, profile, synonyms))
+      extraction = await this.callParsed(run, 'requirementExtraction', { tier: 'fast', system: prompts.requirementExtraction.system, user: JSON.stringify({ company: job.company, title: job.title, jobText: excerpt }), schema: extractionFormat }, taskOutputLimits.requirementExtraction, (text) => normalizeExtraction(text, excerpt, master, profile, synonyms))
       extraction.partial ||= job.text.length > MAX_JD_CHARS
       saveCheckpoint(this.sqlite, run.id, 'extraction', extraction)
     }
@@ -283,7 +276,18 @@ export class PipelineService {
       context.progress('bulletScoring', 'Ranking cited master bullets and identifying gaps.')
       const deterministic = scoreEvidence(master, extraction, synonyms)
       const shortlist = deterministic.slice(0, 16)
-      const parsed = await this.callParsed(run, 'bulletScoring', { tier: 'fast', system: prompts.bulletScoring.system, user: JSON.stringify({ requirements: extraction.requirements.slice(0, 40).map((r) => ({ id: r.id, quote: r.quote.slice(0, 400), kind: r.kind })), bullets: rows.filter((row) => shortlist.some((s) => s.bulletId === row.bullet.id)).map((row) => ({ id: row.bullet.id, text: row.bullet.text.slice(0, 700), context: row.context.slice(0, 200) })) }), schema: scoreFormat }, 1400, (text) => scoreResponseSchema.parse(parseModelJson(text)))
+      const parsedBatches: Array<z.infer<typeof scoreResponseSchema>> = []
+      for (let offset = 0; offset < shortlist.length; offset += 4) {
+        const batchIds = new Set(shortlist.slice(offset, offset + 4).map((score) => score.bulletId))
+        const parsed = await this.callParsed(run, 'bulletScoring', { tier: 'fast', system: prompts.bulletScoring.system, user: JSON.stringify({ requirements: extraction.requirements.slice(0, 40).map((r) => ({ id: r.id, quote: r.quote.slice(0, 400), kind: r.kind })), bullets: rows.filter((row) => batchIds.has(row.bullet.id)).map((row) => ({ id: row.bullet.id, text: row.bullet.text.slice(0, 700), context: row.context.slice(0, 200) })) }), schema: scoreFormat }, taskOutputLimits.bulletScoring, (text) => {
+          const value = scoreResponseSchema.parse(parseModelJson(text))
+          requireIds(value.scores.map((score) => score.bulletId), batchIds, 'Scoring bullets', true)
+          for (const score of value.scores) requireIds(score.requirementIds, new Set(extraction.requirements.map((requirement) => requirement.id)), 'Scoring requirements')
+          return value
+        })
+        parsedBatches.push(parsed)
+      }
+      const parsed = { scores: parsedBatches.flatMap((batch) => batch.scores) }
       const allowedIds = new Set(shortlist.map((s) => s.bulletId)), requirementIds = new Set(extraction.requirements.map((r) => r.id))
       const modelScores = new Map(parsed.scores.filter((s) => allowedIds.has(s.bulletId) && s.requirementIds.every((id) => requirementIds.has(id))).map((s) => [s.bulletId, s]))
       const scores = deterministic.map((score) => {
@@ -298,10 +302,8 @@ export class PipelineService {
       context.progress('resumeDrafting', 'Drafting from selected, cited evidence.')
       const selected = scoring.scores.filter((s) => s.score > 0).slice(0, 10)
       const selectedIds = new Set((selected.length ? selected : scoring.scores.slice(0, 8)).map((s) => s.bulletId))
-      draft = await this.callParsed(run, 'resumeDrafting', { tier: 'strong', system: prompts.resumeDrafting.system, user: JSON.stringify({ job: { company: job.company, title: job.title }, requirements: extraction.requirements.slice(0, 40).map((r) => ({ id: r.id, quote: r.quote.slice(0, 400) })), bullets: rows.filter((row) => selectedIds.has(row.bullet.id)).map((row) => ({ id: row.bullet.id, text: row.bullet.text.slice(0, 2000), context: row.context.slice(0, 200), kind: row.kind })) }), schema: draftFormat }, 2200, (text) => {
-        const lines = candidatesSchema.parse(parseModelJson(text)).lines
-        if (lines.some((line) => line.sourceIds.some((id) => !selectedIds.has(id)))) throw new Error('Draft cited a bullet outside the supplied evidence. Only cite the listed bullet ids.')
-        return lines
+      draft = await this.callParsed(run, 'resumeDrafting', { tier: 'strong', system: prompts.resumeDrafting.system, user: JSON.stringify({ job: { company: job.company, title: job.title }, requirements: extraction.requirements.slice(0, 40).map((r) => ({ id: r.id, quote: r.quote.slice(0, 400) })), bullets: rows.filter((row) => selectedIds.has(row.bullet.id)).map((row) => ({ id: row.bullet.id, text: row.bullet.text.slice(0, 2000), context: row.context.slice(0, 200), kind: row.kind })) }), schema: draftFormat }, taskOutputLimits.resumeDrafting, (text) => {
+        return parseDraft(parseModelJson(text), selectedIds)
       })
       saveCheckpoint(this.sqlite, run.id, 'draft', draft)
     }
@@ -313,7 +315,7 @@ export class PipelineService {
       const sourceMap = new Map(rows.map((row) => [row.bullet.id, row]))
       const summarySources = [...new Set(lines.flatMap((line) => line.sourceIds))]
       const verificationItems = [...lines.map((line) => ({ outId: line.outId, text: line.text, sourceIds: line.sourceIds })), ...(selectedSummary ? [{ outId: selectedSummary.id, text: selectedSummary.text, sourceIds: summarySources }] : [])]
-      const verdicts = await this.callParsed(run, 'claimVerification', { tier: 'strong', system: prompts.claimVerification.system, user: JSON.stringify({ lines: verificationItems.map((line) => ({ outId: line.outId, text: line.text, sources: line.sourceIds.map((id) => ({ id, text: sourceMap.get(id)?.bullet.text.slice(0, 2000), context: sourceMap.get(id)?.context.slice(0, 200) })) })) }), schema: verdictFormat }, 1500, (text) => new Map(verdictResponseSchema.parse(parseModelJson(text)).verdicts.map((v) => [v.outId, v])))
+      const verdicts = await this.callParsed(run, 'claimVerification', { tier: 'strong', system: prompts.claimVerification.system, user: JSON.stringify({ lines: verificationItems.map((line) => ({ outId: line.outId, text: line.text, sources: line.sourceIds.map((id) => ({ id, text: sourceMap.get(id)?.bullet.text.slice(0, 2000), context: sourceMap.get(id)?.context.slice(0, 200) })) })) }), schema: verdictFormat }, taskOutputLimits.claimVerification, (text) => { const value = verdictResponseSchema.parse(parseModelJson(text)); requireIds(value.verdicts.map((item) => item.outId), new Set(verificationItems.map((line) => line.outId)), 'Verification lines', true); return new Map(value.verdicts.map((item) => [item.outId, item])) })
       for (const line of lines) {
         const semantic = verdicts.get(line.outId)
         line.verdict = line.layer1Flags.length ? 'unsupported' : semantic?.verdict ?? 'stretch'
@@ -329,7 +331,7 @@ export class PipelineService {
       context.progress('antiSlop', 'Flagging generic or repetitive wording.')
       const lines = claims.lines
       const deterministic = antiSlop(lines, master, extraction.vocabulary)
-      const modelFlags = await this.callParsed(run, 'antiSlop', { tier: 'fast', system: prompts.antiSlop.system, user: JSON.stringify({ lines: lines.map((line) => ({ outId: line.outId, text: line.text })) }), schema: slopFormat }, 800, (text) => new Map(slopResponseSchema.parse(parseModelJson(text)).flags.map((f) => [f.outId, f.flags])))
+      const modelFlags = await this.callParsed(run, 'antiSlop', { tier: 'fast', system: prompts.antiSlop.system, user: JSON.stringify({ lines: lines.map((line) => ({ outId: line.outId, text: line.text })) }), schema: slopFormat }, taskOutputLimits.antiSlop, (text) => new Map(slopResponseSchema.parse(parseModelJson(text)).flags.map((f) => [f.outId, f.flags])))
       lines.forEach((line, i) => { line.slopFlags = [...new Set([...deterministic[i], ...(modelFlags.get(line.outId) ?? [])])] })
       const summarySources = lines.flatMap((line) => line.sourceIds)
       const summaryFlags = selectedSummary ? verifyLayer1(selectedSummary.text, summarySources, master, synonyms) : []

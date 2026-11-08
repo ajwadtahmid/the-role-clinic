@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { createDatabase } from './db.js'
 import { createApp } from './app.js'
-import { saveMaster, saveProfile } from './master.js'
+import { saveMaster, saveProfile, readMaster } from './master.js'
 import { defaultSettings, writeSettings } from './settings.js'
 import { emptyMaster, emptyProfile, type TaskName } from '../../../packages/shared/src/index.js'
 import type { ModelRequest } from './model-adapters.js'
@@ -163,13 +163,27 @@ describe('extraction and tailoring pipeline', () => {
     const settings = defaultSettings()
     settings.taskModels.requirementExtraction = { provider: 'anthropic', model: 'claude-test' }
     settings.anthropicApiKey = 'test-only-key'
-    settings.modelPrices['claude-test'] = { inputPerMillion: 3, outputPerMillion: 15 }
+    settings.modelPrices['claude-test'] = { inputPerMillion: 3, outputPerMillion: 5 }
     settings.costCapUsd = 0.04
     await writeSettings(dir, settings)
     expect((await post(`/api/jobs/${job.id}/extract`)).status).toBe(202)
     const failed = await waitFor(sqlite, 'extract', 'failed')
     expect(failed.error).toContain('Token-counted cost could exceed')
     expect(calls).toHaveLength(0)
+    sqlite.close()
+  })
+  it('scores the largest 16-bullet shortlist in bounded batches before completing a draft', async () => {
+    const { sqlite, post, job, calls, inputs } = await setup(false, false, 'Reduced API latency by 15% using TypeScript')
+    const master = readMaster(sqlite).document
+    const source = master.roles[0].bullets[0]
+    master.roles[0].bullets = Array.from({ length: 16 }, (_, index) => ({ ...source, id: index === 0 ? source.id : randomUUID(), text: `${source.text}. ${'Maintained application services. '.repeat(45)}` }))
+    saveMaster(sqlite, master)
+    await post(`/api/jobs/${job.id}/extract`); await waitFor(sqlite, 'extract', 'done')
+    await post(`/api/jobs/${job.id}/tailor`); await waitFor(sqlite, 'tailor', 'done')
+    const scoring = inputs.filter((_input, index) => calls[index] === 'bulletScoring').map((input) => JSON.parse(input))
+    expect(scoring).toHaveLength(4)
+    expect(scoring.map((input) => input.bullets.length)).toEqual([4, 4, 4, 4])
+    expect(new Set(scoring.flatMap((input) => input.bullets.map((bullet: { id: string }) => bullet.id))).size).toBe(16)
     sqlite.close()
   })
 
