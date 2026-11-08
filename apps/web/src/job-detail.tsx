@@ -1,8 +1,8 @@
 import { TailoringWorkspace } from './tailoring-workspace.js'
-import { stageLabel, type NextAction } from './stages.js'
+import { choiceOf, statusChoices, statusText, type NextAction } from './stages.js'
 
 export type LatestRun = { kind: string; status: string; step: string }
-export type Job = { id: string; latestRun?: LatestRun | null; company: string; title: string; capturedAt: string; status: string; location: string; summary: string; sourceUrl?: string; applyUrl?: string; knockouts?: Array<{ quote: string; assessment: 'met' | 'gap' | 'unknown' }>; origin?: 'manual' | 'feed'; foundAt?: string | null; postedAt?: string | null; finderPriority?: string | null; postingState?: 'summary' | 'summary_only' | 'full' | 'maybe_closed' | null; flagCount?: number; finder?: Finder | null }
+export type Job = { id: string; latestRun?: LatestRun | null; company: string; title: string; capturedAt: string; status: string; outcome?: string | null; location: string; summary: string; sourceUrl?: string; applyUrl?: string; knockouts?: Array<{ quote: string; assessment: 'met' | 'gap' | 'unknown' }>; origin?: 'manual' | 'feed'; foundAt?: string | null; postedAt?: string | null; finderPriority?: string | null; postingState?: 'summary' | 'summary_only' | 'full' | 'maybe_closed' | null; flagCount?: number; finder?: Finder | null }
 export type Finder = { flags: string; whyItFits: string; source: string; similarTo: string | null }
 export type Answer = { id: string; question: string; answer: string; submittedAnswer: string | null; category: string; charLimit: number | null }
 export type Detail = { job: Job & { text: string; notes?: string; submittedText?: string; appliedAt?: string }; answers: Answer[]; events: { status: string; createdAt: string }[] }
@@ -11,7 +11,6 @@ export type Gap = { requirementId: string; quote: string; reason: string }
 export type Analysis = { extraction: { requirements: Requirement[]; seniority: string; vocabulary: string[]; partial: boolean } | null; preliminaryGaps: Gap[]; tailored: { runId: string; summary: { text: string; verdict: string; flags: string[] } | null; skillsLine: string[]; lines: Array<{ outId: string; text: string; sourceIds: string[]; verdict: string; layer1Flags: string[]; layer2Reason: string; slopFlags: string[] }>; gaps: Gap[]; exportReady: boolean } | null; runs: Array<{ id: string; kind: string; status: string; step: string; error: string | null; usage: string | null; costEstimate: number | null; finishedAt?: string | null }> }
 export type Estimate = { estimatedUsd: number; capUsd: number; monthlyCapUsd: number; spentThisMonthUsd: number; allowed: boolean; note: string }
 
-export const statuses = ['new', 'saved', 'applied', 'screening', 'interviewing', 'offer', 'accepted', 'rejected', 'withdrawn', 'ghosted', 'skipped']
 export type JobTab = 'overview' | 'resume'
 const tabLabels: Record<JobTab, string> = { overview: 'Overview', resume: 'Résumé' }
 
@@ -35,11 +34,11 @@ export function JobHeader({ detail, action, estimate, estimateError, busy, activ
   return <header className="job-header">
     <button className="text-button back-button" onClick={onBack}>← All jobs</button>
     <div className="job-header-row">
-      <div className="job-title-block"><h2>{job.title || '(Untitled role)'}</h2><p>{job.company || 'Company not set'}{job.location ? ` · ${job.location}` : ''} <span className={`status status-${job.status}`}>{stageLabel(job.status)}</span></p></div>
+      <div className="job-title-block"><h2>{job.title || '(Untitled role)'}</h2><p>{job.company || 'Company not set'}{job.location ? ` · ${job.location}` : ''} <span className={`status status-${job.status}`}>{statusText(job.status, job.outcome)}</span></p></div>
       <div className="job-actions">
         {action.id === 'tracker' ? <a className="button primary" href={`#tracker?job=${job.id}`}>{action.label}</a> : action.id !== 'none' && <button className="button primary" disabled={busy || blocked || Boolean(activeLabel)} onClick={onAction}>{activeLabel ?? action.label}</button>}
         <details className="more-menu"><summary>More</summary><div className="more-panel">
-          <label className="status-select">Exact status<select value={job.status ?? 'new'} onChange={(e) => onStatus(e.target.value)}>{statuses.map((s) => <option key={s}>{s}</option>)}</select></label>
+          <label className="status-select">Exact status<select value={choiceOf(job.status ?? 'new', job.outcome)} onChange={(e) => onStatus(e.target.value)}>{statusChoices.map((choice) => <option key={choice.value} value={choice.value}>{choice.label}</option>)}</select></label>
           {job.status !== 'skipped' && <button className="text-button" onClick={() => onStatus('skipped')}>Skip this job</button>}
           {job.sourceUrl && <a className="external-link" href={job.sourceUrl} target="_blank" rel="noreferrer">Open original posting ↗</a>}
           {job.applyUrl && <a className="external-link" href={job.applyUrl} target="_blank" rel="noreferrer">Continue to application ↗</a>}

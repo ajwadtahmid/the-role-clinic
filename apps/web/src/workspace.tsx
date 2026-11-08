@@ -4,7 +4,7 @@ import { AppHeader, PageHeader } from './layout.js'
 import { api } from './api.js'
 import { AddJobDialog, Quickstart, quickstartHiddenKey } from './add-job.js'
 import { JobHeader, JobOverview, RunStrip, latestRun, JobResume, JobTabs, type Analysis, type Detail, type Estimate, type Job, type JobTab } from './job-detail.js'
-import { nextAction, stageLabel, type NextActionId } from './stages.js'
+import { nextAction, splitChoice, stageLabel, statusText, type NextActionId } from './stages.js'
 
 type Counts = { new: number; triage: number; active: number; applied: number; tracker: number; skipped: number; all: number }
 type Readiness = { capturedJob: boolean; hasMaster: boolean; hasProfile: boolean; configuredModels: boolean; triedTracker: boolean }
@@ -123,10 +123,11 @@ export function Workspace() {
 
   async function startRun(kind: 'extract' | 'tailor') { if (!selected) return; setBusy(true); try { const result = await api<{ run: { id: string } }>(`/api/jobs/${selected}/${kind}`, { method: 'POST', body: '{}' }); setNotice(`${kind === 'extract' ? 'Fit check' : 'Tailoring'} queued. Run ${result.run.id.slice(0, 8)}.`); await loadAnalysis(selected) } catch (error) { setNotice((error as Error).message) } finally { setBusy(false) } }
   async function retryRun(id: string) { if (!selected) return; setBusy(true); try { await api(`/api/runs/${id}/retry`, { method: 'POST', body: '{}' }); setNotice('Retry queued from the last saved step.'); await loadAnalysis(selected) } catch (error) { setNotice((error as Error).message) } finally { setBusy(false) } }
-  async function updateStatus(status: string) {
+  async function updateStatus(choice: string) {
     if (!selected) return
+    const { status, outcome } = splitChoice(choice)
     if (status === 'applied' && !detail?.job.appliedAt) { setShowSubmit(true); return }
-    try { await api(`/api/jobs/${selected}/status`, { method: 'PUT', body: JSON.stringify({ status, submittedText: '' }) }); const nextFilter = viewOf(status); setStatusFilter(nextFilter); await loadDetail(selected); await loadJobs(nextFilter); await loadReadiness(); setNotice(status === 'saved' ? 'Job added to the Tracker.' : `Status updated to ${status}.`) }
+    try { await api(`/api/jobs/${selected}/status`, { method: 'PUT', body: JSON.stringify({ status, ...(outcome ? { outcome } : {}), submittedText: '' }) }); const nextFilter = viewOf(status); setStatusFilter(nextFilter); await loadDetail(selected); await loadJobs(nextFilter); await loadReadiness(); setNotice(status === 'saved' ? 'Job saved.' : `Status updated to ${statusText(status, outcome).toLowerCase()}.`) }
     catch (error) { setNotice((error as Error).message) }
   }
   function runNextAction(id: NextActionId) {

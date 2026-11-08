@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import Database from 'better-sqlite3'
-import { mkdtemp, rm, readFile, stat } from 'node:fs/promises'
+import { mkdtemp, readdir, rm, readFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createApp } from './app.js'
@@ -228,7 +228,7 @@ describe('job capture and tracker', () => {
     first.sqlite.prepare('INSERT INTO jobs(id,company,title,captured_at,source_url,raw_snapshot) VALUES(?,?,?,?,?,?)').run('legacy-job', 'Acme', 'Engineer', new Date().toISOString(), null, 'Existing job snapshot')
     first.sqlite.close()
     const legacy = new Database(join(dataDirectory, 'role-clinic.sqlite'))
-    legacy.exec(`DROP TABLE feed_imports; DROP INDEX jobs_origin_idx; ALTER TABLE jobs DROP COLUMN origin; ALTER TABLE jobs DROP COLUMN found_at; ALTER TABLE jobs DROP COLUMN posted_at; ALTER TABLE jobs DROP COLUMN finder_priority; ALTER TABLE jobs DROP COLUMN finder_note; ALTER TABLE jobs DROP COLUMN posting_state; ALTER TABLE job_answers DROP COLUMN submitted_question; ALTER TABLE job_answers DROP COLUMN submitted_category; DROP TABLE tracker_preferences; DROP INDEX job_answers_job_idx; ALTER TABLE applications DROP COLUMN follow_up_date; ALTER TABLE applications DROP COLUMN last_contact_at; ALTER TABLE applications DROP COLUMN contacts; ALTER TABLE applications DROP COLUMN submitted_job_text; DROP TABLE review_drafts; ALTER TABLE artifacts DROP COLUMN document; ALTER TABLE applications DROP COLUMN submitted_artifact_id; DROP INDEX jobs_canonical_url_idx; DROP INDEX applications_status_idx;
+    legacy.exec(`ALTER TABLE applications DROP COLUMN outcome; ALTER TABLE status_events DROP COLUMN outcome; DROP TABLE feed_imports; DROP INDEX jobs_origin_idx; ALTER TABLE jobs DROP COLUMN origin; ALTER TABLE jobs DROP COLUMN found_at; ALTER TABLE jobs DROP COLUMN posted_at; ALTER TABLE jobs DROP COLUMN finder_priority; ALTER TABLE jobs DROP COLUMN finder_note; ALTER TABLE jobs DROP COLUMN posting_state; ALTER TABLE job_answers DROP COLUMN submitted_question; ALTER TABLE job_answers DROP COLUMN submitted_category; DROP TABLE tracker_preferences; DROP INDEX job_answers_job_idx; ALTER TABLE applications DROP COLUMN follow_up_date; ALTER TABLE applications DROP COLUMN last_contact_at; ALTER TABLE applications DROP COLUMN contacts; ALTER TABLE applications DROP COLUMN submitted_job_text; DROP TABLE review_drafts; ALTER TABLE artifacts DROP COLUMN document; ALTER TABLE applications DROP COLUMN submitted_artifact_id; DROP INDEX jobs_canonical_url_idx; DROP INDEX applications_status_idx;
       ALTER TABLE jobs DROP COLUMN text; ALTER TABLE job_answers DROP COLUMN submitted_at;
       ALTER TABLE job_answers DROP COLUMN updated_at;
       ALTER TABLE jobs DROP COLUMN canonical_url; ALTER TABLE jobs DROP COLUMN apply_url;
@@ -240,11 +240,52 @@ describe('job capture and tracker', () => {
       PRAGMA user_version = 1;`)
     legacy.close()
     const migrated = createDatabase(dataDirectory)
-    expect(migrated.sqlite.pragma('user_version', { simple: true })).toBe(8)
+    expect(migrated.sqlite.pragma('user_version', { simple: true })).toBe(9)
     expect((migrated.sqlite.prepare('SELECT COUNT(*) AS count FROM synonyms').get() as { count: number }).count).toBe(3)
     expect(migrated.sqlite.prepare("SELECT company,raw_snapshot,text FROM jobs WHERE id='legacy-job'").get()).toEqual({ company: 'Acme', raw_snapshot: 'Existing job snapshot', text: 'Existing job snapshot' })
     expect(migrated.sqlite.prepare('PRAGMA table_info(jobs)').all().map((column) => (column as { name: string }).name)).toContain('canonical_url')
     migrated.sqlite.close()
+  })
+
+  it('migrates the eleven stored statuses to seven, keeping every ending as an outcome and the status history as written', async () => {
+    const dataDirectory = await mkdtemp(join(tmpdir(), 'role-clinic-status-'))
+    temporaryDirectories.push(dataDirectory)
+    const first = createDatabase(dataDirectory)
+    for (const status of ['new', 'saved', 'skipped', 'applied', 'screening', 'interviewing', 'offer', 'accepted', 'rejected', 'withdrawn', 'ghosted']) {
+      first.sqlite.prepare('INSERT INTO jobs(id,company,title,captured_at,source_url,raw_snapshot) VALUES(?,?,?,?,?,?)').run(status, status, 'Engineer', '2026-10-01T00:00:00.000Z', null, 'Snapshot')
+      first.sqlite.prepare('INSERT INTO applications(id,job_id,status,notes,contacts) VALUES(?,?,?,?,?)').run(`app-${status}`, status, status, '', '')
+      first.sqlite.prepare('INSERT INTO status_events(id,application_id,status,created_at) VALUES(?,?,?,?)').run(`event-${status}`, `app-${status}`, status, '2026-10-02T00:00:00.000Z')
+    }
+    first.sqlite.exec('ALTER TABLE applications DROP COLUMN outcome; ALTER TABLE status_events DROP COLUMN outcome; PRAGMA user_version = 8;')
+    first.sqlite.close()
+    const migrated = createDatabase(dataDirectory)
+    const rows = migrated.sqlite.prepare('SELECT job_id AS id,status,outcome FROM applications ORDER BY job_id').all() as Array<{ id: string; status: string; outcome: string | null }>
+    expect(Object.fromEntries(rows.map((row) => [row.id, [row.status, row.outcome]]))).toEqual({
+      new: ['new', null], saved: ['saved', null], skipped: ['skipped', null], applied: ['applied', null], screening: ['interviewing', null], interviewing: ['interviewing', null],
+      offer: ['offer', null], accepted: ['closed', 'accepted'], rejected: ['closed', 'rejected'], withdrawn: ['closed', 'withdrawn'], ghosted: ['closed', 'no_reply'],
+    })
+    expect(migrated.sqlite.prepare('SELECT status,outcome FROM status_events WHERE id=?').get('event-ghosted')).toEqual({ status: 'ghosted', outcome: null })
+    expect(migrated.sqlite.pragma('user_version', { simple: true })).toBe(9)
+    expect((await readdir(join(dataDirectory, 'backups'))).some((name) => name.startsWith('pre-migration-v8'))).toBe(true)
+    migrated.sqlite.close()
+  })
+
+  it('closes an application only with an outcome, records it in the history, and clears it when the job is reopened', async () => {
+    const { app, sqlite } = await fixture()
+    const created = await request(app, '/api/jobs', { method: 'POST', headers: sameOrigin, body: JSON.stringify({ company: 'Acme', title: 'Engineer', text: 'A sufficiently long job description with responsibilities, qualifications, and other information for the list.' }) })
+    const { id } = await created.json() as { id: string }
+    const put = (body: unknown) => request(app, `/api/jobs/${id}/status`, { method: 'PUT', headers: sameOrigin, body: JSON.stringify(body) })
+    expect((await put({ status: 'closed' })).status).toBe(400)
+    expect((await put({ status: 'closed', outcome: 'ghosted' })).status).toBe(400)
+    expect((await put({ status: 'applied', outcome: 'rejected' })).status).toBe(400)
+    for (const old of ['screening', 'accepted', 'rejected', 'withdrawn', 'ghosted']) expect((await put({ status: old })).status).toBe(400)
+    expect((await put({ status: 'closed', outcome: 'no_reply' })).status).toBe(200)
+    const closed = await (await request(app, `/api/jobs/${id}`)).json() as { job: { status: string; outcome: string | null }; events: Array<{ status: string; outcome: string | null }> }
+    expect(closed.job).toMatchObject({ status: 'closed', outcome: 'no_reply' })
+    expect(closed.events.at(-1)).toMatchObject({ status: 'closed', outcome: 'no_reply' })
+    expect((await put({ status: 'saved' })).status).toBe(200)
+    expect((await (await request(app, `/api/jobs/${id}`)).json() as { job: { outcome: string | null } }).job.outcome).toBeNull()
+    sqlite.close()
   })
 
   it('captures pasted jobs, tracks status history, and saves searchable Q&A', async () => {
@@ -276,12 +317,12 @@ describe('job capture and tracker', () => {
   it('groups jobs into active, applied and skipped views and counts each', async () => {
     const { app, sqlite } = await fixture()
     const text = 'A sufficiently long job description with responsibilities, qualifications, and other information for the list.'
-    const make = async (company: string, status?: string) => {
+    const make = async (company: string, status?: string, outcome?: string) => {
       const created = await request(app, '/api/jobs', { method: 'POST', headers: sameOrigin, body: JSON.stringify({ company, title: 'Engineer', text }) })
       const { id } = await created.json() as { id: string }
-      if (status) await request(app, `/api/jobs/${id}/status`, { method: 'PUT', headers: sameOrigin, body: JSON.stringify({ status, submittedText: 'sent' }) })
+      if (status) await request(app, `/api/jobs/${id}/status`, { method: 'PUT', headers: sameOrigin, body: JSON.stringify({ status, ...(outcome ? { outcome } : {}), submittedText: 'sent' }) })
     }
-    await make('Alpha'); await make('Beta', 'saved'); await make('Gamma', 'applied'); await make('Delta', 'rejected'); await make('Epsilon', 'skipped')
+    await make('Alpha'); await make('Beta', 'saved'); await make('Gamma', 'applied'); await make('Delta', 'closed', 'rejected'); await make('Epsilon', 'skipped')
     const names = async (view: string) => ((await (await request(app, `/api/jobs?status=${view}`)).json()) as { jobs: Array<{ company: string }> }).jobs.map((job) => job.company).sort()
     expect(await names('active')).toEqual(['Alpha', 'Beta'])
     expect(await names('applied')).toEqual(['Delta', 'Gamma'])

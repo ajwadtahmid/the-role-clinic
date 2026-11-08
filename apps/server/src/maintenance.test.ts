@@ -32,7 +32,7 @@ describe('full-data recovery', () => {
   it('round-trips records, settings, welcome and exact artifacts into a different data directory', async () => {
     const f = await fixture(); expect(await createFullBackup(f.data, f.archive, { includeApiKey: true })).toMatchObject({ apiKeyIncluded: true })
     if (process.platform !== 'win32') expect((await stat(f.archive)).mode & 0o777).toBe(0o600)
-    expect(await inspectFullBackup(f.archive, join(f.root, 'relocated'))).toMatchObject({ files: 4, schemaVersion: 8 })
+    expect(await inspectFullBackup(f.archive, join(f.root, 'relocated'))).toMatchObject({ files: 4, schemaVersion: 9 })
     const moved = join(f.root, 'relocated'); await mkdir(moved); await writeFile(join(moved, 'old-marker'), 'keep this')
     const result = await restoreFullBackup(f.archive, moved)
     expect(await readFile(join(result.recoveryDirectory!, 'old-marker'), 'utf8')).toBe('keep this')
@@ -84,7 +84,7 @@ describe('full-data recovery', () => {
     expect(saved.ollamaBaseUrl).toBe(defaultSettings().ollamaBaseUrl)
     expect(await readFile(join(unpacked, 'settings.json'), 'utf8')).not.toContain('FAKE_LOCAL_KEY')
     const restored = join(f.root, 'restored-without-key')
-    await expect(inspectFullBackup(f.archive, restored)).resolves.toMatchObject({ schemaVersion: 8 })
+    await expect(inspectFullBackup(f.archive, restored)).resolves.toMatchObject({ schemaVersion: 9 })
   })
   it('does not mistake an unrelated process that reuses a dead lock owner’s id for a live owner', () => {
     expect(lockOwnerAlive({ pid: process.pid })).toBe(true)
@@ -116,11 +116,11 @@ describe('full-data recovery', () => {
     const root = await mkdtemp(join(tmpdir(), 'clinic-version-')); directories.push(root)
     const { sqlite } = createDatabase(root)
     sqlite.pragma('user_version=6')
-    // Remove exactly the v7 and v8 additions to simulate an actual previous version.
-    sqlite.exec('DROP TABLE feed_imports; DROP INDEX jobs_origin_idx; ALTER TABLE jobs DROP COLUMN origin; ALTER TABLE jobs DROP COLUMN found_at; ALTER TABLE jobs DROP COLUMN posted_at; ALTER TABLE jobs DROP COLUMN finder_priority; ALTER TABLE jobs DROP COLUMN finder_note; ALTER TABLE jobs DROP COLUMN posting_state; DROP TABLE tracker_preferences; DROP INDEX job_answers_job_idx; ALTER TABLE applications DROP COLUMN follow_up_date; ALTER TABLE applications DROP COLUMN last_contact_at; ALTER TABLE applications DROP COLUMN contacts; ALTER TABLE applications DROP COLUMN submitted_job_text; ALTER TABLE job_answers DROP COLUMN submitted_question; ALTER TABLE job_answers DROP COLUMN submitted_category;')
+    // Remove exactly the v7, v8 and v9 additions to simulate an actual previous version.
+    sqlite.exec('ALTER TABLE applications DROP COLUMN outcome; ALTER TABLE status_events DROP COLUMN outcome; DROP TABLE feed_imports; DROP INDEX jobs_origin_idx; ALTER TABLE jobs DROP COLUMN origin; ALTER TABLE jobs DROP COLUMN found_at; ALTER TABLE jobs DROP COLUMN posted_at; ALTER TABLE jobs DROP COLUMN finder_priority; ALTER TABLE jobs DROP COLUMN finder_note; ALTER TABLE jobs DROP COLUMN posting_state; DROP TABLE tracker_preferences; DROP INDEX job_answers_job_idx; ALTER TABLE applications DROP COLUMN follow_up_date; ALTER TABLE applications DROP COLUMN last_contact_at; ALTER TABLE applications DROP COLUMN contacts; ALTER TABLE applications DROP COLUMN submitted_job_text; ALTER TABLE job_answers DROP COLUMN submitted_question; ALTER TABLE job_answers DROP COLUMN submitted_category;')
     sqlite.close()
     const upgraded = createDatabase(root).sqlite
-    expect(upgraded.pragma('user_version', { simple: true })).toBe(8); upgraded.close()
+    expect(upgraded.pragma('user_version', { simple: true })).toBe(9); upgraded.close()
     const saved = (await readdir(join(root, 'backups'))).find((name) => name.startsWith('pre-migration-v6'))!
     const original = new Database(join(root, 'backups', saved), { readonly: true }); expect(original.pragma('user_version', { simple: true })).toBe(6); original.close()
     const future = new Database(join(root, 'role-clinic.sqlite')); future.pragma('user_version=99'); future.close()

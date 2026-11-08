@@ -32,11 +32,11 @@ export const tailored = sqliteTable('tailored', {
   id: text('id').primaryKey(), jobId: text('job_id').notNull(), runId: text('run_id').notNull(), snapshotHash: text('snapshot_hash').notNull(), document: text('document').notNull(), createdAt: text('created_at').notNull(),
 })
 export const applications = sqliteTable('applications', {
-  id: text('id').primaryKey(), jobId: text('job_id').notNull(), status: text('status').notNull(), appliedAt: text('applied_at'), notes: text('notes').notNull(), submittedText: text('submitted_text'),
+  id: text('id').primaryKey(), jobId: text('job_id').notNull(), status: text('status').notNull(), outcome: text('outcome'), appliedAt: text('applied_at'), notes: text('notes').notNull(), submittedText: text('submitted_text'),
   submittedArtifactId: text('submitted_artifact_id'), followUpDate: text('follow_up_date'), lastContactAt: text('last_contact_at'), contacts: text('contacts').notNull(), submittedJobText: text('submitted_job_text'),
 })
 export const statusEvents = sqliteTable('status_events', {
-  id: text('id').primaryKey(), applicationId: text('application_id').notNull(), status: text('status').notNull(), createdAt: text('created_at').notNull(),
+  id: text('id').primaryKey(), applicationId: text('application_id').notNull(), status: text('status').notNull(), outcome: text('outcome'), createdAt: text('created_at').notNull(),
 })
 export const jobAnswers = sqliteTable('job_answers', {
   submittedQuestion: text('submitted_question'), submittedCategory: text('submitted_category'),

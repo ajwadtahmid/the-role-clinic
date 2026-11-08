@@ -5,7 +5,7 @@ import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import { databaseBackup } from './database-backups.js'
 import * as schema from './schema.js'
 
-export const CURRENT_SCHEMA_VERSION = 8
+export const CURRENT_SCHEMA_VERSION = 9
 
 export type ClinicDatabase = BetterSQLite3Database<typeof schema>
 
@@ -217,6 +217,21 @@ export function createDatabase(dataDirectory: string): { sqlite: Database.Databa
         );
         CREATE INDEX jobs_origin_idx ON jobs(origin);
         PRAGMA user_version = 8;
+      COMMIT;`)
+    } catch (error) { rollbackQuietly(sqlite); sqlite.close(); throw error }
+  }
+  if (schemaVersion < 9) {
+    // Seven stored statuses: screening joins interviewing, and the four ways an application ends become closed plus an outcome.
+    // status_events is a log of what happened, so its old rows keep their values; new rows carry an outcome.
+    try {
+      sqlite.exec(`BEGIN IMMEDIATE;
+        ALTER TABLE applications ADD COLUMN outcome TEXT;
+        ALTER TABLE status_events ADD COLUMN outcome TEXT;
+        UPDATE applications SET
+          outcome=CASE status WHEN 'rejected' THEN 'rejected' WHEN 'ghosted' THEN 'no_reply' WHEN 'withdrawn' THEN 'withdrawn' WHEN 'accepted' THEN 'accepted' END,
+          status='closed' WHERE status IN ('rejected','ghosted','withdrawn','accepted');
+        UPDATE applications SET status='interviewing' WHERE status='screening';
+        PRAGMA user_version = 9;
       COMMIT;`)
     } catch (error) { rollbackQuietly(sqlite); sqlite.close(); throw error }
   }

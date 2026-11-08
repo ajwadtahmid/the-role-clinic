@@ -126,7 +126,16 @@ export interface ReviewWorkspace {
   verificationError?: string;
 }
 
-export const applicationStatuses = ['new', 'saved', 'applied', 'screening', 'interviewing', 'offer', 'accepted', 'rejected', 'withdrawn', 'ghosted', 'skipped'] as const
+export const applicationStatuses = ['new', 'saved', 'skipped', 'applied', 'interviewing', 'offer', 'closed'] as const
+export type ApplicationStatus = typeof applicationStatuses[number]
+// How a closed application ended. Stored only while the status is closed.
+export const closedOutcomes = ['rejected', 'no_reply', 'withdrawn', 'accepted'] as const
+// Statuses stored before schema 9. Old history rows keep them; this maps one to today's status and outcome.
+const legacyStatuses: Record<string, { status: ApplicationStatus; outcome: string | null }> = {
+  screening: { status: 'interviewing', outcome: null }, accepted: { status: 'closed', outcome: 'accepted' }, rejected: { status: 'closed', outcome: 'rejected' },
+  withdrawn: { status: 'closed', outcome: 'withdrawn' }, ghosted: { status: 'closed', outcome: 'no_reply' },
+}
+export function currentStatus(status: string, outcome: string | null = null): { status: string; outcome: string | null } { return legacyStatuses[status] ?? { status, outcome } }
 export const answerCategories = ['why-us', 'why-leaving', 'motivation', 'project', 'strengths', 'salary', 'availability', 'other'] as const
 export function suggestAnswerCategory(question: string): string {
   if (/salary|compensation|pay expectation/i.test(question)) return 'salary'
@@ -148,7 +157,7 @@ export function answerCompanyWarnings(text: string, targetCompany: string, compa
 }
 export interface TrackerJob {
   id: string; company: string; title: string; sourceUrl: string | null; source: string; location: string; remote: string; salary: string;
-  status: string; capturedAt: string; appliedAt: string | null; followUpDate: string | null; lastContactAt: string | null;
+  status: string; outcome: string | null; capturedAt: string; appliedAt: string | null; followUpDate: string | null; lastContactAt: string | null;
   lastActivityAt: string; notes: string; contacts: string; answerCount: number; submittedArtifactId: string | null;
   submittedFilename: string | null; hasSubmittedText: boolean; costUsd: number;
   knockouts: Array<{ quote: string; assessment: string; basis: string }>;

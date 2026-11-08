@@ -7,7 +7,7 @@ import { isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type Database from 'better-sqlite3'
 import type { ClinicDatabase } from './db.js'
-import { appSettingsSchema, taskNames, suggestAnswerCategory, type AppSettings } from '../../../packages/shared/src/index.js'
+import { appSettingsSchema, applicationStatuses, closedOutcomes, taskNames, suggestAnswerCategory, type AppSettings } from '../../../packages/shared/src/index.js'
 import { readSettings, toPublicSettings, writeSettings } from './settings.js'
 import { SerialRunQueue } from './queue.js'
 import { ModelRouter } from './model-adapters.js'
@@ -31,12 +31,11 @@ const jobViews = ['triage', 'tracker', 'active', 'applied']
 function viewClause(status: string) {
   // Triage: jobs a job feed brought in that are still waiting for a decision.
   if (status === 'triage') return "j.origin='feed' AND COALESCE(a.status,'new')='new'"
-  if (status === 'tracker') return "COALESCE(a.status,'new') NOT IN ('new','skipped')"
+  if (status === 'tracker') return "COALESCE(a.status,'new') NOT IN ('new','saved','skipped')"
   if (status === 'active') return "(COALESCE(a.status,'new')='saved' OR (COALESCE(a.status,'new')='new' AND j.origin<>'feed'))"
   if (status === 'applied') return "COALESCE(a.status,'new') NOT IN ('new','saved','skipped')"
   return status ? "COALESCE(a.status, 'new') = ?" : ''
 }
-const applicationStatuses = ['new', 'saved', 'applied', 'screening', 'interviewing', 'offer', 'accepted', 'rejected', 'withdrawn', 'ghosted', 'skipped'] as const
 const id = () => crypto.randomUUID()
 // The finder's own notes are stored as JSON; they are shown to the owner and never sent to a model.
 function parseFinderNote(raw: string | null): { flags: string; whyItFits: string; source: string; similarTo: string | null } {
@@ -239,7 +238,7 @@ export function createApp(options: AppOptions) {
     const pattern = `%${query.replace(/[\\%_]/g, '\\$&')}%`
     if (query) params.push(pattern, pattern, pattern)
     if (status && !jobViews.includes(status)) params.push(status)
-    const rows = options.sqlite.prepare(`SELECT j.id,j.company,j.title,j.captured_at AS capturedAt,j.source_url AS sourceUrl,j.canonical_url AS canonicalUrl,j.apply_url AS applyUrl,j.location,j.remote,j.salary,j.source,j.capture_method AS captureMethod,substr(j.text,1,400) AS summary,j.origin,j.found_at AS foundAt,j.posted_at AS postedAt,j.finder_priority AS finderPriority,j.posting_state AS postingState,j.finder_note AS finderNote,COALESCE(a.status,'new') AS status,a.applied_at AS appliedAt,a.notes FROM jobs j LEFT JOIN applications a ON a.job_id=j.id ${clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''} ORDER BY j.captured_at DESC`).all(...params) as Array<{ id: string; finderNote: string | null }>
+    const rows = options.sqlite.prepare(`SELECT j.id,j.company,j.title,j.captured_at AS capturedAt,j.source_url AS sourceUrl,j.canonical_url AS canonicalUrl,j.apply_url AS applyUrl,j.location,j.remote,j.salary,j.source,j.capture_method AS captureMethod,substr(j.text,1,400) AS summary,j.origin,j.found_at AS foundAt,j.posted_at AS postedAt,j.finder_priority AS finderPriority,j.posting_state AS postingState,j.finder_note AS finderNote,COALESCE(a.status,'new') AS status,a.outcome,a.applied_at AS appliedAt,a.notes FROM jobs j LEFT JOIN applications a ON a.job_id=j.id ${clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''} ORDER BY j.captured_at DESC`).all(...params) as Array<{ id: string; finderNote: string | null }>
     const master = readMaster(options.sqlite).document, profile = readProfile(options.sqlite).document, synonyms = listSynonyms(options.sqlite)
     const latestRequirements = latestByJob(options.sqlite, 'requirements', 't.document')
     // The most recent fit check or tailoring run for each job, so the list can show one that is waiting, running or failed.
@@ -259,8 +258,8 @@ export function createApp(options: AppOptions) {
     const count = (status: string) => rows.find((row) => row.status === status)?.n ?? 0
     const all = rows.reduce((sum, row) => sum + row.n, 0)
     const triage = (options.sqlite.prepare("SELECT COUNT(*) AS n FROM jobs j LEFT JOIN applications a ON a.job_id=j.id WHERE j.origin='feed' AND COALESCE(a.status,'new')='new'").get() as { n: number }).n
-    // `active` is what is still being worked on (to review or saved); `applied` is everything from applied onward; `tracker` keeps the older meaning, anything past review.
-    return context.json({ new: count('new'), triage, active: count('new') - triage + count('saved'), applied: all - count('new') - count('saved') - count('skipped'), tracker: all - count('new') - count('skipped'), skipped: count('skipped'), all })
+    // `active` is what is still being worked on (to review or saved); `applied` is everything from applied onward; `tracker` is now the same as `applied`.
+    return context.json({ new: count('new'), triage, active: count('new') - triage + count('saved'), applied: all - count('new') - count('saved') - count('skipped'), tracker: all - count('new') - count('saved') - count('skipped'), skipped: count('skipped'), all })
   })
 
   app.post('/api/jobs', async (context) => {
@@ -333,10 +332,10 @@ export function createApp(options: AppOptions) {
   })
 
   app.get('/api/jobs/:id', (context) => {
-    const job = options.sqlite.prepare('SELECT j.id,j.company,j.title,j.captured_at AS capturedAt,j.source_url AS sourceUrl,j.apply_url AS applyUrl,j.canonical_url AS canonicalUrl,j.location,j.remote,j.salary,j.source,j.capture_method AS captureMethod,j.text,j.origin,j.found_at AS foundAt,j.posted_at AS postedAt,j.finder_priority AS finderPriority,j.posting_state AS postingState,j.finder_note AS finderNote,a.id AS applicationId,a.status,a.applied_at AS appliedAt,a.notes,a.submitted_text AS submittedText,a.submitted_artifact_id AS submittedArtifactId FROM jobs j LEFT JOIN applications a ON a.job_id=j.id WHERE j.id=?').get(context.req.param('id'))
+    const job = options.sqlite.prepare('SELECT j.id,j.company,j.title,j.captured_at AS capturedAt,j.source_url AS sourceUrl,j.apply_url AS applyUrl,j.canonical_url AS canonicalUrl,j.location,j.remote,j.salary,j.source,j.capture_method AS captureMethod,j.text,j.origin,j.found_at AS foundAt,j.posted_at AS postedAt,j.finder_priority AS finderPriority,j.posting_state AS postingState,j.finder_note AS finderNote,a.id AS applicationId,a.status,a.outcome,a.applied_at AS appliedAt,a.notes,a.submitted_text AS submittedText,a.submitted_artifact_id AS submittedArtifactId FROM jobs j LEFT JOIN applications a ON a.job_id=j.id WHERE j.id=?').get(context.req.param('id'))
     if (!job) return context.json({ error: 'Job not found.' }, 404)
     const answers = options.sqlite.prepare('SELECT id,question,answer,category,char_limit AS charLimit,submitted_answer AS submittedAnswer,submitted_at AS submittedAt,reused_from AS reusedFrom,created_at AS createdAt,updated_at AS updatedAt FROM job_answers WHERE job_id=? ORDER BY created_at DESC').all(context.req.param('id'))
-    const events = options.sqlite.prepare('SELECT status,created_at AS createdAt FROM status_events WHERE application_id=(SELECT id FROM applications WHERE job_id=?) ORDER BY created_at').all(context.req.param('id'))
+    const events = options.sqlite.prepare('SELECT status,outcome,created_at AS createdAt FROM status_events WHERE application_id=(SELECT id FROM applications WHERE job_id=?) ORDER BY created_at').all(context.req.param('id'))
     const { finderNote, ...rest } = job as { finderNote: string | null }
     return context.json({ job: { ...rest, finder: (job as { origin: string }).origin === 'feed' ? parseFinderNote(finderNote) : null }, answers, events })
   })
@@ -344,9 +343,12 @@ export function createApp(options: AppOptions) {
   app.put('/api/jobs/:id/status', async (context) => {
     const jobId = context.req.param('id')
     if (!options.sqlite.prepare('SELECT 1 FROM jobs WHERE id=?').get(jobId)) return context.json({ error: 'Job not found.' }, 404)
-    const payload = await context.req.json().catch(() => null) as { status?: unknown; submittedText?: unknown; notes?: unknown; submittedArtifactId?: unknown } | null
+    const payload = await context.req.json().catch(() => null) as { status?: unknown; submittedText?: unknown; notes?: unknown; submittedArtifactId?: unknown; outcome?: unknown } | null
     if (!payload || !applicationStatuses.includes(payload.status as typeof applicationStatuses[number])) return context.json({ error: 'Choose a valid application status.' }, 400)
     const status = payload.status as string, now = new Date().toISOString()
+    if (status === 'closed' && !closedOutcomes.includes(payload.outcome as typeof closedOutcomes[number])) return context.json({ error: 'Say how this application ended: rejected, no reply, withdrawn or accepted.' }, 400)
+    if (status !== 'closed' && payload.outcome != null) return context.json({ error: 'Only a closed application has an outcome.' }, 400)
+    const outcome = status === 'closed' ? payload.outcome as string : null
     let submittedArtifactId: string | null = null, artifactText: string | null = null
     if (payload.submittedArtifactId != null) {
       if (payload.status !== 'applied' || typeof payload.submittedArtifactId !== 'string') return context.json({ error: 'Select an exported artifact when marking applied.' }, 400)
@@ -363,14 +365,14 @@ export function createApp(options: AppOptions) {
     }
     const appId = application?.id ?? id()
     const tx = options.sqlite.transaction(() => {
-      options.sqlite.prepare(`INSERT INTO applications(id,job_id,status,applied_at,notes,submitted_text) VALUES(?,?,?,?,?,?) ON CONFLICT(job_id) DO UPDATE SET status=excluded.status,applied_at=COALESCE(applications.applied_at,excluded.applied_at),notes=excluded.notes,submitted_text=COALESCE(applications.submitted_text,excluded.submitted_text)`).run(appId, jobId, status, status === 'applied' ? now : null, payload.notes === undefined ? application?.notes ?? '' : cleanText(payload.notes, 5000), status === 'applied' ? artifactText || cleanText(payload.submittedText, 100_000) || null : null)
+      options.sqlite.prepare(`INSERT INTO applications(id,job_id,status,outcome,applied_at,notes,submitted_text) VALUES(?,?,?,?,?,?,?) ON CONFLICT(job_id) DO UPDATE SET status=excluded.status,outcome=excluded.outcome,applied_at=COALESCE(applications.applied_at,excluded.applied_at),notes=excluded.notes,submitted_text=COALESCE(applications.submitted_text,excluded.submitted_text)`).run(appId, jobId, status, outcome, status === 'applied' ? now : null, payload.notes === undefined ? application?.notes ?? '' : cleanText(payload.notes, 5000), status === 'applied' ? artifactText || cleanText(payload.submittedText, 100_000) || null : null)
       if (submittedArtifactId) options.sqlite.prepare('UPDATE applications SET submitted_artifact_id=COALESCE(submitted_artifact_id,?) WHERE id=?').run(submittedArtifactId, appId)
-      options.sqlite.prepare('INSERT INTO status_events(id,application_id,status,created_at) VALUES(?,?,?,?)').run(id(), appId, status, now)
+      options.sqlite.prepare('INSERT INTO status_events(id,application_id,status,outcome,created_at) VALUES(?,?,?,?,?)').run(id(), appId, status, outcome, now)
       if (status === 'applied') options.sqlite.prepare('UPDATE applications SET submitted_job_text=COALESCE(submitted_job_text,(SELECT text FROM jobs WHERE id=?)) WHERE id=?').run(jobId, appId)
       if (status === 'applied') options.sqlite.prepare('UPDATE job_answers SET submitted_question=COALESCE(submitted_question,question),submitted_category=COALESCE(submitted_category,category),submitted_answer=COALESCE(submitted_answer,answer),submitted_at=COALESCE(submitted_at,?) WHERE job_id=?').run(now, jobId)
     })
     tx()
-    return context.json({ ok: true, status, changedAt: now })
+    return context.json({ ok: true, status, outcome, changedAt: now })
   })
 
   app.post('/api/jobs/:id/answers', async (context) => {

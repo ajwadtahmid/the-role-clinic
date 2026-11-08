@@ -1,15 +1,33 @@
 import { describe, expect, it } from 'vitest'
-import { nextAction, stageLabel, stageOf } from './stages.js'
+import { choiceOf, nextAction, splitChoice, stageLabel, stageOf, statusChoices, statusText } from './stages.js'
 
 const progress = { hasExtraction: false, hasDraft: false, hasExport: false }
 
 describe('stages', () => {
-  it('groups the eleven stored statuses into six stages', () => {
-    expect(['new', 'saved', 'applied', 'screening', 'interviewing', 'offer', 'accepted', 'rejected', 'withdrawn', 'ghosted', 'skipped'].map(stageOf))
-      .toEqual(['review', 'saved', 'applied', 'applied', 'interviewing', 'offer', 'offer', 'closed', 'closed', 'closed', 'closed'])
-    expect(stageLabel('screening')).toBe('Applied')
-    expect(stageLabel('ghosted')).toBe('Closed')
+  it('gives each of the seven stored statuses its own stage and name', () => {
+    expect(['new', 'saved', 'skipped', 'applied', 'interviewing', 'offer', 'closed'].map(stageOf))
+      .toEqual(['review', 'saved', 'skipped', 'applied', 'interviewing', 'offer', 'closed'])
+    expect(['new', 'saved', 'skipped', 'applied', 'interviewing', 'offer', 'closed'].map(stageLabel))
+      .toEqual(['To review', 'Saved', 'Skipped', 'Applied', 'Interviewing', 'Offer', 'Closed'])
     expect(stageLabel('unknown-value')).toBe('To review')
+  })
+
+  it('reads old status values from history as today’s stages', () => {
+    expect(stageLabel('screening')).toBe('Interviewing')
+    for (const old of ['accepted', 'rejected', 'withdrawn', 'ghosted']) expect(stageLabel(old)).toBe('Closed')
+    expect(statusText('ghosted')).toBe('Closed · No reply')
+    expect(statusText('closed', 'accepted')).toBe('Closed · You accepted')
+    expect(statusText('closed')).toBe('Closed')
+    expect(statusText('applied')).toBe('Applied')
+  })
+
+  it('offers each ending of a closed job as its own menu choice', () => {
+    expect(statusChoices.map((choice) => choice.value)).toEqual(['new', 'saved', 'skipped', 'applied', 'interviewing', 'offer', 'closed:rejected', 'closed:no_reply', 'closed:withdrawn', 'closed:accepted'])
+    expect(choiceOf('closed', 'no_reply')).toBe('closed:no_reply')
+    expect(choiceOf('ghosted')).toBe('closed:no_reply')
+    expect(choiceOf('applied')).toBe('applied')
+    expect(splitChoice('closed:withdrawn')).toEqual({ status: 'closed', outcome: 'withdrawn' })
+    expect(splitChoice('offer')).toEqual({ status: 'offer' })
   })
 
   it('offers one next step per point in a job’s life', () => {
@@ -22,8 +40,8 @@ describe('stages', () => {
     expect(nextAction({ status: 'saved', hasExtraction: true, hasDraft: true, hasExport: true }).label).toBe('Mark as applied')
   })
 
-  it('points to the Tracker once applied and offers nothing for a closed job', () => {
-    for (const status of ['applied', 'screening', 'interviewing', 'offer', 'accepted']) expect(nextAction({ status, ...progress }).id).toBe('tracker')
-    for (const status of ['rejected', 'withdrawn', 'ghosted', 'skipped']) expect(nextAction({ status, ...progress }).id).toBe('none')
+  it('points to the Tracker once applied and offers nothing for a closed or skipped job', () => {
+    for (const status of ['applied', 'interviewing', 'offer']) expect(nextAction({ status, ...progress }).id).toBe('tracker')
+    for (const status of ['closed', 'skipped']) expect(nextAction({ status, ...progress }).id).toBe('none')
   })
 })

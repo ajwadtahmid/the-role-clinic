@@ -22,7 +22,7 @@ async function setup() {
     const id = randomUUID(), applicationId = randomUUID()
     sqlite.prepare('INSERT INTO jobs(id,company,title,captured_at,raw_snapshot,text) VALUES(?,?,?,?,?,?)').run(id, company, 'Software Engineer', captured, 'Raw original', 'Original job description requiring TypeScript and reliable software systems.')
     if (status !== 'new') {
-      sqlite.prepare('INSERT INTO applications(id,job_id,status,applied_at,notes) VALUES(?,?,?,?,?)').run(applicationId, id, status, ['applied', 'interviewing', 'rejected', 'offer'].includes(status) ? captured : null, '')
+      sqlite.prepare('INSERT INTO applications(id,job_id,status,applied_at,notes) VALUES(?,?,?,?,?)').run(applicationId, id, status, ['applied', 'interviewing', 'closed', 'offer'].includes(status) ? captured : null, '')
       sqlite.prepare('INSERT INTO status_events(id,application_id,status,created_at) VALUES(?,?,?,?)').run(randomUUID(), applicationId, status, captured)
     }
     return id
@@ -35,6 +35,7 @@ describe('tracker and answers', () => {
     await f.send(`/api/jobs/${jobId}/answers`, { question: 'Legacy question?', answer: 'Legacy submitted answer.', category: 'project' })
     await f.send(`/api/jobs/${jobId}/status`, { status: 'applied', submittedText: 'Legacy résumé' }, 'PUT')
     f.sqlite.exec(`BEGIN IMMEDIATE;
+      ALTER TABLE applications DROP COLUMN outcome; ALTER TABLE status_events DROP COLUMN outcome;
       DROP TABLE tracker_preferences; DROP INDEX job_answers_job_idx;
       ALTER TABLE applications DROP COLUMN follow_up_date;
       DROP TABLE feed_imports;
@@ -55,13 +56,13 @@ describe('tracker and answers', () => {
     f.sqlite.close()
     const migrated = createDatabase(f.directory).sqlite
     fixtures.find((entry) => entry.directory === f.directory)!.sqlite = migrated
-    expect(migrated.pragma('user_version', { simple: true })).toBe(8)
+    expect(migrated.pragma('user_version', { simple: true })).toBe(9)
     expect(migrated.pragma('integrity_check', { simple: true })).toBe('ok')
     expect(migrated.prepare('SELECT submitted_question,submitted_category,submitted_answer FROM job_answers').get()).toEqual({ submitted_question: 'Legacy question?', submitted_category: 'project', submitted_answer: 'Legacy submitted answer.' })
     expect(migrated.prepare('SELECT submitted_text,submitted_job_text FROM applications').get()).toEqual({ submitted_text: 'Legacy résumé', submitted_job_text: 'Original job description requiring TypeScript and reliable software systems.' })
   })
   it('keeps due follow-ups separate from quiet suggestions, excludes closed jobs, and requires explicit status changes', async () => {
-    const f = await setup(), active = f.job('Acme', 'applied'), closed = f.job('Closed', 'rejected')
+    const f = await setup(), active = f.job('Acme', 'applied'), closed = f.job('Closed', 'closed')
     for (const id of [active, closed]) expect((await f.send(`/api/jobs/${id}/tracker`, { followUpDate: '2026-11-01', lastContactAt: null, contacts: 'Recruiter', notes: 'Ask about next steps' }, 'PUT')).status).toBe(200)
     let summary = trackerSummary(f.sqlite, '2026-11-06')
     expect(summary.followUps.map((j) => j.id)).toEqual([active]); expect(summary.ghostedSuggestions.map((j) => j.id)).toEqual([active])
@@ -76,7 +77,7 @@ describe('tracker and answers', () => {
   })
   it('keeps cumulative funnel history after rejection and filters tracker rows and export rows consistently', async () => {
     const f = await setup(), first = f.job('Acme', 'interviewing'), second = f.job('Globex', 'saved')
-    await f.send(`/api/jobs/${first}/status`, { status: 'rejected' }, 'PUT')
+    await f.send(`/api/jobs/${first}/status`, { status: 'closed', outcome: 'rejected' }, 'PUT')
     const response = await f.request('/api/tracker?status=tracker&company=Acme&after=2026-10-01&before=2026-10-01')
     const result = await response.json() as TrackerSummary
     expect(result.jobs.map((j) => j.id)).toEqual([first])
@@ -84,6 +85,16 @@ describe('tracker and answers', () => {
     expect((await f.request('/api/tracker?after=2026-11-01&before=2026-10-01')).status).toBe(400)
     const csv = await (await f.request('/api/tracker/export/applications.csv?company=Acme')).text()
     expect(csv).toContain('Acme'); expect(csv).not.toContain('Globex'); expect(second).toBeTruthy()
+  })
+  it('reads old status history (screening, accepted) as interviewing and an accepted ending in the funnel', async () => {
+    const f = await setup(), legacy = f.job('Legacy', 'closed'), current = f.job('Current', 'closed')
+    const application = (jobId: string) => (f.sqlite.prepare('SELECT id FROM applications WHERE job_id=?').get(jobId) as { id: string }).id
+    f.sqlite.prepare('INSERT INTO status_events(id,application_id,status,created_at) VALUES(?,?,?,?)').run(randomUUID(), application(legacy), 'screening', '2026-10-02T00:00:00.000Z')
+    f.sqlite.prepare('INSERT INTO status_events(id,application_id,status,created_at) VALUES(?,?,?,?)').run(randomUUID(), application(legacy), 'accepted', '2026-10-03T00:00:00.000Z')
+    expect((await f.send(`/api/jobs/${current}/status`, { status: 'interviewing' }, 'PUT')).status).toBe(200)
+    expect((await f.send(`/api/jobs/${current}/status`, { status: 'closed', outcome: 'withdrawn' }, 'PUT')).status).toBe(200)
+    const funnel = Object.fromEntries(trackerSummary(f.sqlite, '2026-11-06').funnel.map((step) => [step.status, step.count]))
+    expect(funnel).toEqual({ saved: 2, applied: 2, interviewing: 2, offer: 1, accepted: 1 })
   })
   it('counts each latest-draft gap once per tracked job and omits superseded runs and skipped jobs', async () => {
     const f = await setup(), one = f.job('Acme', 'saved'), two = f.job('Globex', 'applied'), skipped = f.job('Skipped', 'skipped')

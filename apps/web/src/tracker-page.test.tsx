@@ -58,6 +58,9 @@ describe('tracker browser flows', () => {
     await user.click(within(table).getByRole('button', { name: 'Recorded résumé text' }))
     await screen.findByText('Original résumé text, frozen at submission.')
     expect((await screen.findAllByText('I want to join Acme to build reliable systems.')).length).toBeGreaterThan(0)
+    // A job that is only saved belongs to Jobs, so the Tracker leaves it out until every job is shown.
+    expect(within(table).queryByRole('button', { name: 'Globex Software Engineer' })).toBeNull()
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Filter status' }), '')
     await user.selectOptions(screen.getByRole('combobox', { name: 'Filter company' }), 'Globex')
     expect(within(table).queryByRole('button', { name: 'Acme Software Engineer' })).toBeNull()
     expect(screen.getByRole('link', { name: 'Export XLSX' }).getAttribute('href')).toContain('company=Globex')
@@ -76,7 +79,7 @@ describe('tracker browser flows', () => {
     await user.click(screen.getByRole('button', { name: 'Save changes' }))
     await waitFor(() => expect(sqlite.prepare('SELECT answer,submitted_answer AS submitted FROM job_answers WHERE job_id=?').get(acme)).toEqual({ answer: 'I want to build dependable systems at Acme.', submitted: 'I want to join Acme to build reliable systems.' }))
     await user.click(screen.getByText('Status history'))
-    expect(await screen.findByText(/Interviewing/)).toBeTruthy()
+    expect(await screen.findByText('Interviewing', { selector: '.history-list strong' })).toBeTruthy()
   })
   it('adapts a library answer, flags source-company text, enforces limits, and preserves provenance and submitted text', async () => {
     const { sqlite, acme, globex, sourceAnswerId, user } = await setup()

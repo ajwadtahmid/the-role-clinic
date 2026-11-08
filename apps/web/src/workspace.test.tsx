@@ -67,7 +67,7 @@ describe('job workspace flow', () => {
     expect(screen.queryByRole('tab', { name: 'Answers' })).toBeNull()
 
     await user.selectOptions(await screen.findByRole('combobox', { name: 'Exact status' }), 'saved')
-    await screen.findByText('Job added to the Tracker.')
+    await screen.findByText('Job saved.')
     expect(sqlite.prepare('SELECT status FROM applications').get()).toEqual({ status: 'saved' })
     expect(screen.getByText('Acme', { selector: '.job-card span' })).toBeTruthy()
 

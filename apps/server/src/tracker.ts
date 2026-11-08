@@ -1,10 +1,10 @@
 import type Database from 'better-sqlite3'
-import { type Extraction, type Gap, type LibraryAnswer, type TrackerJob, type TrackerSummary, suggestAnswerCategory, calendarDate } from '../../../packages/shared/src/index.js'
+import { type Extraction, type Gap, type LibraryAnswer, type TrackerJob, type TrackerSummary, suggestAnswerCategory, calendarDate, currentStatus } from '../../../packages/shared/src/index.js'
 import { listSynonyms, readMaster, readProfile } from './master.js'
 import { assessRequirement } from './pipeline-core.js'
 
 export const dateOnly = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value
-export const quietStatuses = new Set(['applied', 'screening', 'interviewing'])
+export const quietStatuses = new Set(['applied', 'interviewing'])
 // The newest row of `requirements` or `tailored` for every job, in one query (not one query per job).
 // `expression` picks what to read from each row, for example 't.document' or a json_extract of it.
 export function latestByJob(sqlite: Database.Database, table: 'requirements' | 'tailored', expression: string): Map<string, string | null> {
@@ -13,7 +13,7 @@ export function latestByJob(sqlite: Database.Database, table: 'requirements' | '
 }
 export function trackerSummary(sqlite: Database.Database, today = calendarDate()): TrackerSummary {
   const jobs = sqlite.prepare(`SELECT j.id,j.company,j.title,j.source_url AS sourceUrl,j.source,j.location,j.remote,j.salary,j.captured_at AS capturedAt,
-    COALESCE(a.status,'new') AS status,a.applied_at AS appliedAt,a.follow_up_date AS followUpDate,a.last_contact_at AS lastContactAt,
+    COALESCE(a.status,'new') AS status,a.outcome,a.applied_at AS appliedAt,a.follow_up_date AS followUpDate,a.last_contact_at AS lastContactAt,
     COALESCE(a.notes,'') AS notes,COALESCE(a.contacts,'') AS contacts,a.submitted_artifact_id AS submittedArtifactId,
     json_extract(art.document,'$.filename') AS submittedFilename,a.submitted_text IS NOT NULL AS hasSubmittedText,
     (SELECT COUNT(*) FROM job_answers WHERE job_id=j.id) AS answerCount,
@@ -46,13 +46,15 @@ export function trackerSummary(sqlite: Database.Database, today = calendarDate()
     }
   }
   const preferences = sqlite.prepare('SELECT ghosted_days AS ghostedDays FROM tracker_preferences WHERE id=1').get() as { ghostedDays: number }
-  const funnelStages = ['saved', 'applied', 'screening', 'interviewing', 'offer', 'accepted']
+  const funnelStages = ['saved', 'applied', 'interviewing', 'offer', 'accepted']
+  // How far a status got along the funnel. Old history rows (screening, accepted…) are read through currentStatus. Other endings give no level of their own.
+  const funnelLevel = (status: string, outcome: string | null) => { const now = currentStatus(status, outcome); return now.status === 'closed' ? (now.outcome === 'accepted' ? 4 : -1) : funnelStages.indexOf(now.status) }
   const stagesByJob = new Map<string, number>()
-  for (const event of sqlite.prepare('SELECT a.job_id AS jobId,e.status FROM status_events e JOIN applications a ON a.id=e.application_id').all() as Array<{ jobId: string; status: string }>) stagesByJob.set(event.jobId, Math.max(stagesByJob.get(event.jobId) ?? -1, funnelStages.indexOf(event.status)))
-  for (const job of jobs) stagesByJob.set(job.id, Math.max(stagesByJob.get(job.id) ?? -1, funnelStages.indexOf(job.status), job.appliedAt ? 1 : -1))
+  for (const event of sqlite.prepare('SELECT a.job_id AS jobId,e.status,e.outcome FROM status_events e JOIN applications a ON a.id=e.application_id').all() as Array<{ jobId: string; status: string; outcome: string | null }>) stagesByJob.set(event.jobId, Math.max(stagesByJob.get(event.jobId) ?? -1, funnelLevel(event.status, event.outcome)))
+  for (const job of jobs) stagesByJob.set(job.id, Math.max(stagesByJob.get(job.id) ?? -1, funnelLevel(job.status, job.outcome), job.appliedAt ? 1 : -1))
   return {
     jobs, preferences,
-    followUps: jobs.filter((j) => j.followUpDate && j.followUpDate <= today && !['new', 'skipped', 'accepted', 'rejected', 'withdrawn', 'ghosted'].includes(j.status)).sort((a, b) => a.followUpDate!.localeCompare(b.followUpDate!)),
+    followUps: jobs.filter((j) => j.followUpDate && j.followUpDate <= today && !['new', 'skipped', 'closed'].includes(j.status)).sort((a, b) => a.followUpDate!.localeCompare(b.followUpDate!)),
     ghostedSuggestions: jobs.filter((j) => quietStatuses.has(j.status) && Math.floor((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${calendarDate(j.lastActivityAt)}T00:00:00Z`)) / 86400000) >= preferences.ghostedDays),
     funnel: funnelStages.map((status, index) => ({ status, count: [...stagesByJob.values()].filter((stage) => stage >= index).length })),
     gaps: [...gaps.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)), analyzedJobs,
@@ -60,7 +62,7 @@ export function trackerSummary(sqlite: Database.Database, today = calendarDate()
 }
 export function filterTrackerJobs(jobs: TrackerJob[], filters: { q?: string; status?: string; company?: string; after?: string; before?: string }) {
   return jobs.filter((j) => (!filters.q || `${j.company} ${j.title} ${j.notes} ${j.contacts}`.toLowerCase().includes(filters.q.toLowerCase())) &&
-    (!filters.status || (filters.status === 'tracker' ? !['new', 'skipped'].includes(j.status) : j.status === filters.status)) &&
+    (!filters.status || (filters.status === 'tracker' ? !['new', 'saved', 'skipped'].includes(j.status) : j.status === filters.status)) &&
     (!filters.company || j.company === filters.company) && (!filters.after || calendarDate(j.capturedAt) >= filters.after) && (!filters.before || calendarDate(j.capturedAt) <= filters.before))
 }
 export function ftsQuery(query: string) {
