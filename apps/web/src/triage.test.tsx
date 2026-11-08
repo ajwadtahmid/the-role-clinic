@@ -52,23 +52,24 @@ async function setup(withFeed = true) {
   return { user: userEvent.setup(), sqlite }
 }
 
-describe('Triage', () => {
-  it('opens on Triage with prioritized cards, badges and a count, and keeps them out of Active', async () => {
+describe('Jobs from a job feed', () => {
+  it('lists them in To review with a count, and an Only from the job feed filter that puts the most promising first', async () => {
     const { user, sqlite } = await setup()
-    const chip = await screen.findByRole('button', { name: /^Triage/ })
+    const chip = await screen.findByRole('button', { name: /^To review/ })
     await waitFor(() => expect(chip.getAttribute('aria-pressed')).toBe('true'))
-    expect(within(chip).getByText('2')).toBeTruthy()
+    await waitFor(() => expect(within(chip).getByText('2')).toBeTruthy())
     await screen.findByText('Platform Engineer', { selector: '.job-card strong' })
-    const titles = [...document.querySelectorAll('.job-card strong')].map((node) => node.textContent)
-    expect(titles).toEqual(['Data Analyst', 'Platform Engineer']) // High before Medium
+    await user.click(screen.getByRole('checkbox', { name: 'Only from the job feed (2)' }))
+    await waitFor(() => expect([...document.querySelectorAll('.job-card strong')].map((node) => node.textContent)).toEqual(['Data Analyst', 'Platform Engineer'])) // High before Medium
     expect(screen.getByText('Flags (2)')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Check for new jobs' })).toBeTruthy()
-    await user.click(screen.getByRole('button', { name: /^Active/ }))
-    await waitFor(() => expect(screen.getByText('No jobs in progress here.')).toBeTruthy())
+    await user.click(screen.getByRole('button', { name: /^Saved/ }))
+    await waitFor(() => expect(screen.getByText('No saved jobs yet.')).toBeTruthy())
+    expect((screen.getByRole('checkbox', { name: /Only from the job feed/ }) as HTMLInputElement).disabled).toBe(true)
     sqlite.close()
   })
 
-  it('shows the finder notes as unverified and offers Track, Already applied and Skip', async () => {
+  it('shows the finder notes as unverified and offers Save, Already applied and Skip, then moves on to the next job', async () => {
     const { user, sqlite } = await setup()
     await user.click((await screen.findByText('Platform Engineer', { selector: '.job-card strong' })).closest('button')!)
     const panel = await screen.findByRole('region', { name: 'From your job finder' })
@@ -76,10 +77,13 @@ describe('Triage', () => {
     expect(within(panel).getByText('Citizenship')).toBeTruthy()
     expect(within(panel).getByText(/has not checked it/)).toBeTruthy()
     const group = screen.getByRole('group', { name: 'Decide about this job' })
-    expect(within(group).getByRole('button', { name: 'Track this job' })).toBeTruthy()
+    expect(within(group).getByRole('button', { name: 'Save job' })).toBeTruthy()
     await user.click(within(group).getByRole('button', { name: 'Skip' }))
     await waitFor(() => expect(screen.getByRole('button', { name: /^Skipped/ }).textContent).toContain('1'))
-    expect(screen.getByRole('button', { name: /^Triage/ }).textContent).toContain('1')
+    expect(screen.getByRole('button', { name: /^To review/ }).textContent).toContain('1')
+    // The skipped job leaves the list and the other one opens, so the next decision is one click away.
+    await waitFor(() => expect(document.querySelectorAll('.job-card')).toHaveLength(1))
+    expect(document.querySelector('.job-card')?.getAttribute('aria-current')).toBe('true')
     sqlite.close()
   })
 
@@ -95,10 +99,10 @@ describe('Triage', () => {
     sqlite.close()
   })
 
-  it('hides Triage and the feed button when no feed is set', async () => {
+  it('hides the feed filter and the feed button when no feed is set', async () => {
     const { sqlite } = await setup(false)
     await screen.findByRole('button', { name: 'Add job' })
-    expect(screen.queryByRole('button', { name: /^Triage/ })).toBeNull()
+    expect(screen.queryByRole('checkbox', { name: /Only from the job feed/ })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Check for new jobs' })).toBeNull()
     sqlite.close()
   })

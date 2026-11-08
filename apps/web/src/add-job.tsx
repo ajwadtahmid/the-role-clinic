@@ -75,7 +75,7 @@ export function Quickstart({ readiness, onAdd, onHide }: { readiness: Readiness 
       {steps.map(([done, title, note, href]) => <li key={title}><span className="step-mark" aria-hidden="true">{done ? '✓' : '○'}</span><div><a href={href}>{title}</a><span className="sr-only">{done ? ' (done)' : ' (not done)'}</span>{!compact && <p>{note}</p>}</div></li>)}
       <li><span className="step-mark" aria-hidden="true">{readiness?.capturedJob ? '✓' : '○'}</span><div><button className="text-button inline-action" onClick={onAdd}>Add a job</button>{!compact && <p>Paste a posting or fetch it from a link.</p>}</div></li>
       <li><span className="step-mark" aria-hidden="true">○</span><div><a href="#settings">Connect a job feed</a> <span className="subtle">(optional)</span>{!compact && <p>If a search tool saves jobs to a CSV file, they can arrive in Triage on their own.</p>}</div></li>
-      <li><span className="step-mark" aria-hidden="true">→</span><div><a href="#tracker">Tracker</a>{!compact && <p>Jobs you commit to are followed there, with your answers and follow-ups.</p>}</div></li>
+      <li><span className="step-mark" aria-hidden="true">→</span><div><a href="#tracker">Tracker</a>{!compact && <p>Jobs you have applied to are followed there, with your answers and follow-ups.</p>}</div></li>
     </ol>
     {!compact && <button className="button primary" onClick={onAdd}>Add your first job</button>}
   </section>

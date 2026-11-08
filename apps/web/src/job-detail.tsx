@@ -27,12 +27,12 @@ function highlighted(text: string, requirements: Requirement[]) {
   return parts
 }
 
-export function JobHeader({ detail, action, estimate, estimateError, busy, activeLabel, onAction, onStatus, onBack }: { detail: Detail; action: NextAction; estimate: Estimate | null; estimateError: string; busy: boolean; activeLabel?: string; onAction: () => void; onStatus: (status: string) => void; onBack: () => void }) {
+export function JobHeader({ detail, action, estimate, estimateError, busy, activeLabel, onAction, onStatus, onBack, inTracker = false }: { detail: Detail; action: NextAction; estimate: Estimate | null; estimateError: string; busy: boolean; activeLabel?: string; onAction: () => void; onStatus: (status: string) => void; onBack: () => void; inTracker?: boolean }) {
   const { job } = detail
   const costNote = estimate ? `Estimated API cost: $${estimate.estimatedUsd.toFixed(4)} · per-run cap: $${estimate.capUsd.toFixed(2)} · this month: $${estimate.spentThisMonthUsd.toFixed(2)} of $${estimate.monthlyCapUsd.toFixed(2)}. ${estimate.note}` : estimateError || 'Checking the cost estimate…'
   const blocked = action.id === 'tailor' && !estimate?.allowed
   return <header className="job-header">
-    <button className="text-button back-button" onClick={onBack}>← All jobs</button>
+    {inTracker ? <a className="back-link" href={`#tracker?job=${detail.job.id}`}>← Back to Tracker</a> : <button className="text-button back-button" onClick={onBack}>← All jobs</button>}
     <div className="job-header-row">
       <div className="job-title-block"><h2>{job.title || '(Untitled role)'}</h2><p>{job.company || 'Company not set'}{job.location ? ` · ${job.location}` : ''} <span className={`status status-${job.status}`}>{statusText(job.status, job.outcome)}</span></p></div>
       <div className="job-actions">
@@ -46,7 +46,7 @@ export function JobHeader({ detail, action, estimate, estimateError, busy, activ
         </div></details>
       </div>
     </div>
-    {(job.status ?? 'new') === 'new' && <div className="triage-actions" role="group" aria-label="Decide about this job">{action.id !== 'tracker' && <button className="text-button" disabled={busy} onClick={() => onStatus('saved')}>Track this job</button>}<button className="text-button" disabled={busy} onClick={() => onStatus('applied')}>Already applied</button><button className="text-button" disabled={busy} onClick={() => onStatus('skipped')}>Skip</button></div>}
+    {(job.status ?? 'new') === 'new' && <div className="triage-actions" role="group" aria-label="Decide about this job">{action.id !== 'tracker' && <button className="text-button" disabled={busy} onClick={() => onStatus('saved')}>Save job</button>}<button className="text-button" disabled={busy} onClick={() => onStatus('applied')}>Already applied</button><button className="text-button" disabled={busy} onClick={() => onStatus('skipped')}>Skip</button></div>}
     <p className="subtle next-hint">{action.id === 'tailor' ? costNote : action.hint}</p>
   </header>
 }

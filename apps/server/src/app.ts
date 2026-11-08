@@ -259,7 +259,7 @@ export function createApp(options: AppOptions) {
     const all = rows.reduce((sum, row) => sum + row.n, 0)
     const triage = (options.sqlite.prepare("SELECT COUNT(*) AS n FROM jobs j LEFT JOIN applications a ON a.job_id=j.id WHERE j.origin='feed' AND COALESCE(a.status,'new')='new'").get() as { n: number }).n
     // `active` is what is still being worked on (to review or saved); `applied` is everything from applied onward; `tracker` is now the same as `applied`.
-    return context.json({ new: count('new'), triage, active: count('new') - triage + count('saved'), applied: all - count('new') - count('saved') - count('skipped'), tracker: all - count('new') - count('saved') - count('skipped'), skipped: count('skipped'), all })
+    return context.json({ new: count('new'), saved: count('saved'), triage, active: count('new') - triage + count('saved'), applied: all - count('new') - count('saved') - count('skipped'), tracker: all - count('new') - count('saved') - count('skipped'), skipped: count('skipped'), all })
   })
 
   app.post('/api/jobs', async (context) => {

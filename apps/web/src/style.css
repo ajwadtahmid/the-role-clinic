@@ -135,3 +135,53 @@ summary{padding:13px 0}
 .finder-panel ul{margin:0;padding-left:18px}
 .posting-notice{margin-bottom:14px}
 @media(max-width:560px){.finder-panel dl{grid-template-columns:1fr}}
+
+/* Jobs by stage, and the Tracker as a table with its details beside it */
+.page-note a{color:var(--green)}
+.feed-toggle{display:inline-flex;align-items:center;gap:8px;min-height:44px;font-size:13px;font-weight:600}
+.feed-toggle input{width:20px;height:20px}
+.more-jobs{width:100%;margin-top:4px}
+.jobs-layout.detail-only{grid-template-columns:minmax(0,1fr)}
+.jobs-layout.detail-only .jobs-panel{display:none}
+.back-link{display:inline-flex;align-items:center;min-height:44px;font-size:14px;font-weight:600;color:var(--green)}
+.tracker-shell{width:min(1360px,calc(100% - 56px))}
+.funnel-strip{display:flex;flex-wrap:wrap;align-items:center;gap:6px 18px;margin:0 0 12px;font-size:13px;color:var(--muted)}
+.funnel-strip strong{color:var(--ink);font-variant-numeric:tabular-nums}
+.funnel-strip a{margin-left:auto;color:var(--green)}
+.tracker-reminders{padding:14px 18px;margin-bottom:14px}
+.tracker-layout{display:grid;grid-template-columns:minmax(0,1fr);gap:18px;align-items:start;margin-bottom:22px}
+.tracker-layout.with-panel{grid-template-columns:minmax(0,1fr) minmax(380px,460px)}
+.tracker-layout .tracker-table-panel,.tracker-layout .tracker-job-details{margin-bottom:0}
+.tracker-layout .tracker-job-details{position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto}
+.tracker-layout.with-panel .col-sent,.tracker-layout.with-panel .col-warn{display:none}
+.tracker-layout.with-panel .applications-table{min-width:0}
+.applications-table tr.selected{background:#eef3ea}
+.tracker-filters{grid-template-columns:1.5fr 1fr 1fr}
+.more-filters{margin:-4px 0 12px}
+.more-filters summary{cursor:pointer;color:var(--green);font-size:13px;font-weight:600}
+.pager{display:flex;align-items:center;gap:10px;padding-top:14px;font-size:13px;color:var(--muted);flex-wrap:wrap}
+.pager .spacer{flex:1}
+@media(max-width:860px){
+.tracker-shell{width:min(100% - 32px,600px)}
+.tracker-layout.with-panel{grid-template-columns:minmax(0,1fr)}
+.tracker-layout.with-panel .tracker-table-panel{display:none}
+.tracker-layout .tracker-job-details{position:static;max-height:none}
+.funnel-strip a{margin-left:0}
+}
+@media(max-width:760px){
+
+.applications-table{min-width:0}
+.applications-table thead{display:none}
+.applications-table,.applications-table tbody,.applications-table tr,.applications-table td{display:block}
+.applications-table tr{padding:12px 4px;border-bottom:1px solid var(--line)}
+.applications-table td{padding:4px 0;border:0;max-width:none}
+.applications-table td[data-label]::before{content:attr(data-label);display:block;font:600 12px system-ui;color:var(--muted)}
+.applications-table .col-warn:empty{display:none}
+}
+
+.jobs-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px 20px;flex-wrap:wrap}
+.jobs-head .page-header{flex:1;min-width:260px}
+.jobs-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-bottom:22px}
+.jobs-actions .feed-checked{margin:0;font-size:13px}
+.tracker-job-details .panel-heading .text-button{white-space:nowrap}
+@media(max-width:760px){.tracker-filters label:first-child{grid-column:1/-1}.tracker-filters{grid-template-columns:1fr 1fr}.jobs-actions{padding-bottom:12px}}

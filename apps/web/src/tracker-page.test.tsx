@@ -32,13 +32,14 @@ async function setup() {
   vi.stubGlobal('fetch', (input: string, init: RequestInit = {}) => nodeFetch(`http://127.0.0.1:${port}${input}`, { ...init, headers: { origin: `http://127.0.0.1:${port}`, ...init.headers } } as Parameters<typeof nodeFetch>[1]))
   async function send(path: string, value: unknown, method = 'POST') { const response = await fetch(path, { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(value) }); if (!response.ok) throw new Error(await response.text()); return response.json() }
   async function job(company: string) { return (await send('/api/jobs', { company, title: 'Software Engineer', text: 'Build reliable TypeScript software systems and application APIs with our engineering team.' })).id as string }
-  const acme = await job('Acme'), globex = await job('Globex')
+  const acme = await job('Acme'), globex = await job('Globex'), initech = await job('Initech')
   const answer = await send(`/api/jobs/${acme}/answers`, { question: 'Why join our company?', answer: 'I want to join Acme to build reliable systems.', category: 'why-us' })
   await send(`/api/jobs/${acme}/status`, { status: 'applied', submittedText: 'Original résumé text, frozen at submission.' }, 'PUT')
   await send(`/api/jobs/${acme}/status`, { status: 'interviewing' }, 'PUT')
   await send(`/api/jobs/${globex}/status`, { status: 'saved' }, 'PUT')
+  await send(`/api/jobs/${initech}/status`, { status: 'applied', submittedText: 'Initech résumé text.' }, 'PUT')
   await send(`/api/jobs/${acme}/tracker`, { followUpDate: '2026-01-01', lastContactAt: null, contacts: '', notes: '' }, 'PUT')
-  return { sqlite, acme, globex, sourceAnswerId: answer.id as string, user: userEvent.setup() }
+  return { sqlite, acme, globex, initech, send, sourceAnswerId: answer.id as string, user: userEvent.setup() }
 }
 describe('tracker browser flows', () => {
   it('shows a tracker table, records a follow-up, opens the exact submitted record and filters exports', async () => {
@@ -55,15 +56,15 @@ describe('tracker browser flows', () => {
     await user.click(screen.getByRole('button', { name: 'Mark follow-up done today' }))
     await screen.findByText('Follow-up completed; last contact recorded today.')
     expect((sqlite.prepare('SELECT follow_up_date FROM applications WHERE job_id=?').get(acme))).toEqual({ follow_up_date: null })
-    await user.click(within(table).getByRole('button', { name: 'Recorded résumé text' }))
+    await user.click(within(within(table).getByRole('button', { name: 'Acme Software Engineer' }).closest('tr')!).getByRole('button', { name: 'Recorded résumé text' }))
     await screen.findByText('Original résumé text, frozen at submission.')
     expect((await screen.findAllByText('I want to join Acme to build reliable systems.')).length).toBeGreaterThan(0)
-    // A job that is only saved belongs to Jobs, so the Tracker leaves it out until every job is shown.
+    // A job that is only saved belongs to Jobs, so the Tracker never lists it.
     expect(within(table).queryByRole('button', { name: 'Globex Software Engineer' })).toBeNull()
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Filter status' }), '')
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Filter company' }), 'Globex')
+    expect(within(screen.getByRole('combobox', { name: 'Filter company' })).queryByRole('option', { name: 'Globex' })).toBeNull()
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Filter company' }), 'Initech')
     expect(within(table).queryByRole('button', { name: 'Acme Software Engineer' })).toBeNull()
-    expect(screen.getByRole('link', { name: 'Export XLSX' }).getAttribute('href')).toContain('company=Globex')
+    expect(screen.getByRole('link', { name: 'Export XLSX' }).getAttribute('href')).toContain('company=Initech')
     expect(within(table).getByRole('button', { name: /^No answers yet/ })).toBeTruthy()
   })
   it('opens a job’s questions and answers from the Q&A column, edits the working copy, and keeps the submitted snapshot', async () => {
@@ -99,5 +100,50 @@ describe('tracker browser flows', () => {
     expect((sqlite.prepare('SELECT submitted_answer FROM job_answers WHERE job_id=?').get(acme) as { submitted_answer: string }).submitted_answer).toBe('I want to join Acme to build reliable systems.')
     await user.type(screen.getByRole('textbox', { name: 'Search answers' }), 'Globex')
     await waitFor(() => expect(screen.getAllByRole('button', { name: 'Reuse answer' })).toHaveLength(1))
+  })
+
+  it('shows stage tabs with counts, a one-line funnel and follow-ups only when something is due', async () => {
+    const { sqlite, user } = await setup()
+    render(<TrackerPage />)
+    const table = await screen.findByRole('table')
+    const tab = (name: string) => screen.getByRole('button', { name })
+    expect(tab('All 2').getAttribute('aria-pressed')).toBe('true')
+    expect(tab('Applied 1')).toBeTruthy(); expect(tab('Interviewing 1')).toBeTruthy(); expect(tab('Offer 0')).toBeTruthy(); expect(tab('Closed 0')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^Saved/ })).toBeNull()
+    expect(within(screen.getByLabelText(/Application funnel/)).getByText('Interviewing')).toBeTruthy()
+    await user.click(tab('Interviewing 1'))
+    expect(within(table).getByRole('button', { name: 'Acme Software Engineer' })).toBeTruthy()
+    expect(within(table).queryByRole('button', { name: 'Initech Software Engineer' })).toBeNull()
+    expect(screen.getByRole('link', { name: 'Export XLSX' }).getAttribute('href')).toContain('status=interviewing')
+    cleanup()
+    sqlite.prepare('UPDATE applications SET follow_up_date=NULL').run()
+    render(<TrackerPage />)
+    await screen.findByRole('table')
+    expect(screen.queryByRole('region', { name: 'Follow-ups' })).toBeNull()
+  })
+
+  it('opens a job’s details beside the table, closes them with Escape, and shows long lists 50 at a time', async () => {
+    const { sqlite, user } = await setup()
+    const now = new Date().toISOString()
+    for (let i = 0; i < 60; i++) {
+      const id = `bulk-${String(i).padStart(2, '0')}`
+      sqlite.prepare('INSERT INTO jobs(id,company,title,captured_at,raw_snapshot,text) VALUES(?,?,?,?,?,?)').run(id, `Bulk ${String(i).padStart(2, '0')}`, 'Engineer', now, 'raw', 'A long enough job description for the table to show.')
+      sqlite.prepare('INSERT INTO applications(id,job_id,status,applied_at,notes,contacts) VALUES(?,?,?,?,?,?)').run(`app-${id}`, id, 'applied', now, '', '')
+    }
+    render(<TrackerPage />)
+    const table = await screen.findByRole('table')
+    expect(within(table).getAllByRole('row')).toHaveLength(51) // header and 50 rows
+    expect(screen.getByText('1 to 50 of 62')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    expect(screen.getByText('51 to 62 of 62')).toBeTruthy()
+    expect(within(table).getAllByRole('row')).toHaveLength(13)
+    await user.type(screen.getByLabelText('Search applications'), 'Acme')
+    expect(screen.queryByRole('button', { name: 'Next' })).toBeNull()
+    await user.click(within(table).getByRole('button', { name: 'Acme Software Engineer' }))
+    const panel = screen.getByRole('complementary', { name: 'Details for Acme' })
+    expect(within(panel).getByRole('link', { name: 'Open job and résumé' }).getAttribute('href')).toMatch(/^#jobs\//)
+    expect(screen.getByRole('table')).toBeTruthy()
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('complementary', { name: 'Details for Acme' })).toBeNull()
   })
 })

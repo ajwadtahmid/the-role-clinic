@@ -26,6 +26,7 @@ export function registerTrackerRoutes(app: Hono, sqlite: Database.Database, data
     const result = trackerSummary(sqlite)
     return context.json({ ...result, jobs: filterTrackerJobs(result.jobs, filters(context)) })
   }))
+  app.get('/api/tracker/preferences', safe(async (context) => context.json(sqlite.prepare('SELECT ghosted_days AS ghostedDays FROM tracker_preferences WHERE id=1').get())))
   app.put('/api/tracker/preferences', safe(async (context) => {
     const value = z.object({ ghostedDays: z.number().int().min(1).max(365) }).strict().parse(await context.req.json().catch(() => null))
     sqlite.prepare('UPDATE tracker_preferences SET ghosted_days=? WHERE id=1').run(value.ghostedDays)
