@@ -108,7 +108,9 @@ describe('job workspace flow', () => {
       if (status) sqlite.prepare('INSERT INTO applications(id,job_id,status,notes) VALUES(?,?,?,?)').run(randomUUID(), id, status, '')
     }
     add('Zeta', null, '2026-10-03T00:00:00.000Z'); add('Alpha', 'saved', '2026-10-02T00:00:00.000Z'); add('Mid', 'new', '2026-10-01T00:00:00.000Z'); add('Gone', 'skipped', '2026-09-30T00:00:00.000Z'); add('Done', 'applied', '2026-09-29T00:00:00.000Z')
-    await user.click(screen.getByRole('button', { name: /^Saved/ })); await user.click(screen.getByRole('button', { name: /^To review/ }))
+    // The jobs were added behind the page's back, so open it again to list them.
+    cleanup(); render(<Workspace />)
+    await user.click(await screen.findByRole('button', { name: /^Saved/ })); await user.click(screen.getByRole('button', { name: /^To review/ }))
     await screen.findByText('Zeta', { selector: '.job-card span' })
     expect(screen.getByRole('button', { name: 'To review 2' }).getAttribute('aria-pressed')).toBe('true')
     expect(screen.getByRole('button', { name: 'Saved 1' })).toBeTruthy()

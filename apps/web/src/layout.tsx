@@ -36,6 +36,6 @@ export function ResumeTabs({ current }: { current: 'master' | 'profile' }) {
 }
 
 // A compact page title with at most one line of orientation, so the work starts near the top of the screen.
-export function PageHeader({ title, children }: { title: string; children?: ReactNode }) {
-  return <section className="page-header"><h1>{title}</h1>{children && <p className="page-note">{children}</p>}</section>
+export function PageHeader({ title, children, actions }: { title: string; children?: ReactNode; actions?: ReactNode }) {
+  return <section className="page-header"><h1>{title}</h1>{children && <p className="page-note">{children}</p>}{actions && <div className="page-actions">{actions}</div>}</section>
 }

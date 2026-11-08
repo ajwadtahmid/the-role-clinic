@@ -1,5 +1,5 @@
 import { TailoringWorkspace } from './tailoring-workspace.js'
-import { choiceOf, statusChoices, statusText, type NextAction } from './stages.js'
+import { choiceOf, stageClass, statusChoices, statusText, type NextAction } from './stages.js'
 
 export type LatestRun = { kind: string; status: string; step: string }
 export type Job = { id: string; latestRun?: LatestRun | null; company: string; title: string; capturedAt: string; status: string; outcome?: string | null; location: string; summary: string; sourceUrl?: string; applyUrl?: string; knockouts?: Array<{ quote: string; assessment: 'met' | 'gap' | 'unknown' }>; origin?: 'manual' | 'feed'; foundAt?: string | null; postedAt?: string | null; finderPriority?: string | null; postingState?: 'summary' | 'summary_only' | 'full' | 'maybe_closed' | null; flagCount?: number; finder?: Finder | null }
@@ -34,19 +34,21 @@ export function JobHeader({ detail, action, estimate, estimateError, busy, activ
   return <header className="job-header">
     {inTracker ? <a className="back-link" href={`#tracker?job=${detail.job.id}`}>← Back to Tracker</a> : <button className="text-button back-button" onClick={onBack}>← All jobs</button>}
     <div className="job-header-row">
-      <div className="job-title-block"><h2>{job.title || '(Untitled role)'}</h2><p>{job.company || 'Company not set'}{job.location ? ` · ${job.location}` : ''} <span className={`status status-${job.status}`}>{statusText(job.status, job.outcome)}</span></p></div>
-      <div className="job-actions">
-        {action.id === 'tracker' ? <a className="button primary" href={`#tracker?job=${job.id}`}>{action.label}</a> : action.id !== 'none' && <button className="button primary" disabled={busy || blocked || Boolean(activeLabel)} onClick={onAction}>{activeLabel ?? action.label}</button>}
-        <details className="more-menu"><summary>More</summary><div className="more-panel">
-          <label className="status-select">Exact status<select value={choiceOf(job.status ?? 'new', job.outcome)} onChange={(e) => onStatus(e.target.value)}>{statusChoices.map((choice) => <option key={choice.value} value={choice.value}>{choice.label}</option>)}</select></label>
-          {job.status !== 'skipped' && <button className="text-button" onClick={() => onStatus('skipped')}>Skip this job</button>}
-          {job.sourceUrl && <a className="external-link" href={job.sourceUrl} target="_blank" rel="noreferrer">Open original posting ↗</a>}
-          {job.applyUrl && <a className="external-link" href={job.applyUrl} target="_blank" rel="noreferrer">Continue to application ↗</a>}
-          <a className="external-link" href={`/api/jobs/${job.id}/snapshot`} download="job-capture.txt">Download original capture</a>
-        </div></details>
-      </div>
+      <div className="job-title-block"><h2>{job.title || '(Untitled role)'}</h2><p>{job.company || 'Company not set'}{job.location ? ` · ${job.location}` : ''}</p></div>
+      <span className={stageClass(job.status ?? 'new')}>{statusText(job.status, job.outcome)}</span>
     </div>
-    {(job.status ?? 'new') === 'new' && <div className="triage-actions" role="group" aria-label="Decide about this job">{action.id !== 'tracker' && <button className="text-button" disabled={busy} onClick={() => onStatus('saved')}>Save job</button>}<button className="text-button" disabled={busy} onClick={() => onStatus('applied')}>Already applied</button><button className="text-button" disabled={busy} onClick={() => onStatus('skipped')}>Skip</button></div>}
+    <div className="job-actions">
+      {action.id === 'tracker' ? <a className="button primary" href={`#tracker?job=${job.id}`}>{action.label}</a> : action.id !== 'none' && <button className="button primary" disabled={busy || blocked || Boolean(activeLabel)} onClick={onAction}>{activeLabel ?? action.label}</button>}
+      {(job.status ?? 'new') === 'new' && <div className="triage-actions" role="group" aria-label="Decide about this job">{action.id !== 'tracker' && <button className="button" disabled={busy} onClick={() => onStatus('saved')}>Save job</button>}<button className="text-button" disabled={busy} onClick={() => onStatus('applied')}>Already applied</button><button className="text-button" disabled={busy} onClick={() => onStatus('skipped')}>Skip</button></div>}
+      {job.status === 'saved' && <button className="text-button" disabled={busy} onClick={() => onStatus('skipped')}>Skip</button>}
+      <details className="more-menu"><summary>More</summary><div className="more-panel">
+        <label className="status-select">Exact status<select value={choiceOf(job.status ?? 'new', job.outcome)} onChange={(e) => onStatus(e.target.value)}>{statusChoices.map((choice) => <option key={choice.value} value={choice.value}>{choice.label}</option>)}</select></label>
+        {!['new', 'saved', 'skipped'].includes(job.status ?? 'new') && <button className="text-button" onClick={() => onStatus('skipped')}>Skip this job</button>}
+        {job.sourceUrl && <a className="external-link" href={job.sourceUrl} target="_blank" rel="noreferrer">Open original posting ↗</a>}
+        {job.applyUrl && <a className="external-link" href={job.applyUrl} target="_blank" rel="noreferrer">Continue to application ↗</a>}
+        <a className="external-link" href={`/api/jobs/${job.id}/snapshot`} download="job-capture.txt">Download original capture</a>
+      </div></details>
+    </div>
     <p className="subtle next-hint">{action.id === 'tailor' ? costNote : action.hint}</p>
   </header>
 }

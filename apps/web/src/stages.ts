@@ -16,6 +16,9 @@ export function statusText(status: string, outcome?: string | null) {
   return now.status === 'closed' && now.outcome ? `${stageLabels.closed} · ${outcomeLabels[now.outcome] ?? now.outcome}` : stageLabel(status)
 }
 
+// The colour class for a stage pill, one per stage.
+export function stageClass(status: string) { return `stagepill st-${stageOf(status)}` }
+
 // One list for the status menus. Closed needs a reason, so each ending is its own choice, written "closed:no_reply".
 export const statusChoices = [
   ...(['new', 'saved', 'skipped', 'applied', 'interviewing', 'offer'] as const).map((status) => ({ value: status as string, label: stageLabel(status) })),
