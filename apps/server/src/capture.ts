@@ -63,7 +63,16 @@ async function fetchPublic(url: URL, redirects = 0): Promise<{ url: URL; body: s
   return { url, body: response.body.toString('utf8'), contentType: String(response.headers['content-type'] ?? '') }
 }
 
-const strip = (value: string) => parseHTML(`<html><body>${value}</body></html>`).document.body.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+function strip(value: string) {
+  let { document } = parseHTML(`<html><body>${value}</body></html>`)
+  const decoded = document.body.textContent ?? ''
+  // Some ATS responses entity-encode the entire HTML description.
+  if (!document.body.children.length && /^\s*<(?:div|p|span|h[1-6]|ul|ol|section)\b/i.test(decoded)) document = parseHTML(`<html><body>${decoded}</body></html>`).document
+  for (const block of document.body.querySelectorAll('br,p,div,li,h1,h2,h3,h4,h5,h6,ul,ol,section,tr,td,th')) {
+    block.before(document.createTextNode(' ')); block.after(document.createTextNode(' '))
+  }
+  return document.body.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+}
 function jsonLd(html: string): Record<string, unknown> | null {
   const { document } = parseHTML(html)
   for (const script of [...document.querySelectorAll('script[type="application/ld+json"]')]) {
@@ -123,7 +132,7 @@ export async function captureJobUrl(input: string, fetcher: typeof fetchPublic =
   }
   let title = '', company = companyFromUrl(url), description = '', location = '', applyUrl = ''
   if (parser === 'greenhouse-api') { title = data.title ?? ''; company = parts[0].replaceAll('-', ' '); description = strip(data.content ?? ''); location = data.location?.name ?? ''; applyUrl = data.absolute_url ?? '' }
-  else if (parser === 'lever-api') { title = data.text ?? ''; company = parts[0].replaceAll('-', ' '); description = [data.description, data.additional].filter(Boolean).map(strip).join('\n\n'); location = data.categories?.location ?? ''; applyUrl = data.applyUrl ?? data.hostedUrl ?? '' }
+  else if (parser === 'lever-api') { title = data.text ?? ''; company = parts[0].replaceAll('-', ' '); const sections = Array.isArray(data.lists) ? data.lists.flatMap((section: any) => [section?.text, section?.content]) : []; description = [data.description, ...sections, data.additional].filter((part): part is string => typeof part === 'string' && !!part.trim()).map(strip).join('\n\n'); location = data.categories?.location ?? ''; applyUrl = data.applyUrl ?? data.hostedUrl ?? '' }
   else if (parser === 'ashby-api') { title = data.title ?? ''; company = parts[0].replaceAll('-', ' '); description = strip(data.descriptionHtml ?? data.description ?? ''); location = data.location ?? ''; applyUrl = data.applyUrl ?? data.jobUrl ?? '' }
   else if (parser === 'smartrecruiters-api') { title = data.name ?? ''; company = data.company?.name ?? parts[0]; const sections = data.jobAd?.sections ?? []; const rows = Array.isArray(sections) ? sections : Object.values(sections); description = strip(rows.map((section: any) => `${section.title ?? ''} ${section.text ?? ''}`).join('\n')); location = [data.location?.city, data.location?.region, data.location?.country].filter(Boolean).join(', '); applyUrl = data.ref ?? '' }
   else if (parser === 'workday-cxs') { const info = data.jobPostingInfo ?? data; title = info.title ?? ''; company = info.company ?? company; description = strip(info.jobDescription ?? ''); location = info.location ?? ''; applyUrl = info.externalUrl ?? '' }
