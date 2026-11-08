@@ -12,6 +12,7 @@ planned as `1.0.0`.
 | Area | State |
 | --- | --- |
 | Job capture, Jobs list, tracker (with answers and answer library) | Working |
+| Optional job feed with a Triage view; search instructions for Claude Code or Codex in `job-search/` | Working; live posting fetch and screen review pending |
 | Master résumé, profile, tailoring pipeline, review workspace, DOCX/PDF export | Working |
 | Linux x86_64 package (bundled Node runtime, launcher, backup/restore) | Working preview |
 | Linux Tauri desktop window, native downloads/clipboard, PDF proof | Implemented; owner acceptance pending |
@@ -28,7 +29,8 @@ needs either your own Anthropic API key or a local Ollama installation.
    (Greenhouse, Lever, Ashby, SmartRecruiters, Workday, JSON-LD pages, other readable
    pages). LinkedIn, Indeed and Glassdoor are not fetched; paste those. The original page
    is kept next to the cleaned text. Duplicates are caught by URL and by similar
-   company and title in the last 60 days.
+   company and title in the last 60 days. Jobs can also arrive from an optional job
+   feed (see below) and wait in a **Triage** view until you decide.
 2. **Triage** on the Jobs screen, with one main button for each job's next step and a status
    strip for fit checks and tailoring runs. When a model is configured, requirements are extracted, each
    tied to an exact span of the posting, and knockouts (years, work authorization,
@@ -53,6 +55,8 @@ needs either your own Anthropic API key or a local Ollama installation.
   billed to your key. With Ollama, model processing stays on your computer.
 - Your API key uses owner-only POSIX permissions or a current-account Windows DACL, is never returned to the
   browser, and is left out of full backups unless you ask for it.
+- A job feed's priority, flags and why-it-fits notes are shown to you and are never sent
+  to a model.
 - Merely launching the app makes no model or API call.
 
 Desktop builds target Linux x86_64 (AppImage/DEB/RPM), macOS Apple Silicon (DMG/app)
@@ -126,6 +130,21 @@ bullets from the same role or project.
   rows appear in a **Triage** chip; nothing is tracked, skipped or checked until you decide.
   The app reads the file, marks what it imported and removes old rows only when you run
   Clean up. It never searches and sends no finder note to a model.
+
+## Finding jobs with Claude Code or Codex (optional)
+
+The app never searches. `job-search/` holds the instructions for an AI coding agent that
+does. Start Claude Code or Codex inside that folder and say `run initial scan` or
+`run update`. The agent appends verified jobs to `job-search/data/jobs.csv`; set that path
+in **Settings → Job feed** and the rows arrive in Triage.
+
+1. Copy `job-search/profile.example.md` to `job-search/profile.md` and fill it in.
+2. Put your résumé in `job-search/` as `resume.pdf` (or any `resume.*`).
+3. `cd job-search`, start `claude` or `codex`, and say `run initial scan`.
+
+Your profile, résumé, jobs file and reports stay on your computer. They are ignored by
+git, along with every PDF and DOCX file. The agent runs under your own Claude or Codex
+subscription; Role Clinic does not call it.
 
 ## Tracker and answer library
 
@@ -201,6 +220,7 @@ update, backup, restore and removal.
 | `apps/web/` | Browser UI (Vite and React) |
 | `packages/shared/` | Schemas and types shared by server and UI |
 | `packaging/`, `scripts/` | Linux launcher, user guide, package build and smoke test |
+| `job-search/` | Job search agent instructions and profile template; your profile, résumé, jobs file and reports are git-ignored |
 | `src-tauri/` | Desktop shell, platform package configs, owned backend lifecycle and restricted native commands |
 
 ## Roadmap

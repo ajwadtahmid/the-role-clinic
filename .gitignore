@@ -17,7 +17,17 @@ artifacts/
 extra/
 AGENTS.md
 CLAUDE.md
+!job-search/AGENTS.md
+!job-search/CLAUDE.md
 DESIGN.md
+job-search/profile.md
+resume.*
+*.pdf
+*.docx
+*.PDF
+*.DOCX
+job-search/data/
+job-search/reports/
 .impeccable/review/
 
 src-tauri/target/
