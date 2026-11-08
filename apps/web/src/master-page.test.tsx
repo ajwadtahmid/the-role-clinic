@@ -66,6 +66,16 @@ describe('master editor flow', () => {
     sqlite.close()
   })
 
+  it('leads with importing a résumé while the master is empty', async () => {
+    const { sqlite, user } = await setup()
+    render(<MasterPage />)
+    expect(await screen.findByRole('heading', { name: 'Bring in your résumé' })).toBeTruthy()
+    expect(screen.getByLabelText('Import a PDF or DOCX')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Add role' }))
+    expect(screen.queryByRole('heading', { name: 'Bring in your résumé' })).toBeNull()
+    sqlite.close()
+  })
+
   it('keeps unsaved edits when leaving the page and asks before discarding them', async () => {
     const { sqlite, user } = await setup()
     const first = render(<MasterPage />)

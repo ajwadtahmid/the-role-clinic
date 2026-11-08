@@ -203,6 +203,7 @@ describe('job workspace flow', () => {
   it('shows the Quickstart only while there are no jobs, and the dialog closes with Escape', async () => {
     const { user, sqlite } = await setup()
     expect(screen.getByRole('link', { name: /Add your résumé/ })).toBeTruthy()
+    expect(screen.queryByText(/Triage/)).toBeNull()
     await user.click(screen.getByRole('button', { name: 'Add your first job' }))
     expect(screen.getByRole('dialog', { name: 'Add a job' })).toBeTruthy()
     await user.keyboard('{Escape}')

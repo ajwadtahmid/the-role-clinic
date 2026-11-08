@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from './api.js'
+import { Icon } from './icons.js'
 
 const blank = { company: '', title: '', location: '', url: '', canonicalUrl: '', applyUrl: '', text: '', rawSnapshot: '', source: 'paste', captureMethod: 'paste' }
 type Similar = { id: string; company: string; title: string }
@@ -60,23 +61,19 @@ export function AddJobDialog({ onClose, onSaved, onOpenExisting }: { onClose: ()
 }
 
 type Readiness = { capturedJob: boolean; hasMaster: boolean; hasProfile: boolean; configuredModels: boolean; triedTracker: boolean }
-export const quickstartHiddenKey = 'rc-quickstart-hidden'
-
-// What to set up and where things go. With no jobs yet it fills the job pane; afterwards it is a slim strip above the list that can be hidden.
-export function Quickstart({ readiness, onAdd, onHide }: { readiness: Readiness | null; onAdd: () => void; onHide?: () => void }) {
-  const steps: Array<[boolean, string, string, string]> = [
-    [!!readiness?.hasMaster, 'Add your résumé', 'Tailoring writes only from facts you have confirmed here.', '#resume'],
-    [!!readiness?.configuredModels, 'Choose a model', 'A local Ollama model or an Anthropic key. Saving jobs works without one.', '#settings'],
+// What to set up and where things go. It fills the job pane while there are no jobs yet.
+export function Quickstart({ readiness, onAdd }: { readiness: Readiness | null; onAdd: () => void }) {
+  const steps: Array<{ done: boolean; title: string; note: string; href?: string; optional?: boolean }> = [
+    { done: !!readiness?.hasMaster, title: 'Add your résumé', note: 'Tailoring writes only from facts you have confirmed here.', href: '#resume' },
+    { done: !!readiness?.configuredModels, title: 'Choose a model', note: 'A local Ollama model or an Anthropic key. Saving jobs works without one.', href: '#settings' },
+    { done: !!readiness?.capturedJob, title: 'Add a job', note: 'Paste a posting or fetch it from a link.' },
+    { done: false, title: 'Connect a job feed', note: 'If a search tool saves jobs to a CSV file, they can arrive in To review on their own.', href: '#settings', optional: true },
   ]
-  const compact = Boolean(onHide)
-  return <section className={`panel quickstart ${compact ? 'quickstart-compact' : 'get-ready'}`} aria-labelledby="quickstart-title"><div className="panel-heading"><h2 id="quickstart-title">Quickstart</h2>{onHide && <button className="text-button" onClick={onHide}>Hide quickstart</button>}</div>
-    {!compact && <p className="subtle">Add a job, check the fit, tailor a résumé, then track it. Everything stays on this device.</p>}
-    <ol className="ready-steps">
-      {steps.map(([done, title, note, href]) => <li key={title}><span className="step-mark" aria-hidden="true">{done ? '✓' : '○'}</span><div><a href={href}>{title}</a><span className="sr-only">{done ? ' (done)' : ' (not done)'}</span>{!compact && <p>{note}</p>}</div></li>)}
-      <li><span className="step-mark" aria-hidden="true">{readiness?.capturedJob ? '✓' : '○'}</span><div><button className="text-button inline-action" onClick={onAdd}>Add a job</button>{!compact && <p>Paste a posting or fetch it from a link.</p>}</div></li>
-      <li><span className="step-mark" aria-hidden="true">○</span><div><a href="#settings">Connect a job feed</a> <span className="subtle">(optional)</span>{!compact && <p>If a search tool saves jobs to a CSV file, they can arrive in Triage on their own.</p>}</div></li>
-      <li><span className="step-mark" aria-hidden="true">→</span><div><a href="#tracker">Tracker</a>{!compact && <p>Jobs you have applied to are followed there, with your answers and follow-ups.</p>}</div></li>
+  return <section className="panel get-ready" aria-labelledby="quickstart-title"><h2 id="quickstart-title">Quickstart</h2>
+    <p className="subtle">Add a job, check the fit, tailor a résumé, then track it. Everything stays on this device.</p>
+    <ol className="start-steps">
+      {steps.map((step, index) => <li key={step.title} className={step.done ? 'done' : undefined}><span className="step-n" aria-hidden="true">{step.done ? <Icon name="check" /> : index + 1}</span><div>{step.href ? <a href={step.href}>{step.title}</a> : <strong>{step.title}</strong>}{step.optional && <span className="subtle"> (optional)</span>}{step.done && <span className="sr-only"> (done)</span>}<p>{step.note}</p></div></li>)}
     </ol>
-    {!compact && <button className="button primary" onClick={onAdd}>Add your first job</button>}
+    <div className="actions"><button className="button primary" onClick={onAdd}>Add your first job</button><span className="subtle">Jobs you apply to move to the <a href="#tracker">Tracker</a>.</span></div>
   </section>
 }

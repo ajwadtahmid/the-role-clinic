@@ -122,6 +122,17 @@ describe('tracker browser flows', () => {
     expect(screen.queryByRole('region', { name: 'Follow-ups' })).toBeNull()
   })
 
+  it('shows only a short note and a link to Jobs when nothing has been applied to', async () => {
+    const { sqlite } = await setup()
+    sqlite.prepare("UPDATE applications SET status='saved'").run()
+    render(<TrackerPage />)
+    expect(await screen.findByText('No applications yet')).toBeTruthy()
+    expect(screen.queryByLabelText('Search applications')).toBeNull()
+    expect(screen.queryByRole('group', { name: 'Show applications' })).toBeNull()
+    expect(screen.getByRole('link', { name: 'Go to Jobs' })).toBeTruthy()
+    sqlite.close()
+  })
+
   it('opens a job’s details beside the table, closes them with Escape, and shows long lists 50 at a time', async () => {
     const { sqlite, user } = await setup()
     const now = new Date().toISOString()
