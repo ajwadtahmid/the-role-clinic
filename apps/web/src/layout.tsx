@@ -39,3 +39,8 @@ export function ResumeTabs({ current }: { current: 'master' | 'profile' }) {
 export function PageHeader({ title, children, actions }: { title: string; children?: ReactNode; actions?: ReactNode }) {
   return <section className="page-header"><h1>{title}</h1>{children && <p className="page-note">{children}</p>}{actions && <div className="page-actions">{actions}</div>}</section>
 }
+
+// A short list of the sections on a long page; each button scrolls to its section.
+export function SectionRail({ items }: { items: Array<{ id: string; label: string; count?: number }> }) {
+  return <nav className="rail" aria-label="On this page">{items.map(({ id, label, count }) => <button key={id} type="button" onClick={() => { const target = document.getElementById(id); target?.scrollIntoView?.({ block: 'start' }); target?.focus() }}>{label}{count !== undefined && <span className="n">{count}</span>}</button>)}</nav>
+}

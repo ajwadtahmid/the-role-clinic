@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { FeedSettings } from './feed-settings.js'
 import { MaintenancePanel } from './runtime.js'
 import { taskNames, type PublicSettings, type TaskName } from '../../../packages/shared/src/index.js'
-import { AppHeader, PageHeader } from './layout.js'
+import { AppHeader, PageHeader, SectionRail } from './layout.js'
 import { FollowUpSettings } from './followup-settings.js'
 
 const labels: Record<TaskName, { title: string; description: string }> = {
@@ -92,14 +92,14 @@ export function SettingsPage() {
 
   return <main className="shell" id="main" tabIndex={-1}>
     <AppHeader current="settings" />
-    <PageHeader title="Settings">Choose a model for each job-search task. Your settings and résumé data stay on this computer.</PageHeader>
+    <PageHeader title="Settings">Everything here stays on this computer unless you choose Claude.</PageHeader>
 
     {notice && <div className={`notice ${notice.kind}`} role="status">{notice.text}</div>}
 
-    <section className="panel provider-panel">
+    <div className="rs-layout"><SectionRail items={[{ id: 'models', label: 'Résumé tailoring' }, { id: 'feed', label: 'Job feed' }, { id: 'followups', label: 'Follow-ups' }, { id: 'help', label: 'Help' }, { id: 'backups', label: 'Backups and data' }, { id: 'costs', label: 'Cost cap' }]} /><div className="content">
+    <section className="panel provider-panel block" id="models" tabIndex={-1}>
       <div className="panel-heading">
-        <div><h2>Model providers</h2></div>
-        <span className="subtle">Choose separately for every task below</span>
+        <div><h2>Résumé tailoring</h2><p className="note">Set up where the model runs. Then choose which model does each step.</p></div>
       </div>
       <div className="provider-grid">
         <article className="provider-card">
@@ -118,11 +118,8 @@ export function SettingsPage() {
       </div>
     </section>
 
-    <section className="model-section">
-      <div className="panel-heading model-heading">
-        <div><h2>Pick a model for each task</h2></div>
-        <p className="subtle">Local model calls are queued one at a time.</p>
-      </div>
+    <details className="model-section adv" open>
+      <summary>Model for each step <span className="muted">· local model calls run one at a time</span></summary>
       <div className="task-list">
         {taskNames.map((task) => <article className="task-row" key={task}>
           <div className="task-copy"><h3>{labels[task].title}</h3><p>{labels[task].description}</p></div>
@@ -147,15 +144,15 @@ export function SettingsPage() {
       </div>
       <datalist id="installed-models">{ollamaModels.map((model) => <option value={model} key={model} />)}</datalist>
       <div className="save-row"><p>Suggested local starting model: Gemma 4 12B. Change it per task as your evaluations show a better fit.</p><button className="button primary" disabled={busy === 'save'} onClick={saveSettings}>{busy === 'save' ? 'Saving…' : 'Save settings'}</button></div>
-    </section>
+    </details>
 
-    <FeedSettings />
-    <FollowUpSettings />
-    <section className="panel editor-panel"><h2>Welcome guide</h2><p className="subtle">Go through adding your résumé, choosing a model and saving your first job again, and bring back the quickstart on the Jobs page.</p><a className="button secondary" href="#welcome" onClick={() => { try { localStorage.removeItem('rc-quickstart-hidden') } catch { /* storage may be unavailable */ } }}>Show the welcome guide again</a></section>
+    <div id="feed" tabIndex={-1}><FeedSettings /></div>
+    <div id="followups" tabIndex={-1}><FollowUpSettings /></div>
+    <section className="panel block" id="help" tabIndex={-1}><h2>Help</h2><p className="subtle">Go through adding your résumé, choosing a model and saving your first job again, and bring back the quickstart on the Jobs page.</p><a className="button secondary" href="#welcome" onClick={() => { try { localStorage.removeItem('rc-quickstart-hidden') } catch { /* storage may be unavailable */ } }}>Show the welcome guide again</a></section>
 
-    <MaintenancePanel />
+    <div id="backups" tabIndex={-1}><MaintenancePanel /></div>
 
-    <section className="panel editor-panel cost-panel">
+    <section className="panel block cost-panel" id="costs" tabIndex={-1}>
       <h2>Cost estimate and cap</h2>
       <p className="subtle">Local Ollama calls have no API charge. Enter your provider’s current per-million-token prices for each selected Anthropic model. Runs check estimates before starting and track reported usage after every call.</p>
       <label>Maximum estimated API spend per run (USD)<input type="number" min="0" max="100" step="0.01" value={settings.costCapUsd} onChange={(event) => setSettings({ ...settings, costCapUsd: Number(event.target.value) })} /></label>
@@ -165,6 +162,6 @@ export function SettingsPage() {
       <button className="button primary" disabled={busy === 'save'} onClick={saveSettings}>Save settings</button>
     </section>
 
-    <footer><span>THE ROLE CLINIC</span><span>Nothing is uploaded unless you choose an API provider.</span></footer>
+    </div></div>
   </main>
 }
