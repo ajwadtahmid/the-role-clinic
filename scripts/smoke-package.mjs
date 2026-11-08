@@ -104,11 +104,11 @@ try {
   await cli(['stop']); running = false
   await cli(['backup', fullBackup, '--include-api-key']); assert.equal((await stat(fullBackup)).mode & 0o777, 0o600)
   // A previous schema is migrated from a preserved on-disk snapshot during update.
-  await databaseWork(`db.exec('DROP TABLE tracker_preferences; DROP INDEX job_answers_job_idx; ALTER TABLE applications DROP COLUMN follow_up_date; ALTER TABLE applications DROP COLUMN last_contact_at; ALTER TABLE applications DROP COLUMN contacts; ALTER TABLE applications DROP COLUMN submitted_job_text; ALTER TABLE job_answers DROP COLUMN submitted_question; ALTER TABLE job_answers DROP COLUMN submitted_category; PRAGMA user_version=6;')`)
+  await databaseWork(`db.exec('DROP TABLE feed_imports; DROP INDEX jobs_origin_idx; ALTER TABLE jobs DROP COLUMN origin; ALTER TABLE jobs DROP COLUMN found_at; ALTER TABLE jobs DROP COLUMN posted_at; ALTER TABLE jobs DROP COLUMN finder_priority; ALTER TABLE jobs DROP COLUMN finder_note; ALTER TABLE jobs DROP COLUMN posting_state; DROP TABLE tracker_preferences; DROP INDEX job_answers_job_idx; ALTER TABLE applications DROP COLUMN follow_up_date; ALTER TABLE applications DROP COLUMN last_contact_at; ALTER TABLE applications DROP COLUMN contacts; ALTER TABLE applications DROP COLUMN submitted_job_text; ALTER TABLE job_answers DROP COLUMN submitted_question; ALTER TABLE job_answers DROP COLUMN submitted_category; PRAGMA user_version=6;')`)
   const updated = join(root, 'updated package with spaces'); await rename(bundle, updated); bundle = updated
   const manifest = JSON.parse(await readFile(join(bundle, 'manifest.json'), 'utf8')); manifest.version += '-update-test'; await writeFile(join(bundle, 'manifest.json'), JSON.stringify(manifest))
   await cli(['start', '--no-browser']); running = true
-  const status = await json('/api/app/status'); assert.equal(status.version, manifest.version); assert.equal(status.schemaVersion, 7); assert.equal(status.welcomeComplete, true)
+  const status = await json('/api/app/status'); assert.equal(status.version, manifest.version); assert.equal(status.schemaVersion, 8); assert.equal(status.welcomeComplete, true)
   assert.ok((await readdir(join(data, 'backups'))).some((name) => name.startsWith('pre-migration-v6-')))
   assert.equal((await json(`/api/jobs/${job.id}`)).answers[0].submittedAnswer, 'I enjoy building reliable APIs.')
   await json(`/api/jobs/${job.id}/answers/${answer.id}`, { question: 'Why this team?', answer: 'Changed working answer after backup.', category: 'why-us' }, 'PUT')
@@ -129,7 +129,7 @@ try {
   const blocker = (await import('node:net')).createServer(); await new Promise((resolve) => blocker.listen(0, '127.0.0.1', resolve))
   try { await assert.rejects(cli(['start', '--no-browser'], { env: { PORT: String(blocker.address().port) } }), /startup exited/) }
   finally { await new Promise((resolve) => blocker.close(resolve)) }
-  await databaseWork('db.pragma("user_version=8")')
+  await databaseWork('db.pragma("user_version=99")')
   const before = await readFile(join(data, 'role-clinic.sqlite'))
   await assert.rejects(cli(['start', '--no-browser']), /startup exited/)
   assert.ok((await readFile(join(data, 'app.log'), 'utf8')).includes('newer version'))
