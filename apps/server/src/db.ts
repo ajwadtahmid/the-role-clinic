@@ -5,7 +5,7 @@ import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import { databaseBackup } from './database-backups.js'
 import * as schema from './schema.js'
 
-export const CURRENT_SCHEMA_VERSION = 7
+export const CURRENT_SCHEMA_VERSION = 8
 
 export type ClinicDatabase = BetterSQLite3Database<typeof schema>
 
@@ -68,9 +68,11 @@ function rollbackQuietly(sqlite: Database.Database) {
   if (sqlite.inTransaction) sqlite.exec('ROLLBACK;')
 }
 
+export const DATABASE_FILE = 'role-clinic.sqlite'
+
 export function createDatabase(dataDirectory: string): { sqlite: Database.Database; db: ClinicDatabase } {
   mkdirSync(dataDirectory, { recursive: true, mode: 0o700 })
-  const sqlite = new Database(join(dataDirectory, 'clinic.sqlite'))
+  const sqlite = new Database(join(dataDirectory, DATABASE_FILE))
   const existingVersion = Number(sqlite.pragma('user_version', { simple: true }))
   if (existingVersion > CURRENT_SCHEMA_VERSION) { sqlite.close(); throw new Error(`This database needs a newer version of The Role Clinic (schema ${existingVersion}). No downgrade was performed.`) }
   if (existingVersion > 0 && existingVersion < CURRENT_SCHEMA_VERSION) {
@@ -201,6 +203,23 @@ export function createDatabase(dataDirectory: string): { sqlite: Database.Databa
       COMMIT;`)
     } catch (error) { rollbackQuietly(sqlite); sqlite.close(); throw error }
   }
-  chmodSync(join(dataDirectory, 'clinic.sqlite'), 0o600)
+  if (schemaVersion < 8) {
+    try {
+      sqlite.exec(`BEGIN IMMEDIATE;
+        ALTER TABLE jobs ADD COLUMN origin TEXT NOT NULL DEFAULT 'manual';
+        ALTER TABLE jobs ADD COLUMN found_at TEXT;
+        ALTER TABLE jobs ADD COLUMN posted_at TEXT;
+        ALTER TABLE jobs ADD COLUMN finder_priority TEXT;
+        ALTER TABLE jobs ADD COLUMN finder_note TEXT;
+        ALTER TABLE jobs ADD COLUMN posting_state TEXT;
+        CREATE TABLE feed_imports (
+          url_key TEXT PRIMARY KEY, first_seen_at TEXT NOT NULL, found_date TEXT, job_id TEXT
+        );
+        CREATE INDEX jobs_origin_idx ON jobs(origin);
+        PRAGMA user_version = 8;
+      COMMIT;`)
+    } catch (error) { rollbackQuietly(sqlite); sqlite.close(); throw error }
+  }
+  chmodSync(join(dataDirectory, DATABASE_FILE), 0o600)
   return { sqlite, db: drizzle(sqlite, { schema }) }
 }

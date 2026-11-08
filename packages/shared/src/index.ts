@@ -26,6 +26,7 @@ export const appSettingsSchema = z.object({
   costCapUsd: z.number().nonnegative().max(100).default(1),
   monthlyCapUsd: z.number().nonnegative().max(10000).default(20),
   modelPrices: z.record(z.string().min(1).max(160), z.object({ inputPerMillion: z.number().positive().max(1000), outputPerMillion: z.number().positive().max(1000) }).strict()).default({}),
+  jobFeed: z.object({ path: z.string().trim().max(1000) }).strict().optional(),
 })
 export type AppSettings = z.infer<typeof appSettingsSchema>
 
@@ -36,6 +37,7 @@ export const publicSettingsSchema = z.object({
   costCapUsd: appSettingsSchema.shape.costCapUsd,
   monthlyCapUsd: appSettingsSchema.shape.monthlyCapUsd,
   modelPrices: appSettingsSchema.shape.modelPrices,
+  jobFeed: appSettingsSchema.shape.jobFeed,
 })
 export type PublicSettings = z.infer<typeof publicSettingsSchema>
 

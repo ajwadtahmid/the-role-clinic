@@ -36,7 +36,7 @@ async function api(path, value, method = 'GET', extraHeaders = {}) {
 async function json(path, value, method = 'GET') { const response = await api(path, value, method); const result = await response.json(); assert.ok(response.ok, `${path}: ${response.status} ${JSON.stringify(result)}`); return result }
 async function databaseWork(code) {
   const module = pathToFileURL(join(bundle, 'app/node_modules/better-sqlite3/lib/index.js')).href
-  const script = `import Database from ${JSON.stringify(module)};const db=new Database(${JSON.stringify(join(data, 'clinic.sqlite'))});try{${code}}finally{db.close()}`
+  const script = `import Database from ${JSON.stringify(module)};const db=new Database(${JSON.stringify(join(data, 'role-clinic.sqlite'))});try{${code}}finally{db.close()}`
   return execFile(join(bundle, 'runtime', process.platform === 'win32' ? 'node.exe' : 'node'), ['--input-type=module', '-e', script], { env: cleanEnv(), cwd: root, timeout: 10000 })
 }
 try {
@@ -130,10 +130,10 @@ try {
   try { await assert.rejects(cli(['start', '--no-browser'], { env: { PORT: String(blocker.address().port) } }), /startup exited/) }
   finally { await new Promise((resolve) => blocker.close(resolve)) }
   await databaseWork('db.pragma("user_version=8")')
-  const before = await readFile(join(data, 'clinic.sqlite'))
+  const before = await readFile(join(data, 'role-clinic.sqlite'))
   await assert.rejects(cli(['start', '--no-browser']), /startup exited/)
   assert.ok((await readFile(join(data, 'app.log'), 'utf8')).includes('newer version'))
-  assert.ok((await readFile(join(data, 'clinic.sqlite'))).equals(before))
+  assert.ok((await readFile(join(data, 'role-clinic.sqlite'))).equals(before))
   if (process.platform === 'linux') {
     await cli(['install-desktop']); assert.ok((await readFile(join(root, 'xdg/applications/the-role-clinic.desktop'), 'utf8')).includes('Exec="'))
     await cli(['uninstall-desktop'])

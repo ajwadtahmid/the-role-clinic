@@ -2,7 +2,8 @@ import { TailoringWorkspace } from './tailoring-workspace.js'
 import { stageLabel, type NextAction } from './stages.js'
 
 export type LatestRun = { kind: string; status: string; step: string }
-export type Job = { id: string; latestRun?: LatestRun | null; company: string; title: string; capturedAt: string; status: string; location: string; summary: string; sourceUrl?: string; applyUrl?: string; knockouts?: Array<{ quote: string; assessment: 'met' | 'gap' | 'unknown' }> }
+export type Job = { id: string; latestRun?: LatestRun | null; company: string; title: string; capturedAt: string; status: string; location: string; summary: string; sourceUrl?: string; applyUrl?: string; knockouts?: Array<{ quote: string; assessment: 'met' | 'gap' | 'unknown' }>; origin?: 'manual' | 'feed'; foundAt?: string | null; postedAt?: string | null; finderPriority?: string | null; postingState?: 'summary' | 'summary_only' | 'full' | 'maybe_closed' | null; flagCount?: number; finder?: Finder | null }
+export type Finder = { flags: string; whyItFits: string; source: string; similarTo: string | null }
 export type Answer = { id: string; question: string; answer: string; submittedAnswer: string | null; category: string; charLimit: number | null }
 export type Detail = { job: Job & { text: string; notes?: string; submittedText?: string; appliedAt?: string }; answers: Answer[]; events: { status: string; createdAt: string }[] }
 export type Requirement = { id: string; quote: string; kind: 'knockout' | 'hard' | 'nice'; category: string; skill: string; start: number; end: number; assessment: 'met' | 'gap' | 'unknown'; basis: string }
@@ -46,6 +47,7 @@ export function JobHeader({ detail, action, estimate, estimateError, busy, activ
         </div></details>
       </div>
     </div>
+    {(job.status ?? 'new') === 'new' && <div className="triage-actions" role="group" aria-label="Decide about this job">{action.id !== 'tracker' && <button className="text-button" disabled={busy} onClick={() => onStatus('saved')}>Track this job</button>}<button className="text-button" disabled={busy} onClick={() => onStatus('applied')}>Already applied</button><button className="text-button" disabled={busy} onClick={() => onStatus('skipped')}>Skip</button></div>}
     <p className="subtle next-hint">{action.id === 'tailor' ? costNote : action.hint}</p>
   </header>
 }
@@ -73,6 +75,20 @@ export function RunStrip({ analysis, dismissed, onDismiss, onRetry, busy }: { an
   return null
 }
 
+// What the job finder said about a job. It is not checked by this app and never goes to a model.
+export function FinderPanel({ job, finder }: { job: Detail['job']; finder: Finder }) {
+  const flags = finder.flags.split(/[;\n]+/).map((flag) => flag.trim()).filter(Boolean)
+  return <section className="finder-panel" aria-label="From your job finder"><h3>From your job finder</h3>
+    <p className="subtle">Written by the tool that found this job. Role Clinic has not checked it; the fit check below is the authority.</p>
+    <dl>{job.finderPriority && <><dt>Priority</dt><dd>{job.finderPriority}</dd></>}{!!flags.length && <><dt>Flags</dt><dd><ul>{flags.map((flag) => <li key={flag}>{flag}</li>)}</ul></dd></>}{finder.whyItFits && <><dt>Why it fits</dt><dd>{finder.whyItFits}</dd></>}{finder.source && <><dt>Source</dt><dd>{finder.source}</dd></>}{finder.similarTo && <><dt>Similar job</dt><dd>You already have {finder.similarTo}.</dd></>}</dl>
+  </section>
+}
+export function PostingNotice({ job }: { job: Detail['job'] }) {
+  if (job.postingState === 'maybe_closed') return <p className="review-flag" role="status">The posting page looks closed or removed. Open the original to check before you spend time on it.</p>
+  if (job.origin === 'feed' && (job.postingState === 'summary' || job.postingState === 'summary_only')) return <p className="subtle posting-notice" role="status">{job.postingState === 'summary' ? 'Fetching the full posting…' : 'Only a summary was imported, because the full posting could not be fetched.'} A fit check works better on the full description: open the original and paste it with Add job, or check fit on this summary.</p>
+  return null
+}
+
 export function JobTabs({ tab, onTab }: { tab: JobTab; onTab: (tab: JobTab) => void }) {
   // Left and Right move between sections; only the current one is in the Tab order.
   function keys(event: React.KeyboardEvent<HTMLDivElement>) {
@@ -85,11 +101,13 @@ export function JobTabs({ tab, onTab }: { tab: JobTab; onTab: (tab: JobTab) => v
   return <div className="job-tabs" role="tablist" aria-label="Job sections" onKeyDown={keys}>{(Object.keys(tabLabels) as JobTab[]).map((key) => <button key={key} role="tab" id={`tab-${key}`} aria-selected={tab === key} aria-controls={`panel-${key}`} tabIndex={tab === key ? 0 : -1} className={`job-tab ${tab === key ? 'active' : ''}`} onClick={() => onTab(key)}>{tabLabels[key]}</button>)}</div>
 }
 
-export function JobOverview({ text, analysis, busy, canExtract, onExtract }: { text: string; analysis: Analysis | null; busy: boolean; canExtract: boolean; onExtract: () => void }) {
+export function JobOverview({ job, text, analysis, busy, canExtract, onExtract }: { job?: Detail['job']; text: string; analysis: Analysis | null; busy: boolean; canExtract: boolean; onExtract: () => void }) {
   const requirements = analysis?.extraction?.requirements ?? []
   const active = analysis?.runs.some((run) => run.status === 'queued' || run.status === 'running') ?? false
   const gaps = analysis?.tailored?.gaps ?? analysis?.preliminaryGaps ?? []
   return <div className="job-overview">
+    {job && <PostingNotice job={job} />}
+    {job?.finder && <FinderPanel job={job} finder={job.finder} />}
     <div className="panel-heading"><div><h3>What the posting asks for</h3></div>{analysis?.extraction ? <button className="button secondary" disabled={busy || active} onClick={onExtract}>Refresh requirements</button> : canExtract && <button className="button secondary" disabled={busy || active} onClick={onExtract}>Check fit</button>}</div>
     {!analysis?.extraction && <p className="subtle">Check fit finds the requirements in this posting and compares them with your profile and résumé.</p>}
     {analysis?.extraction?.partial && <p className="review-flag">Extraction covered only part of this posting or skipped an unmatched quote. Review the full description.</p>}

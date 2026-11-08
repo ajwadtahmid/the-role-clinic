@@ -227,8 +227,8 @@ describe('job capture and tracker', () => {
     const first = createDatabase(dataDirectory)
     first.sqlite.prepare('INSERT INTO jobs(id,company,title,captured_at,source_url,raw_snapshot) VALUES(?,?,?,?,?,?)').run('legacy-job', 'Acme', 'Engineer', new Date().toISOString(), null, 'Existing job snapshot')
     first.sqlite.close()
-    const legacy = new Database(join(dataDirectory, 'clinic.sqlite'))
-    legacy.exec(`ALTER TABLE job_answers DROP COLUMN submitted_question; ALTER TABLE job_answers DROP COLUMN submitted_category; DROP TABLE tracker_preferences; DROP INDEX job_answers_job_idx; ALTER TABLE applications DROP COLUMN follow_up_date; ALTER TABLE applications DROP COLUMN last_contact_at; ALTER TABLE applications DROP COLUMN contacts; ALTER TABLE applications DROP COLUMN submitted_job_text; DROP TABLE review_drafts; ALTER TABLE artifacts DROP COLUMN document; ALTER TABLE applications DROP COLUMN submitted_artifact_id; DROP INDEX jobs_canonical_url_idx; DROP INDEX applications_status_idx;
+    const legacy = new Database(join(dataDirectory, 'role-clinic.sqlite'))
+    legacy.exec(`DROP TABLE feed_imports; DROP INDEX jobs_origin_idx; ALTER TABLE jobs DROP COLUMN origin; ALTER TABLE jobs DROP COLUMN found_at; ALTER TABLE jobs DROP COLUMN posted_at; ALTER TABLE jobs DROP COLUMN finder_priority; ALTER TABLE jobs DROP COLUMN finder_note; ALTER TABLE jobs DROP COLUMN posting_state; ALTER TABLE job_answers DROP COLUMN submitted_question; ALTER TABLE job_answers DROP COLUMN submitted_category; DROP TABLE tracker_preferences; DROP INDEX job_answers_job_idx; ALTER TABLE applications DROP COLUMN follow_up_date; ALTER TABLE applications DROP COLUMN last_contact_at; ALTER TABLE applications DROP COLUMN contacts; ALTER TABLE applications DROP COLUMN submitted_job_text; DROP TABLE review_drafts; ALTER TABLE artifacts DROP COLUMN document; ALTER TABLE applications DROP COLUMN submitted_artifact_id; DROP INDEX jobs_canonical_url_idx; DROP INDEX applications_status_idx;
       ALTER TABLE jobs DROP COLUMN text; ALTER TABLE job_answers DROP COLUMN submitted_at;
       ALTER TABLE job_answers DROP COLUMN updated_at;
       ALTER TABLE jobs DROP COLUMN canonical_url; ALTER TABLE jobs DROP COLUMN apply_url;
@@ -240,7 +240,7 @@ describe('job capture and tracker', () => {
       PRAGMA user_version = 1;`)
     legacy.close()
     const migrated = createDatabase(dataDirectory)
-    expect(migrated.sqlite.pragma('user_version', { simple: true })).toBe(7)
+    expect(migrated.sqlite.pragma('user_version', { simple: true })).toBe(8)
     expect((migrated.sqlite.prepare('SELECT COUNT(*) AS count FROM synonyms').get() as { count: number }).count).toBe(3)
     expect(migrated.sqlite.prepare("SELECT company,raw_snapshot,text FROM jobs WHERE id='legacy-job'").get()).toEqual({ company: 'Acme', raw_snapshot: 'Existing job snapshot', text: 'Existing job snapshot' })
     expect(migrated.sqlite.prepare('PRAGMA table_info(jobs)').all().map((column) => (column as { name: string }).name)).toContain('canonical_url')

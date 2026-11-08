@@ -14,6 +14,10 @@ export const synonyms = sqliteTable('synonyms', {
 })
 export const jobs = sqliteTable('jobs', {
   id: text('id').primaryKey(), company: text('company').notNull(), title: text('title').notNull(), capturedAt: text('captured_at').notNull(), sourceUrl: text('source_url'), rawSnapshot: text('raw_snapshot').notNull(), text: text('text').notNull(), canonicalUrl: text('canonical_url'), applyUrl: text('apply_url'), location: text('location').notNull(), remote: text('remote').notNull(), salary: text('salary').notNull(), source: text('source').notNull(), captureMethod: text('capture_method').notNull(),
+  origin: text('origin').notNull(), foundAt: text('found_at'), postedAt: text('posted_at'), finderPriority: text('finder_priority'), finderNote: text('finder_note'), postingState: text('posting_state'),
+})
+export const feedImports = sqliteTable('feed_imports', {
+  urlKey: text('url_key').primaryKey(), firstSeenAt: text('first_seen_at').notNull(), foundDate: text('found_date'), jobId: text('job_id'),
 })
 export const requirements = sqliteTable('requirements', {
   id: text('id').primaryKey(), jobId: text('job_id').notNull(), document: text('document').notNull(), createdAt: text('created_at').notNull(),

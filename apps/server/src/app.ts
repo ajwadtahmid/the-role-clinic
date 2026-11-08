@@ -3,7 +3,7 @@ import { streamSSE } from 'hono/streaming'
 import { bodyLimit } from 'hono/body-limit'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { mkdir, readdir, stat } from 'node:fs/promises'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type Database from 'better-sqlite3'
 import type { ClinicDatabase } from './db.js'
@@ -12,6 +12,8 @@ import { readSettings, toPublicSettings, writeSettings } from './settings.js'
 import { SerialRunQueue } from './queue.js'
 import { ModelRouter } from './model-adapters.js'
 import { captureJobUrl } from './capture.js'
+import { FeedService, normalizeFeedUrl, type PostingCapture } from './feed.js'
+import { registerFeedRoutes } from './feed-routes.js'
 import { databaseBackup } from './database-backups.js'
 import { registerRuntimeRoutes, type RuntimeInfo } from './runtime-routes.js'
 import { registerMasterRoutes } from './master-routes.js'
@@ -25,15 +27,22 @@ import type { Requirement } from '../../../packages/shared/src/index.js'
 
 const isLoopback = (host: string) => ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(host.toLowerCase())
 // Named groups of statuses the jobs list can show.
-const jobViews = ['tracker', 'active', 'applied']
+const jobViews = ['triage', 'tracker', 'active', 'applied']
 function viewClause(status: string) {
+  // Triage: jobs a job feed brought in that are still waiting for a decision.
+  if (status === 'triage') return "j.origin='feed' AND COALESCE(a.status,'new')='new'"
   if (status === 'tracker') return "COALESCE(a.status,'new') NOT IN ('new','skipped')"
-  if (status === 'active') return "COALESCE(a.status,'new') IN ('new','saved')"
+  if (status === 'active') return "(COALESCE(a.status,'new')='saved' OR (COALESCE(a.status,'new')='new' AND j.origin<>'feed'))"
   if (status === 'applied') return "COALESCE(a.status,'new') NOT IN ('new','saved','skipped')"
   return status ? "COALESCE(a.status, 'new') = ?" : ''
 }
 const applicationStatuses = ['new', 'saved', 'applied', 'screening', 'interviewing', 'offer', 'accepted', 'rejected', 'withdrawn', 'ghosted', 'skipped'] as const
 const id = () => crypto.randomUUID()
+// The finder's own notes are stored as JSON; they are shown to the owner and never sent to a model.
+function parseFinderNote(raw: string | null): { flags: string; whyItFits: string; source: string; similarTo: string | null } {
+  try { const value = JSON.parse(raw ?? '{}'); return { flags: String(value.flags ?? ''), whyItFits: String(value.whyItFits ?? ''), source: String(value.source ?? ''), similarTo: value.similarTo ? String(value.similarTo) : null } }
+  catch { return { flags: '', whyItFits: '', source: '', similarTo: null } }
+}
 const cleanText = (value: unknown, max: number) => typeof value === 'string' ? value.trim().slice(0, max) : ''
 function similarity(left: string, right: string) {
   const a = left.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(), b = right.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
@@ -71,6 +80,8 @@ export interface AppOptions {
   development?: boolean
   runtime?: RuntimeInfo
   queue?: SerialRunQueue
+  postingCapture?: PostingCapture
+  feedSpacingMs?: number
   modelRouter?: Pick<ModelRouter, 'complete'> & Partial<Pick<ModelRouter, 'countInputTokens'>>
 }
 
@@ -150,6 +161,7 @@ export function createApp(options: AppOptions) {
   const queue = options.queue ?? new SerialRunQueue(options.db)
   const modelRouter = options.modelRouter ?? new ModelRouter(() => readSettings(options.dataDirectory))
   const pipeline = new PipelineService(options.sqlite, options.dataDirectory, queue, modelRouter)
+  const feed = new FeedService(options.sqlite, async () => (await readSettings(options.dataDirectory)).jobFeed?.path || null, options.postingCapture ?? ((url) => captureJobUrl(url)), { spacingMs: options.feedSpacingMs })
   const app = new Hono()
   app.use('*', securityMiddleware({ port, webPort, development }))
   if (options.runtime?.desktop) app.use('*', async (context, next) => {
@@ -173,6 +185,9 @@ export function createApp(options: AppOptions) {
   registerMasterRoutes(app, options.sqlite, options.dataDirectory)
   registerReviewRoutes(app, options.sqlite, options.dataDirectory, pipeline)
   registerTrackerRoutes(app, options.sqlite, options.dataDirectory)
+  registerFeedRoutes(app, feed, options.dataDirectory)
+  // Check the feed once at start; a missing or unreadable file is shown later in Settings, never here.
+  void feed.status().then((status) => status.configured ? feed.refresh() : undefined).catch(() => undefined)
   app.get('/api/jobs/:id/analysis', (context) => {
     const analysis = pipeline.getAnalysis(context.req.param('id'))
     return analysis ? context.json(analysis) : context.json({ error: 'Job not found.' }, 404)
@@ -194,7 +209,19 @@ export function createApp(options: AppOptions) {
     const jobId = context.req.param('id')
     if (!options.sqlite.prepare('SELECT 1 FROM jobs WHERE id=?').get(jobId)) return context.json({ error: 'Job not found.' }, 404)
     if (options.sqlite.prepare("SELECT 1 FROM runs WHERE job_id=? AND kind='tailor' AND status IN ('queued','running') LIMIT 1").get(jobId)) return context.json({ error: 'Tailoring is already queued or running.' }, 409)
-    try { return context.json({ run: await pipeline.enqueueTailor(jobId) }, 202) }
+    try {
+      const run = await pipeline.enqueueTailor(jobId)
+      // Starting a tailor run is a decision to pursue the job, so a job still waiting for review is tracked.
+      const tracked = !options.sqlite.prepare('SELECT 1 FROM applications WHERE job_id=?').get(jobId)
+      if (tracked) {
+        const appId = id(), now = new Date().toISOString()
+        options.sqlite.transaction(() => {
+          options.sqlite.prepare("INSERT INTO applications(id,job_id,status,notes,contacts) VALUES(?,?,'saved','','')").run(appId, jobId)
+          options.sqlite.prepare('INSERT INTO status_events(id,application_id,status,created_at) VALUES(?,?,?,?)').run(id(), appId, 'saved', now)
+        })()
+      }
+      return context.json({ run, tracked }, 202)
+    }
     catch (error) { return context.json({ error: (error as Error).message }, 422) }
   })
   app.post('/api/runs/:id/retry', (context) => {
@@ -212,7 +239,7 @@ export function createApp(options: AppOptions) {
     const pattern = `%${query.replace(/[\\%_]/g, '\\$&')}%`
     if (query) params.push(pattern, pattern, pattern)
     if (status && !jobViews.includes(status)) params.push(status)
-    const rows = options.sqlite.prepare(`SELECT j.id,j.company,j.title,j.captured_at AS capturedAt,j.source_url AS sourceUrl,j.canonical_url AS canonicalUrl,j.apply_url AS applyUrl,j.location,j.remote,j.salary,j.source,j.capture_method AS captureMethod,substr(j.text,1,400) AS summary,COALESCE(a.status,'new') AS status,a.applied_at AS appliedAt,a.notes FROM jobs j LEFT JOIN applications a ON a.job_id=j.id ${clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''} ORDER BY j.captured_at DESC`).all(...params) as Array<{ id: string }>
+    const rows = options.sqlite.prepare(`SELECT j.id,j.company,j.title,j.captured_at AS capturedAt,j.source_url AS sourceUrl,j.canonical_url AS canonicalUrl,j.apply_url AS applyUrl,j.location,j.remote,j.salary,j.source,j.capture_method AS captureMethod,substr(j.text,1,400) AS summary,j.origin,j.found_at AS foundAt,j.posted_at AS postedAt,j.finder_priority AS finderPriority,j.posting_state AS postingState,j.finder_note AS finderNote,COALESCE(a.status,'new') AS status,a.applied_at AS appliedAt,a.notes FROM jobs j LEFT JOIN applications a ON a.job_id=j.id ${clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''} ORDER BY j.captured_at DESC`).all(...params) as Array<{ id: string; finderNote: string | null }>
     const master = readMaster(options.sqlite).document, profile = readProfile(options.sqlite).document, synonyms = listSynonyms(options.sqlite)
     const latestRequirements = latestByJob(options.sqlite, 'requirements', 't.document')
     // The most recent fit check or tailoring run for each job, so the list can show one that is waiting, running or failed.
@@ -220,7 +247,8 @@ export function createApp(options: AppOptions) {
     const jobs = rows.map((row) => {
       const latest = latestRequirements.get(row.id)
       const requirements = latest ? (JSON.parse(latest) as { requirements: Requirement[] }).requirements : []
-      return { ...row, latestRun: latestRuns.get(row.id) ?? null, knockouts: requirements.filter((item) => item.kind === 'knockout').map((item) => ({ quote: item.quote, ...assessRequirement(item, master, profile, synonyms) })) }
+      const { finderNote, ...rest } = row
+      return { ...rest, flagCount: parseFinderNote(finderNote).flags.split(/[;\n]+/).filter((flag) => flag.trim()).length, latestRun: latestRuns.get(row.id) ?? null, knockouts: requirements.filter((item) => item.kind === 'knockout').map((item) => ({ quote: item.quote, ...assessRequirement(item, master, profile, synonyms) })) }
     })
     return context.json({ jobs })
   })
@@ -230,8 +258,9 @@ export function createApp(options: AppOptions) {
     const rows = options.sqlite.prepare("SELECT COALESCE(a.status,'new') AS status, COUNT(*) AS n FROM jobs j LEFT JOIN applications a ON a.job_id=j.id GROUP BY 1").all() as Array<{ status: string; n: number }>
     const count = (status: string) => rows.find((row) => row.status === status)?.n ?? 0
     const all = rows.reduce((sum, row) => sum + row.n, 0)
+    const triage = (options.sqlite.prepare("SELECT COUNT(*) AS n FROM jobs j LEFT JOIN applications a ON a.job_id=j.id WHERE j.origin='feed' AND COALESCE(a.status,'new')='new'").get() as { n: number }).n
     // `active` is what is still being worked on (to review or saved); `applied` is everything from applied onward; `tracker` keeps the older meaning, anything past review.
-    return context.json({ new: count('new'), active: count('new') + count('saved'), applied: all - count('new') - count('saved') - count('skipped'), tracker: all - count('new') - count('skipped'), skipped: count('skipped'), all })
+    return context.json({ new: count('new'), triage, active: count('new') - triage + count('saved'), applied: all - count('new') - count('saved') - count('skipped'), tracker: all - count('new') - count('skipped'), skipped: count('skipped'), all })
   })
 
   app.post('/api/jobs', async (context) => {
@@ -264,6 +293,12 @@ export function createApp(options: AppOptions) {
     if (canonicalUrl || sourceUrl) {
       const existing = options.sqlite.prepare('SELECT id FROM jobs WHERE canonical_url=? OR source_url=? OR source_url=?').get(canonicalUrl, sourceUrl, canonicalUrl) as { id: string } | undefined
       if (existing) return context.json({ error: 'This job URL is already saved.', duplicateId: existing.id }, 409)
+    }
+    const keys = [sourceUrl, canonicalUrl].map((url) => url && normalizeFeedUrl(url)).filter(Boolean) as string[]
+    if (keys.length) {
+      const rows = options.sqlite.prepare('SELECT id,source_url,canonical_url,apply_url FROM jobs').all() as Array<{ id: string; source_url: string | null; canonical_url: string | null; apply_url: string | null }>
+      const same = rows.find((row) => [row.source_url, row.canonical_url, row.apply_url].some((url) => { const key = url && normalizeFeedUrl(url); return key && keys.includes(key) }))
+      if (same) return context.json({ error: 'This job URL is already saved.', duplicateId: same.id }, 409)
     }
     if (payload.allowSimilar !== true) {
       const since = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString()
@@ -298,11 +333,12 @@ export function createApp(options: AppOptions) {
   })
 
   app.get('/api/jobs/:id', (context) => {
-    const job = options.sqlite.prepare('SELECT j.id,j.company,j.title,j.captured_at AS capturedAt,j.source_url AS sourceUrl,j.apply_url AS applyUrl,j.canonical_url AS canonicalUrl,j.location,j.remote,j.salary,j.source,j.capture_method AS captureMethod,j.text,a.id AS applicationId,a.status,a.applied_at AS appliedAt,a.notes,a.submitted_text AS submittedText,a.submitted_artifact_id AS submittedArtifactId FROM jobs j LEFT JOIN applications a ON a.job_id=j.id WHERE j.id=?').get(context.req.param('id'))
+    const job = options.sqlite.prepare('SELECT j.id,j.company,j.title,j.captured_at AS capturedAt,j.source_url AS sourceUrl,j.apply_url AS applyUrl,j.canonical_url AS canonicalUrl,j.location,j.remote,j.salary,j.source,j.capture_method AS captureMethod,j.text,j.origin,j.found_at AS foundAt,j.posted_at AS postedAt,j.finder_priority AS finderPriority,j.posting_state AS postingState,j.finder_note AS finderNote,a.id AS applicationId,a.status,a.applied_at AS appliedAt,a.notes,a.submitted_text AS submittedText,a.submitted_artifact_id AS submittedArtifactId FROM jobs j LEFT JOIN applications a ON a.job_id=j.id WHERE j.id=?').get(context.req.param('id'))
     if (!job) return context.json({ error: 'Job not found.' }, 404)
     const answers = options.sqlite.prepare('SELECT id,question,answer,category,char_limit AS charLimit,submitted_answer AS submittedAnswer,submitted_at AS submittedAt,reused_from AS reusedFrom,created_at AS createdAt,updated_at AS updatedAt FROM job_answers WHERE job_id=? ORDER BY created_at DESC').all(context.req.param('id'))
     const events = options.sqlite.prepare('SELECT status,created_at AS createdAt FROM status_events WHERE application_id=(SELECT id FROM applications WHERE job_id=?) ORDER BY created_at').all(context.req.param('id'))
-    return context.json({ job, answers, events })
+    const { finderNote, ...rest } = job as { finderNote: string | null }
+    return context.json({ job: { ...rest, finder: (job as { origin: string }).origin === 'feed' ? parseFinderNote(finderNote) : null }, answers, events })
   })
 
   app.put('/api/jobs/:id/status', async (context) => {
@@ -384,6 +420,11 @@ export function createApp(options: AppOptions) {
     const parsed = appSettingsSchema.safeParse(payload)
     if (!parsed.success) return context.json({ error: 'Settings did not match the expected format.', issues: parsed.error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message })) }, 400)
     let value = parsed.data
+    if (!Object.hasOwn(payload, 'jobFeed')) value = { ...value, jobFeed: (await readSettings(options.dataDirectory)).jobFeed }
+    if (value.jobFeed) {
+      if (!value.jobFeed.path) value = { ...value, jobFeed: undefined }
+      else if (!isAbsolute(value.jobFeed.path) || !/\.csv$/i.test(value.jobFeed.path)) return context.json({ error: 'The job feed must be the full path of a .csv file.' }, 400)
+    }
     const current = await readSettings(options.dataDirectory)
     if (!Object.hasOwn(payload, 'anthropicApiKey')) value = { ...value, anthropicApiKey: current.anthropicApiKey }
     try { localOllamaUrl(value.ollamaBaseUrl) } catch (error) { return context.json({ error: error instanceof Error ? error.message : 'Invalid Ollama URL.' }, 400) }

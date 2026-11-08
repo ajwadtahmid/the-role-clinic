@@ -46,5 +46,6 @@ export function toPublicSettings(settings: AppSettings): PublicSettings {
     costCapUsd: settings.costCapUsd,
     monthlyCapUsd: settings.monthlyCapUsd,
     modelPrices: settings.modelPrices,
+    jobFeed: settings.jobFeed?.path ? settings.jobFeed : undefined,
   }
 }

@@ -5,11 +5,12 @@ import { join, dirname, basename, resolve, relative, win32, sep, isAbsolute } fr
 import Database from 'better-sqlite3'
 import { c, t, x } from 'tar'
 import { z } from 'zod'
-import { CURRENT_SCHEMA_VERSION, createDatabase } from './db.js'
+import { CURRENT_SCHEMA_VERSION, DATABASE_FILE, createDatabase } from './db.js'
 import { appSettingsSchema } from '../../../packages/shared/src/index.js'
 import { protectPrivateFile } from './private-file.js'
 
-const allowed = /^(backup\.json|clinic\.sqlite|settings\.json|welcome\.json|artifacts\/[a-f0-9-]{36}\.(pdf|docx))$/
+const allowed = /^(backup\.json|role-clinic\.sqlite|clinic\.sqlite|settings\.json|welcome\.json|artifacts\/[a-f0-9-]{36}\.(pdf|docx))$/
+const LEGACY_DATABASE_FILE = 'clinic.sqlite'
 const MAX_BYTES = 2 * 1024 * 1024 * 1024
 const manifestSchema = z.object({ format: z.literal('the-role-clinic-backup'), version: z.literal(1), createdAt: z.string(), schemaVersion: z.number().int().min(1).max(CURRENT_SCHEMA_VERSION), files: z.array(z.object({ path: z.string(), sha256: z.string().regex(/^[a-f0-9]{64}$/), size: z.number().int().nonnegative() }).strict()).max(20000) }).strict()
 const hash = (buffer: Buffer) => createHash('sha256').update(buffer).digest('hex')
@@ -31,9 +32,9 @@ export async function createFullBackup(dataDirectory: string, destination: strin
   const staging = await mkdtemp(join(dirname(dataDirectory), '.clinic-backup-'))
   const temporary = `${destination}.${randomUUID()}.partial`
   try {
-    const db = new Database(join(dataDirectory, 'clinic.sqlite'), { readonly: true, fileMustExist: true })
+    const db = new Database(join(dataDirectory, DATABASE_FILE), { readonly: true, fileMustExist: true })
     try {
-      db.prepare('VACUUM INTO ?').run(join(staging, 'clinic.sqlite'))
+      db.prepare('VACUUM INTO ?').run(join(staging, DATABASE_FILE))
       const paths = db.prepare('SELECT id,file_path FROM artifacts').all() as Array<{ id: string; file_path: string }>
       await mkdir(join(staging, 'artifacts'), { mode: 0o700 })
       for (const artifact of paths) {
@@ -46,11 +47,11 @@ export async function createFullBackup(dataDirectory: string, destination: strin
     } finally { db.close() }
     await stagedSettings(join(dataDirectory, 'settings.json'), join(staging, 'settings.json'), options.includeApiKey === true)
     await optionalCopy(join(dataDirectory, 'welcome.json'), join(staging, 'welcome.json'))
-    const names = ['clinic.sqlite', ...await readdir(staging).then((names) => names.filter((name) => name.endsWith('.json'))), ...(await readdir(join(staging, 'artifacts'))).map((name) => `artifacts/${name}`)]
+    const names = [DATABASE_FILE, ...await readdir(staging).then((names) => names.filter((name) => name.endsWith('.json'))), ...(await readdir(join(staging, 'artifacts'))).map((name) => `artifacts/${name}`)]
     const files = []
     let total = 0
     for (const path of names) { const buffer = await readFile(join(staging, path)); total += buffer.length; if (total > MAX_BYTES) throw new Error('This backup exceeds the 2 GiB archive limit.'); files.push({ path, size: buffer.length, sha256: hash(buffer) }) }
-    const database = new Database(join(staging, 'clinic.sqlite'), { readonly: true })
+    const database = new Database(join(staging, DATABASE_FILE), { readonly: true })
     const schemaVersion = Number(database.pragma('user_version', { simple: true })); database.close()
     const manifest = manifestSchema.parse({ format: 'the-role-clinic-backup', version: 1, createdAt: new Date().toISOString(), schemaVersion, files })
     await writeFile(join(staging, 'backup.json'), JSON.stringify(manifest, null, 2), { mode: 0o600 })
@@ -82,7 +83,7 @@ async function stageBackup(archive: string, dataDirectory: string) {
     if (problem) throw new Error(problem)
     await x({ file: archive, cwd: staging, strict: true, noChmod: true, preservePaths: false, filter: (path, entry) => 'type' in entry && entry.type === 'File' && allowed.test(path) })
     const manifest = manifestSchema.parse(JSON.parse(await readFile(join(staging, 'backup.json'), 'utf8')))
-    if (manifest.files.length !== names.size - 1 || !manifest.files.some((file) => file.path === 'clinic.sqlite')) throw new Error('Backup manifest does not match its contents.')
+    if (manifest.files.length !== names.size - 1 || manifest.files.filter((file) => file.path === DATABASE_FILE || file.path === LEGACY_DATABASE_FILE).length !== 1) throw new Error('Backup manifest does not match its contents.')
     const seen = new Set<string>()
     for (const file of manifest.files) {
       if (!allowed.test(file.path) || file.path === 'backup.json' || !names.has(file.path) || seen.has(file.path)) throw new Error('Backup manifest contains an unexpected or duplicate file.')
@@ -92,8 +93,10 @@ async function stageBackup(archive: string, dataDirectory: string) {
       await chmod(join(staging, file.path), 0o600)
       if (file.path === 'settings.json') await protectPrivateFile(join(staging, file.path))
     }
+    // Backups made before the database was renamed hold the old file name; restore writes the new one.
+    if (seen.has(LEGACY_DATABASE_FILE)) await rename(join(staging, LEGACY_DATABASE_FILE), join(staging, DATABASE_FILE))
     if (names.has('settings.json')) appSettingsSchema.parse(JSON.parse(await readFile(join(staging, 'settings.json'), 'utf8')))
-    const check = new Database(join(staging, 'clinic.sqlite'), { readonly: true })
+    const check = new Database(join(staging, DATABASE_FILE), { readonly: true })
     try {
       if (check.pragma('integrity_check', { simple: true }) !== 'ok' || (check.pragma('foreign_key_check') as unknown[]).length) throw new Error('Backup database integrity check failed.')
       if (Number(check.pragma('user_version', { simple: true })) !== manifest.schemaVersion) throw new Error('Backup schema does not match its manifest.')

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { FeedSettings } from './feed-settings.js'
 import { MaintenancePanel } from './runtime.js'
 import { taskNames, type PublicSettings, type TaskName } from '../../../packages/shared/src/index.js'
 import { AppHeader, PageHeader } from './layout.js'
@@ -147,6 +148,7 @@ export function SettingsPage() {
       <div className="save-row"><p>Suggested local starting model: Gemma 4 12B. Change it per task as your evaluations show a better fit.</p><button className="button primary" disabled={busy === 'save'} onClick={saveSettings}>{busy === 'save' ? 'Saving…' : 'Save settings'}</button></div>
     </section>
 
+    <FeedSettings />
     <section className="panel editor-panel"><h2>Welcome guide</h2><p className="subtle">Go through adding your résumé, choosing a model and saving your first job again, and bring back the quickstart on the Jobs page.</p><a className="button secondary" href="#welcome" onClick={() => { try { localStorage.removeItem('rc-quickstart-hidden') } catch { /* storage may be unavailable */ } }}>Show the welcome guide again</a></section>
 
     <MaintenancePanel />

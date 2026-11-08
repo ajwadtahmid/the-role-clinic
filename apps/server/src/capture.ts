@@ -7,7 +7,7 @@ import { Readability } from '@mozilla/readability'
 
 const MAX_BYTES = 3_000_000
 const BLOCKED_JOB_SITES = new Set(['linkedin.com', 'indeed.com', 'glassdoor.com'])
-interface CapturedJob {
+export interface CapturedJob {
   company: string
   title: string
   location: string

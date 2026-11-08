@@ -120,6 +120,12 @@ bullets from the same role or project.
 - **Mark as applied.** Choose the file you actually sent and confirm it. The app freezes
   that file's text, the job description and the current answers. Later edits change the
   working copy only.
+  If you applied with your master résumé and kept no file, record that choice; the
+  application shows "No résumé file recorded".
+- **Job feed (optional).** Point Settings at a CSV that a separate search tool fills. New
+  rows appear in a **Triage** chip; nothing is tracked, skipped or checked until you decide.
+  The app reads the file, marks what it imported and removes old rows only when you run
+  Clean up. It never searches and sends no finder note to a model.
 
 ## Tracker and answer library
 

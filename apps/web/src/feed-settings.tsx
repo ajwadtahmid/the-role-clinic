@@ -1,0 +1,38 @@
+import { useEffect, useState } from 'react'
+import { api } from './api.js'
+
+type Status = { configured: boolean; path: string | null; lastCheckedAt: string | null }
+type TestResult = { rows: number; valid: number; invalid: number; alreadyImported: number; newRows: number; missingColumns: string[] }
+type Plan = { csvRows: number; triageJobs: Array<{ id: string; company: string; title: string; date: string }>; cutoff: string }
+
+// Settings for an optional job feed: a CSV that another tool fills with jobs it found. Role Clinic only reads it,
+// marks what it imported, and removes old rows when the owner asks.
+export function FeedSettings() {
+  const [status, setStatus] = useState<Status | null>(null), [path, setPath] = useState(''), [busy, setBusy] = useState(''), [message, setMessage] = useState('')
+  const [test, setTest] = useState<TestResult | null>(null), [days, setDays] = useState('60'), [plan, setPlan] = useState<Plan | null>(null)
+  useEffect(() => { void api<Status>('/api/feed/status').then((value) => { setStatus(value); setPath(value.path ?? '') }).catch((error) => setMessage(error.message)) }, [])
+  async function run<T>(name: string, work: () => Promise<T>) { setBusy(name); setMessage(''); try { return await work() } catch (error) { setMessage((error as Error).message) } finally { setBusy('') } }
+  const save = () => run('save', async () => { const value = await api<Status>('/api/feed/path', { method: 'PUT', body: JSON.stringify({ path }) }); setStatus(value); setTest(null); setPlan(null); setMessage(value.configured ? 'Job feed saved. Use Check now to import.' : 'Job feed turned off.') })
+  const testFile = () => run('test', async () => { setTest(await api<TestResult>('/api/feed/test', { method: 'POST', body: JSON.stringify({ path }) })) })
+  const check = () => run('check', async () => { const result = await api<{ imported: number; duplicates: number; invalid: number; notice: string | null }>('/api/feed/refresh', { method: 'POST', body: '{}' }); setMessage(`${result.imported} new job${result.imported === 1 ? '' : 's'} added to Triage; ${result.duplicates} already known${result.invalid ? `; ${result.invalid} skipped for missing details` : ''}.${result.notice ? ` ${result.notice}` : ''}`) })
+  const preview = () => run('preview', async () => { setPlan(await api<Plan>('/api/feed/cleanup/preview', { method: 'POST', body: JSON.stringify({ days: Number(days) }) })) })
+  const clean = () => run('clean', async () => { const result = await api<{ removedRows: number; removedJobs: number; notice: string | null }>('/api/feed/cleanup', { method: 'POST', body: JSON.stringify({ days: Number(days) }) }); setPlan(null); setMessage(`Removed ${result.removedRows} row${result.removedRows === 1 ? '' : 's'} from the file and ${result.removedJobs} undecided job${result.removedJobs === 1 ? '' : 's'}.${result.notice ? ` ${result.notice}` : ''}`) })
+  return <section className="panel editor-panel feed-panel" aria-labelledby="feed-heading">
+    <h2 id="feed-heading">Job feed <span className="subtle">(optional)</span></h2>
+    <p className="subtle">If a search tool such as Claude Code or Codex saves the jobs it finds to a CSV file, point Role Clinic at that file. New rows appear in Triage on the Jobs page. Role Clinic never searches; it only reads the file, marks the rows it imported in an Imported column, and removes old rows when you run Clean up. <a href="/guide.html#job-feed" target="_blank" rel="noreferrer">File format ↗</a></p>
+    <label htmlFor="feed-path">Path to the CSV file</label>
+    <input id="feed-path" value={path} placeholder="/home/you/job-search/data/jobs.csv" autoComplete="off" spellCheck={false} onChange={(event) => { setPath(event.target.value); setTest(null) }} />
+    <div className="button-row">
+      <button className="button primary" disabled={!!busy} onClick={() => void save()}>Save path</button>
+      <button className="button secondary" disabled={!!busy || !path.trim()} onClick={() => void testFile()}>Test file</button>
+      <button className="button secondary" disabled={!!busy || !status?.configured} onClick={() => void check()}>Check now</button>
+    </div>
+    {test && <p role="status">{test.missingColumns.length ? `The file is missing required columns: ${test.missingColumns.join(', ')}.` : `${test.rows} rows: ${test.valid} usable, ${test.invalid} skipped for missing details, ${test.alreadyImported} already imported, ${test.newRows} new. Nothing was changed.`}</p>}
+    {status?.configured && <div className="feed-cleanup"><h3>Clean up</h3>
+      <p className="subtle">Removes imported rows and undecided Triage jobs older than a number of days (posted date if the row has one, otherwise found date). Tracked, applied and skipped jobs and rows you have not imported are never touched. Removed URLs are still remembered, so they are not imported again.</p>
+      <div className="button-row"><label htmlFor="feed-days">Older than (days)</label><input id="feed-days" type="number" min={1} max={3650} value={days} onChange={(event) => { setDays(event.target.value); setPlan(null) }} /><button className="button secondary" disabled={!!busy} onClick={() => void preview()}>Preview</button></div>
+      {plan && <div role="status"><p>{plan.csvRows} row{plan.csvRows === 1 ? '' : 's'} in the file and {plan.triageJobs.length} Triage job{plan.triageJobs.length === 1 ? '' : 's'} older than {plan.cutoff}.</p>{!!plan.triageJobs.length && <ul>{plan.triageJobs.slice(0, 10).map((job) => <li key={job.id}>{job.title}, {job.company} · {job.date}</li>)}</ul>}{plan.triageJobs.length > 10 && <p className="subtle">and {plan.triageJobs.length - 10} more.</p>}<button className="button secondary" disabled={!!busy || (!plan.csvRows && !plan.triageJobs.length)} onClick={() => void clean()}>Remove these</button></div>}
+    </div>}
+    {message && <p role="status">{message}</p>}
+  </section>
+}

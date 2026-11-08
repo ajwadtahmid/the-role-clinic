@@ -20,7 +20,9 @@ export function nextAction({ status, hasExtraction, hasDraft, hasExport }: JobPr
   if (stage === 'closed') return { id: 'none', label: '', hint: 'This job is closed. Change the status under More to reopen it.' }
   if (stage !== 'review' && stage !== 'saved') return { id: 'tracker', label: 'Open in Tracker', hint: 'Follow-ups, contacts, notes and the answers you gave are kept in the tracker.' }
   if (!hasExtraction) return { id: 'extract', label: 'Check fit', hint: 'Finds what the posting requires and compares it with your profile and résumé.' }
-  if (stage === 'review') return { id: 'track', label: 'Track this job', hint: 'Adds this job to the Tracker so you can keep answers and follow-ups with it.' }
+  // Tailoring is the next real step; starting it also tracks a job that is still waiting for review.
+  if (!hasDraft && stage === 'review') return { id: 'tailor', label: 'Tailor résumé', hint: 'Writes a draft from your master résumé; every line cites its source. This also adds the job to the Tracker.' }
+  if (stage === 'review') return { id: 'review', label: 'Review and export', hint: 'Check each line, then export a DOCX or PDF.' }
   if (!hasDraft) return { id: 'tailor', label: 'Tailor résumé', hint: 'Writes a draft from your master résumé; every line cites its source.' }
   if (!hasExport) return { id: 'review', label: 'Review and export', hint: 'Check each line, then export a DOCX or PDF.' }
   return { id: 'apply', label: 'Mark as applied', hint: 'Choose the exported file you actually sent.' }

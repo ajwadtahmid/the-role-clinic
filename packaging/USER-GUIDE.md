@@ -78,13 +78,46 @@ Ollama processes model requests locally. Private profile and application answers
 stay outside model inputs. Capturing a URL contacts the public job site.
 
 On **Jobs**, each posting has one main button for its next step: **Check fit**,
-**Track this job**, **Tailor résumé**, **Review and export**, **Mark as applied**, then
-**Open in Tracker**. A strip under the job header shows whether a fit check or tailoring
+**Tailor résumé** (which also adds the job to the Tracker), **Review and export**,
+**Mark as applied**, then **Open in Tracker**. **Track this job**, **Already applied** and
+**Skip** are always available for a job you have not decided about. A strip under the job header shows whether a fit check or tailoring
 run is waiting, running, finished or failed, and a notice appears on any page when one
 ends. Review generated lines, accept/edit/reject them, and export DOCX or PDF. Record
-what you actually submitted using the explicit application confirmation. The **Tracker**
+what you actually submitted using the explicit application confirmation; if you applied
+with your master résumé, choose **No file: I used my master résumé** and the application
+is recorded as **No résumé file recorded**. The **Tracker**
 keeps follow-ups, each job's questions and answers (open them from the Q&A column), the
 answer library, Gap trends and spreadsheet exports.
+
+## Job-feed file
+
+A job feed is optional. If a search tool such as Claude Code or Codex saves the jobs it
+finds to a CSV file, set its full path in **Settings → Job feed**. The Jobs page then
+shows a **Triage** chip: jobs from the file that are waiting for your decision. Role Clinic
+never searches for jobs. It reads the file when it starts, when you return to the window
+(at most every 30 seconds) and when you choose **Check for new jobs**. It also fetches each
+full posting in the background; if that fails, the job shows **Summary only**, and a page
+that looks closed shows **May be closed**. No model runs during import.
+
+A job leaves Triage only when you decide: **Track this job**, **Skip**, **Already applied**,
+or start **Tailor résumé**. Opening a job does not move it.
+
+The file needs these columns: `Job Title`, `Company`, `Apply Link` and `Date Found`
+(YYYY-MM-DD). Optional columns are `Date Posted`, `Priority`, `Location`, `Work Arrangement`,
+`Salary Range`, `Required Qualifications`, `Preferred Qualifications`, `Missing Skills / Flags`,
+`Why It Fits` and `Source`. Other columns are left alone. Role Clinic adds one column,
+`Imported`, holding the date it imported the row; a search tool should keep it and still
+count those rows when it checks for duplicates. Two links are the same job when they match
+after lowercasing the host and removing the fragment, a trailing slash and tracking
+parameters such as `utm_*`, `gh_src` and `lever-source`; identifying parameters such as
+`gh_jid` are kept. The app also remembers every imported link, so a row you delete from the
+file is not imported again.
+
+The notes your search tool wrote (priority, flags, why it fits) are shown to you as written
+by that tool and are never sent to a model. Application status is kept only in Role Clinic.
+**Clean up** in Settings removes imported rows and undecided Triage jobs older than a number of
+days you choose, after a preview, using the posted date when there is one and the found date
+otherwise. It never touches tracked, applied or skipped jobs, or rows not yet imported.
 
 ## Stop and reopen
 
@@ -108,7 +141,7 @@ On Linux, data is in `$XDG_DATA_HOME/the-role-clinic` or
 it. Use the same override for every launch, backup and restore command. Settings
 shows the actual folder. Data is outside the replaceable package.
 
-`clinic.sqlite` stores jobs, answers and résumé records; `artifacts/` holds exported
+`role-clinic.sqlite` stores jobs, answers and résumé records; `artifacts/` holds exported
 and attached files; `settings.json` may contain your API key with owner-only POSIX
 permissions or a current-account Windows DACL; `backups/` holds database snapshots. `app.log` records server errors.
 Do not sync or copy a live SQLite/WAL file as your backup.

@@ -48,13 +48,36 @@ an installed local Ollama model or your own Anthropic API key in <strong>Setting
 Claude sends relevant résumé evidence and job text to its API and charges you;
 Ollama processes model requests locally. Private profile and application answers
 stay outside model inputs. Capturing a URL contacts the public job site.</p><p>On <strong>Jobs</strong>, each posting has one main button for its next step: <strong>Check fit</strong>,
-<strong>Track this job</strong>, <strong>Tailor résumé</strong>, <strong>Review and export</strong>, <strong>Mark as applied</strong>, then
-<strong>Open in Tracker</strong>. A strip under the job header shows whether a fit check or tailoring
+<strong>Tailor résumé</strong> (which also adds the job to the Tracker), <strong>Review and export</strong>,
+<strong>Mark as applied</strong>, then <strong>Open in Tracker</strong>. <strong>Track this job</strong>, <strong>Already applied</strong> and
+<strong>Skip</strong> are always available for a job you have not decided about. A strip under the job header shows whether a fit check or tailoring
 run is waiting, running, finished or failed, and a notice appears on any page when one
 ends. Review generated lines, accept/edit/reject them, and export DOCX or PDF. Record
-what you actually submitted using the explicit application confirmation. The <strong>Tracker</strong>
+what you actually submitted using the explicit application confirmation; if you applied
+with your master résumé, choose <strong>No file: I used my master résumé</strong> and the application
+is recorded as <strong>No résumé file recorded</strong>. The <strong>Tracker</strong>
 keeps follow-ups, each job's questions and answers (open them from the Q&amp;A column), the
-answer library, Gap trends and spreadsheet exports.</p><h2 id="stop">Stop and reopen</h2><p>For the desktop preview, close its window, press <strong>Ctrl+Q</strong>, or choose <strong>Settings →
+answer library, Gap trends and spreadsheet exports.</p><h2 id="job-feed">Job-feed file</h2><p>A job feed is optional. If a search tool such as Claude Code or Codex saves the jobs it
+finds to a CSV file, set its full path in <strong>Settings → Job feed</strong>. The Jobs page then
+shows a <strong>Triage</strong> chip: jobs from the file that are waiting for your decision. Role Clinic
+never searches for jobs. It reads the file when it starts, when you return to the window
+(at most every 30 seconds) and when you choose <strong>Check for new jobs</strong>. It also fetches each
+full posting in the background; if that fails, the job shows <strong>Summary only</strong>, and a page
+that looks closed shows <strong>May be closed</strong>. No model runs during import.</p><p>A job leaves Triage only when you decide: <strong>Track this job</strong>, <strong>Skip</strong>, <strong>Already applied</strong>,
+or start <strong>Tailor résumé</strong>. Opening a job does not move it.</p><p>The file needs these columns: <code>Job Title</code>, <code>Company</code>, <code>Apply Link</code> and <code>Date Found</code>
+(YYYY-MM-DD). Optional columns are <code>Date Posted</code>, <code>Priority</code>, <code>Location</code>, <code>Work Arrangement</code>,
+<code>Salary Range</code>, <code>Required Qualifications</code>, <code>Preferred Qualifications</code>, <code>Missing Skills / Flags</code>,
+<code>Why It Fits</code> and <code>Source</code>. Other columns are left alone. Role Clinic adds one column,
+<code>Imported</code>, holding the date it imported the row; a search tool should keep it and still
+count those rows when it checks for duplicates. Two links are the same job when they match
+after lowercasing the host and removing the fragment, a trailing slash and tracking
+parameters such as <code>utm_*</code>, <code>gh_src</code> and <code>lever-source</code>; identifying parameters such as
+<code>gh_jid</code> are kept. The app also remembers every imported link, so a row you delete from the
+file is not imported again.</p><p>The notes your search tool wrote (priority, flags, why it fits) are shown to you as written
+by that tool and are never sent to a model. Application status is kept only in Role Clinic.
+<strong>Clean up</strong> in Settings removes imported rows and undecided Triage jobs older than a number of
+days you choose, after a preview, using the posted date when there is one and the found date
+otherwise. It never touches tracked, applied or skipped jobs, or rows not yet imported.</p><h2 id="stop">Stop and reopen</h2><p>For the desktop preview, close its window, press <strong>Ctrl+Q</strong>, or choose <strong>Settings →
 Quit app</strong>. Reopen it from the application menu or AppImage. The following commands
 apply to the browser fallback and the desktop maintenance launcher.</p><p>Closing the browser tab leaves the local server running. Use <strong>Settings → Stop
 local app</strong>, or run <code>./role-clinic stop</code>. Active model runs block an ordinary stop;
@@ -64,7 +87,7 @@ run is recorded as failed on restart and can be retried where supported.</p><p><
 <code>~/Library/Application Support/The Role Clinic</code>; on Windows it is in
 <code>%APPDATA%\The Role Clinic</code>. <code>ROLE_CLINIC_DATA_DIR=/absolute/path</code> overrides
 it. Use the same override for every launch, backup and restore command. Settings
-shows the actual folder. Data is outside the replaceable package.</p><p><code>clinic.sqlite</code> stores jobs, answers and résumé records; <code>artifacts/</code> holds exported
+shows the actual folder. Data is outside the replaceable package.</p><p><code>role-clinic.sqlite</code> stores jobs, answers and résumé records; <code>artifacts/</code> holds exported
 and attached files; <code>settings.json</code> may contain your API key with owner-only POSIX
 permissions or a current-account Windows DACL; <code>backups/</code> holds database snapshots. <code>app.log</code> records server errors.
 Do not sync or copy a live SQLite/WAL file as your backup.</p><h2 id="backups">Backups</h2><p><strong>Full backup (recommended for recovery and moving computers):</strong> stop the app first,

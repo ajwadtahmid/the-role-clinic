@@ -37,6 +37,14 @@ describe('tracker and answers', () => {
     f.sqlite.exec(`BEGIN IMMEDIATE;
       DROP TABLE tracker_preferences; DROP INDEX job_answers_job_idx;
       ALTER TABLE applications DROP COLUMN follow_up_date;
+      DROP TABLE feed_imports;
+      DROP INDEX jobs_origin_idx;
+      ALTER TABLE jobs DROP COLUMN origin;
+      ALTER TABLE jobs DROP COLUMN found_at;
+      ALTER TABLE jobs DROP COLUMN posted_at;
+      ALTER TABLE jobs DROP COLUMN finder_priority;
+      ALTER TABLE jobs DROP COLUMN finder_note;
+      ALTER TABLE jobs DROP COLUMN posting_state;
       ALTER TABLE applications DROP COLUMN last_contact_at;
       ALTER TABLE applications DROP COLUMN contacts;
       ALTER TABLE applications DROP COLUMN submitted_job_text;
@@ -47,7 +55,7 @@ describe('tracker and answers', () => {
     f.sqlite.close()
     const migrated = createDatabase(f.directory).sqlite
     fixtures.find((entry) => entry.directory === f.directory)!.sqlite = migrated
-    expect(migrated.pragma('user_version', { simple: true })).toBe(7)
+    expect(migrated.pragma('user_version', { simple: true })).toBe(8)
     expect(migrated.pragma('integrity_check', { simple: true })).toBe('ok')
     expect(migrated.prepare('SELECT submitted_question,submitted_category,submitted_answer FROM job_answers').get()).toEqual({ submitted_question: 'Legacy question?', submitted_category: 'project', submitted_answer: 'Legacy submitted answer.' })
     expect(migrated.prepare('SELECT submitted_text,submitted_job_text FROM applications').get()).toEqual({ submitted_text: 'Legacy résumé', submitted_job_text: 'Original job description requiring TypeScript and reliable software systems.' })

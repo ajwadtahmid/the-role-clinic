@@ -14,7 +14,8 @@ describe('stages', () => {
 
   it('offers one next step per point in a job’s life', () => {
     expect(nextAction({ status: 'new', ...progress }).id).toBe('extract')
-    expect(nextAction({ status: 'new', ...progress, hasExtraction: true }).label).toBe('Track this job')
+    expect(nextAction({ status: 'new', ...progress, hasExtraction: true }).label).toBe('Tailor résumé')
+    expect(nextAction({ status: 'new', hasExtraction: true, hasDraft: true, hasExport: false }).label).toBe('Review and export')
     expect(nextAction({ status: 'saved', ...progress }).label).toBe('Check fit')
     expect(nextAction({ status: 'saved', ...progress, hasExtraction: true }).label).toBe('Tailor résumé')
     expect(nextAction({ status: 'saved', hasExtraction: true, hasDraft: true, hasExport: false }).label).toBe('Review and export')
