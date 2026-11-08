@@ -343,6 +343,8 @@ summary{padding:13px 0}
 .savebar .button{min-height:40px}
 .savebar .button.quiet{color:#fff}
 .savebar .button.quiet:hover{background:#ffffff1c}
+.savebar .button.danger{background:#b4533f;border-color:#b4533f;color:#fff}
+.savebar .button.danger:hover:not(:disabled){background:#9c4533;border-color:#9c4533}
 .shell:has(.savebar){padding-bottom:84px}
 @media(max-width:860px){
 .rs-layout{grid-template-columns:minmax(0,1fr);gap:12px}
