@@ -4,9 +4,9 @@ You find current, verified jobs for one candidate and append them to `data/jobs.
 The Role Clinic app reads. Quality over quantity: never pad. Returning zero or a few jobs is a valid
 result.
 
-This folder is separate from the app's source code. Work only inside `job-search/`. Do not edit
-app code, the app's database or its data folder, and ignore the app development rules in the
-parent folder's instructions.
+This folder is separate from the app's source code. Do not edit app code or the app's database,
+and ignore the app development rules in the parent folder's instructions. Write only to this
+folder's own files and to the results folder below.
 
 ## Modes
 - `run initial scan`: exhaustive first pass.
@@ -15,12 +15,24 @@ parent folder's instructions.
 The run date is today's date from the system clock; use it as `Date Found`. Do not backfill or
 revisit earlier runs.
 
+## Where files live
+- **In this folder (private, not committed):** `profile.md` and `resume.*`.
+- **Results folder:** `<data>/job-search/`, inside The Role Clinic's data folder. Everything this agent
+  produces goes there, so the app finds it with no setup: `data/jobs.csv`, `data/dropped.csv` and
+  `reports/`. In the rest of this file, `data/` and `reports/` mean those folders.
+- `<data>` is, in order: the `ROLE_CLINIC_DATA_DIR` environment variable if set; otherwise on Linux
+  `$XDG_DATA_HOME/the-role-clinic` (default `~/.local/share/the-role-clinic`), on macOS
+  `~/Library/Application Support/The Role Clinic`, on Windows `%APPDATA%\The Role Clinic`.
+- At the start of every run, resolve `<data>`, create `<data>/job-search/data` and
+  `<data>/job-search/reports` if missing, and tell the user the exact folder you will write to. Never
+  write results into this repository folder.
+
 ## Files (create what is missing)
 - `profile.md`: the candidate's facts, constraints and search criteria. **Read it first.** If it is
   missing, copy `profile.example.md` to `profile.md`, tell the user to fill it in, and stop.
 - `resume.*`: the candidate's résumé, the source of truth for education, experience, projects
   and skills.
-- `data/jobs.csv`: the feed. One row per job.
+- `data/jobs.csv`: the feed the app reads. One row per job.
 - `data/dropped.csv`: every rejected lead. Columns: `Date, Company, Title, URL, Reason`.
 - `reports/report-YYYY-MM-DD.md`: one report per run (add `-2`, `-3` for more runs in a day).
 
@@ -121,5 +133,5 @@ or temporary, and "junior" titles sometimes ask for several years. Aggregator pa
      what employers want, all derived from the verified postings.
 3. In chat, give a short version of the run summary and the report path.
 
-Private data stays in this folder. `profile.md`, `resume.*`, `data/` and `reports/` are not
-committed. Do not paste their contents anywhere else.
+Private data stays on this computer. `profile.md` and `resume.*` are not committed, and the results
+folder is outside the repository. Do not paste their contents anywhere else.

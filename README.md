@@ -135,15 +135,17 @@ bullets from the same role or project.
 
 The app never searches. `job-search/` holds the instructions for an AI coding agent that
 does. Start Claude Code or Codex inside that folder and say `run initial scan` or
-`run update`. The agent appends verified jobs to `job-search/data/jobs.csv`; set that path
-in **Settings → Job feed** and the rows arrive in Triage.
+`run update`. The agent appends verified jobs to `jobs.csv` in the app's data folder
+(`<data folder>/job-search/data/jobs.csv`, where the data folder is the one shown in Settings), which
+is where Role Clinic looks by default, so the rows arrive in Triage with no setup. **Settings → Job
+feed** can point at a different file.
 
 1. Copy `job-search/profile.example.md` to `job-search/profile.md` and fill it in.
 2. Put your résumé in `job-search/` as `resume.pdf` (or any `resume.*`).
 3. `cd job-search`, start `claude` or `codex`, and say `run initial scan`.
 
-Your profile, résumé, jobs file and reports stay on your computer. They are ignored by
-git, along with every PDF and DOCX file. The agent runs under your own Claude or Codex
+Your profile and résumé stay in `job-search/` and are ignored by git, along with every PDF
+and DOCX file; the jobs file and reports live in your data folder, outside the repository. The agent runs under your own Claude or Codex
 subscription; Role Clinic does not call it.
 
 ## Tracker and answer library
@@ -220,7 +222,7 @@ update, backup, restore and removal.
 | `apps/web/` | Browser UI (Vite and React) |
 | `packages/shared/` | Schemas and types shared by server and UI |
 | `packaging/`, `scripts/` | Linux launcher, user guide, package build and smoke test |
-| `job-search/` | Job search agent instructions and profile template; your profile, résumé, jobs file and reports are git-ignored |
+| `job-search/` | Job search agent instructions and profile template; your profile and résumé are git-ignored; results go to the data folder |
 | `src-tauri/` | Desktop shell, platform package configs, owned backend lifecycle and restricted native commands |
 
 ## Roadmap

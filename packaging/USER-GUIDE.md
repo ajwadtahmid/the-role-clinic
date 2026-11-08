@@ -92,7 +92,9 @@ answer library, Gap trends and spreadsheet exports.
 ## Job-feed file
 
 A job feed is optional. If a search tool such as Claude Code or Codex saves the jobs it
-finds to a CSV file, set its full path in **Settings → Job feed**. The Jobs page then
+finds to `job-search/data/jobs.csv` inside your data folder (the folder shown in **Settings**),
+Role Clinic reads it automatically as soon as the file exists. To use a different file, set its
+full path in **Settings → Job feed**. The Jobs page then
 shows a **Triage** chip: jobs from the file that are waiting for your decision. Role Clinic
 never searches for jobs. It reads the file when it starts, when you return to the window
 (at most every 30 seconds) and when you choose **Check for new jobs**. It also fetches each

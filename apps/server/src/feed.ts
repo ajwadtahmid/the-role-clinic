@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import { chmod, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join } from 'node:path'
 import type Database from 'better-sqlite3'
@@ -288,18 +289,21 @@ export async function applyCleanup(sqlite: Database.Database, path: string | nul
 
 // ---- Service ----
 
-export interface FeedStatus { configured: boolean; path: string | null; lastCheckedAt: string | null; running: boolean; lastResult: Omit<FeedResult, 'importedIds'> | null }
+export interface FeedStatus { configured: boolean; path: string | null; isDefault: boolean; defaultPath: string | null; lastCheckedAt: string | null; running: boolean; lastResult: Omit<FeedResult, 'importedIds'> | null }
 
 export class FeedService {
   private chain: Promise<unknown> = Promise.resolve()
   private checkedAt: string | null = null
   private last: FeedStatus['lastResult'] = null
   private active = 0
-  constructor(private sqlite: Database.Database, private getPath: () => Promise<string | null>, private capture: PostingCapture, private fetchOptions: { concurrency?: number; spacingMs?: number } = {}) {}
+  // `getPath` returns a path the owner chose. Without one, the feed is read from `defaultPath` (inside the data
+  // folder) as soon as a file exists there, so a search tool that writes to the default location needs no setup.
+  constructor(private sqlite: Database.Database, private getPath: () => Promise<string | null>, private capture: PostingCapture, private fetchOptions: { concurrency?: number; spacingMs?: number } = {}, private defaultPath: string | null = null) {}
 
   async status(): Promise<FeedStatus> {
-    const path = await this.getPath()
-    return { configured: Boolean(path), path, lastCheckedAt: this.checkedAt, running: this.active > 0, lastResult: this.last }
+    const chosen = await this.getPath()
+    const path = chosen ?? (this.defaultPath && existsSync(this.defaultPath) ? this.defaultPath : null)
+    return { configured: Boolean(path), path, isDefault: !chosen && Boolean(path), defaultPath: this.defaultPath, lastCheckedAt: this.checkedAt, running: this.active > 0, lastResult: this.last }
   }
 
   // Imports run one at a time, so two quick requests never import the same row twice.
@@ -311,8 +315,8 @@ export class FeedService {
   private async runImport() {
     this.active++
     try {
-      const path = await this.getPath()
-      if (!path) throw new Error('No job feed file is set.')
+      const { path } = await this.status()
+      if (!path) throw new Error('No job feed file was found. Set its path in Settings, or run the search so it writes to the default location.')
       const { file } = await readFeedFile(path)
       if (file.missingColumns.length) throw new Error(`The file is missing required columns: ${file.missingColumns.join(', ')}.`)
       const { marks, importedIds, ...counts } = importRows(this.sqlite, file)
@@ -335,11 +339,11 @@ export class FeedService {
   }
 
   async cleanupPreview(days: number) {
-    const path = await this.getPath()
+    const { path } = await this.status()
     const file = path ? (await readFeedFile(path).catch(() => null))?.file ?? null : null
     return planCleanup(this.sqlite, file, days).plan
   }
   async cleanup(days: number) {
-    return applyCleanup(this.sqlite, await this.getPath(), days)
+    return applyCleanup(this.sqlite, (await this.status()).path, days)
   }
 }

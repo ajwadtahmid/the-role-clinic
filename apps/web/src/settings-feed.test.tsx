@@ -46,7 +46,7 @@ async function setup() {
 describe('Job feed settings', () => {
   it('saves a path, tests the file without changing it, imports, then previews and applies a clean up', async () => {
     const { user, sqlite, path } = await setup()
-    const input = await screen.findByLabelText('Path to the CSV file')
+    const input = await screen.findByLabelText('Path to a different CSV file (optional)')
     await user.type(input, 'relative.csv')
     await user.click(screen.getByRole('button', { name: 'Save path' }))
     expect(await screen.findByText(/full path of a \.csv file/)).toBeTruthy()

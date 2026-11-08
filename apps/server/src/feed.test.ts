@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { mkdtemp, readFile, readdir, rm, stat, utimes, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createApp } from './app.js'
@@ -269,6 +269,22 @@ describe('feed API', () => {
     for (let i = 0; i < 200 && !f.prompts.length; i++) await new Promise((resolve) => setTimeout(resolve, 10))
     expect(f.prompts.length).toBeGreaterThan(0)
     expect(f.prompts.join('\n')).not.toMatch(/WHY_IT_FITS_PRIVATE_MARKER|Citizenship|"High"/)
+    f.sqlite.close()
+  })
+  it('uses a jobs.csv in the data folder by default, without any setting', async () => {
+    const f = await setup(`${HEADER}\n${row('Engineer', 'Acme', 'https://acme.test/jobs/1')}\n`)
+    const app = createApp({ dataDirectory: f.dir, sqlite: f.sqlite, db: f.db, port: 3000, postingCapture: f.capture, feedSpacingMs: 0 })
+    const call = (path: string, body?: unknown) => app.request(`http://127.0.0.1:3000${path}`, { method: body === undefined ? 'GET' : 'POST', headers: { host: '127.0.0.1:3000', origin: 'http://127.0.0.1:3000', 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) })
+    const defaultPath = join(f.dir, 'job-search', 'data', 'jobs.csv')
+    // No file yet: the feed stays hidden and names the place it will look.
+    expect(await (await call('/api/feed/status')).json()).toMatchObject({ configured: false, path: null, isDefault: false, defaultPath })
+    expect((await call('/api/feed/refresh', {})).status).toBe(409)
+    await mkdir(join(f.dir, 'job-search', 'data'), { recursive: true })
+    await writeFile(defaultPath, await readFile(f.path))
+    expect(await (await call('/api/feed/status')).json()).toMatchObject({ configured: true, path: defaultPath, isDefault: true })
+    expect((await call('/api/feed/refresh', {})).status).toBe(200)
+    expect(await (await call('/api/jobs/counts')).json()).toMatchObject({ triage: 1 })
+    expect(await readFile(defaultPath, 'utf8')).toContain('Imported')
     f.sqlite.close()
   })
   it('keeps the feed path when settings are saved without it, and refuses a relative path', async () => {

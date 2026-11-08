@@ -161,7 +161,7 @@ export function createApp(options: AppOptions) {
   const queue = options.queue ?? new SerialRunQueue(options.db)
   const modelRouter = options.modelRouter ?? new ModelRouter(() => readSettings(options.dataDirectory))
   const pipeline = new PipelineService(options.sqlite, options.dataDirectory, queue, modelRouter)
-  const feed = new FeedService(options.sqlite, async () => (await readSettings(options.dataDirectory)).jobFeed?.path || null, options.postingCapture ?? ((url) => captureJobUrl(url)), { spacingMs: options.feedSpacingMs })
+  const feed = new FeedService(options.sqlite, async () => (await readSettings(options.dataDirectory)).jobFeed?.path || null, options.postingCapture ?? ((url) => captureJobUrl(url)), { spacingMs: options.feedSpacingMs }, join(options.dataDirectory, 'job-search', 'data', 'jobs.csv'))
   const app = new Hono()
   app.use('*', securityMiddleware({ port, webPort, development }))
   if (options.runtime?.desktop) app.use('*', async (context, next) => {

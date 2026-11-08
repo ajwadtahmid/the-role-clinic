@@ -58,7 +58,9 @@ with your master résumé, choose <strong>No file: I used my master résumé</st
 is recorded as <strong>No résumé file recorded</strong>. The <strong>Tracker</strong>
 keeps follow-ups, each job's questions and answers (open them from the Q&amp;A column), the
 answer library, Gap trends and spreadsheet exports.</p><h2 id="job-feed">Job-feed file</h2><p>A job feed is optional. If a search tool such as Claude Code or Codex saves the jobs it
-finds to a CSV file, set its full path in <strong>Settings → Job feed</strong>. The Jobs page then
+finds to <code>job-search/data/jobs.csv</code> inside your data folder (the folder shown in <strong>Settings</strong>),
+Role Clinic reads it automatically as soon as the file exists. To use a different file, set its
+full path in <strong>Settings → Job feed</strong>. The Jobs page then
 shows a <strong>Triage</strong> chip: jobs from the file that are waiting for your decision. Role Clinic
 never searches for jobs. It reads the file when it starts, when you return to the window
 (at most every 30 seconds) and when you choose <strong>Check for new jobs</strong>. It also fetches each

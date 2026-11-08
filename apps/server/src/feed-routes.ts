@@ -21,7 +21,8 @@ export function registerFeedRoutes(app: Hono, feed: FeedService, dataDirectory: 
 
   app.post('/api/feed/test', async (context) => {
     const payload = await context.req.json().catch(() => null) as { path?: unknown } | null
-    const path = typeof payload?.path === 'string' && payload.path.trim() ? payload.path.trim() : (await feed.status()).path
+    const status = await feed.status()
+    const path = typeof payload?.path === 'string' && payload.path.trim() ? payload.path.trim() : status.path ?? status.defaultPath
     if (!path) return context.json({ error: 'Enter the path of the job feed file first.' }, 400)
     try { return context.json(await feed.test(path)) }
     catch (error) { return context.json({ error: (error as Error).message }, 422) }
