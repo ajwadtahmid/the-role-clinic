@@ -23,6 +23,7 @@ const usage = `The Role Clinic ${manifest.version}
   ./role-clinic restore /path/data.tar.gz            Validate and inspect a backup
   ./role-clinic restore /path/data.tar.gz --confirm  Restore, preserving a recovery folder
   ./role-clinic verify                  Check installed package files
+  ./role-clinic data-dir                Print the data folder
   ./role-clinic install-desktop         Add an application-menu shortcut
   ./role-clinic uninstall-desktop       Remove that shortcut
   ./role-clinic help                    Show this help
@@ -115,7 +116,8 @@ try {
       if (actual !== file.sha256) throw new Error(`Package file checksum mismatch: ${file.path}`)
     }
     console.log(`Package verified: ${manifest.files.length} files; ${manifest.target}; Node ${manifest.nodeVersion}.`)
-  } else if (command === 'install-desktop' || command === 'uninstall-desktop') await desktop(command === 'install-desktop')
+  } else if (command === 'data-dir') console.log(data)
+  else if (command === 'install-desktop' || command === 'uninstall-desktop') await desktop(command === 'install-desktop')
   else {
     await mkdir(dirname(data), { recursive: true, mode: 0o700 }); await mkdir(data, { recursive: true, mode: 0o700 })
     const unlock = await acquireProcessLock(`${data}.operation.lock`)

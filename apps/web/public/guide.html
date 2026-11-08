@@ -89,7 +89,8 @@ run is recorded as failed on restart and can be retried where supported.</p><p><
 <code>~/Library/Application Support/The Role Clinic</code>; on Windows it is in
 <code>%APPDATA%\The Role Clinic</code>. <code>ROLE_CLINIC_DATA_DIR=/absolute/path</code> overrides
 it. Use the same override for every launch, backup and restore command. Settings
-shows the actual folder. Data is outside the replaceable package.</p><p><code>role-clinic.sqlite</code> stores jobs, answers and résumé records; <code>artifacts/</code> holds exported
+shows the actual folder, and the launcher's <code>data-dir</code> command prints it on any system.
+Data is outside the replaceable package.</p><p><code>role-clinic.sqlite</code> stores jobs, answers and résumé records; <code>artifacts/</code> holds exported
 and attached files; <code>settings.json</code> may contain your API key with owner-only POSIX
 permissions or a current-account Windows DACL; <code>backups/</code> holds database snapshots. <code>app.log</code> records server errors.
 Do not sync or copy a live SQLite/WAL file as your backup.</p><h2 id="backups">Backups</h2><p><strong>Full backup (recommended for recovery and moving computers):</strong> stop the app first,

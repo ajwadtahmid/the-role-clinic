@@ -20,9 +20,13 @@ revisit earlier runs.
 - **Results folder:** `<data>/job-search/`, inside The Role Clinic's data folder. Everything this agent
   produces goes there, so the app finds it with no setup: `data/jobs.csv`, `data/dropped.csv` and
   `reports/`. In the rest of this file, `data/` and `reports/` mean those folders.
-- `<data>` is, in order: the `ROLE_CLINIC_DATA_DIR` environment variable if set; otherwise on Linux
-  `$XDG_DATA_HOME/the-role-clinic` (default `~/.local/share/the-role-clinic`), on macOS
-  `~/Library/Application Support/The Role Clinic`, on Windows `%APPDATA%\The Role Clinic`.
+- **Never guess `<data>` or build it from an OS name.** Ask the app, in this order:
+  1. If the `ROLE_CLINIC_DATA_DIR` environment variable is set, use it.
+  2. From the repository root (the folder above this one) run `npm run --silent data-dir`. It prints
+     the data folder for this computer and operating system.
+  3. For an installed copy of the app, run its launcher with `data-dir` (for example
+     `./role-clinic data-dir`, or `role-clinic.cmd data-dir` on Windows).
+  4. If none of those can run, ask the user for the data folder shown in the app's Settings page.
 - At the start of every run, resolve `<data>`, create `<data>/job-search/data` and
   `<data>/job-search/reports` if missing, and tell the user the exact folder you will write to. Never
   write results into this repository folder.

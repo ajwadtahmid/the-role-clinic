@@ -141,7 +141,8 @@ On Linux, data is in `$XDG_DATA_HOME/the-role-clinic` or
 `~/Library/Application Support/The Role Clinic`; on Windows it is in
 `%APPDATA%\The Role Clinic`. `ROLE_CLINIC_DATA_DIR=/absolute/path` overrides
 it. Use the same override for every launch, backup and restore command. Settings
-shows the actual folder. Data is outside the replaceable package.
+shows the actual folder, and the launcher's `data-dir` command prints it on any system.
+Data is outside the replaceable package.
 
 `role-clinic.sqlite` stores jobs, answers and résumé records; `artifacts/` holds exported
 and attached files; `settings.json` may contain your API key with owner-only POSIX

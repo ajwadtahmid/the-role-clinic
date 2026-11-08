@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "start": "tsx apps/server/src/start-production.ts",
+    "data-dir": "tsx apps/server/src/print-data-dir.ts",
     "package:linux": "node scripts/build-package.mjs",
     "test:package": "node scripts/smoke-package.mjs",
     "desktop:dev": "tauri dev",

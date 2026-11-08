@@ -41,6 +41,8 @@ async function databaseWork(code) {
 }
 try {
   await cli(['verify'])
+  // The data folder is reported by the app itself, so other tools never need to know the OS layout.
+  assert.equal((await cli(['data-dir'])).stdout.trim(), data)
   if (process.platform !== 'win32') await execFile(join(bundle, 'role-clinic'), ['help'], { env: cleanEnv(), timeout: 10000 })
   const launches = await Promise.all([cli(['start', '--no-browser']), cli(['start', '--no-browser'])]); running = true
   assert.ok(launches.some((r) => r.stdout.includes('Already running')))
