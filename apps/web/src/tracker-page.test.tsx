@@ -110,7 +110,7 @@ describe('tracker browser flows', () => {
     expect(tab('All 2').getAttribute('aria-pressed')).toBe('true')
     expect(tab('Applied 1')).toBeTruthy(); expect(tab('Interviewing 1')).toBeTruthy(); expect(tab('Offer 0')).toBeTruthy(); expect(tab('Closed 0')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /^Saved/ })).toBeNull()
-    expect(within(screen.getByLabelText(/Application funnel/)).getByText('Interviewing')).toBeTruthy()
+    expect(within(screen.getByLabelText(/Application funnel/)).getByText('got to an interview')).toBeTruthy()
     await user.click(tab('Interviewing 1'))
     expect(within(table).getByRole('button', { name: 'Software Engineer Acme' })).toBeTruthy()
     expect(within(table).queryByRole('button', { name: 'Initech Software Engineer' })).toBeNull()
