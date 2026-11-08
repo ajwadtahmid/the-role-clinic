@@ -16,6 +16,19 @@ installDesktopLinks()
 function Pages() {
   const [route, setRoute] = useState(location.hash)
   useEffect(() => { const update = () => setRoute(location.hash); window.addEventListener('hashchange', update); return () => window.removeEventListener('hashchange', update) }, [])
+  // Escape closes an open menu and returns focus to its button. It is handled first so the Tracker panel does not also close.
+  useEffect(() => {
+    const close = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      const open = document.querySelector<HTMLDetailsElement>('details.menu[open], details.more-menu[open], details.more-filters[open]')
+      if (!open) return
+      open.open = false
+      open.querySelector<HTMLElement>('summary')?.focus()
+      event.stopPropagation()
+    }
+    window.addEventListener('keydown', close, true)
+    return () => window.removeEventListener('keydown', close, true)
+  }, [])
   // Moving to another page puts focus on its heading, so screen readers announce where you are. Choosing a job within Jobs does not count.
   const page = route.split(/[/?]/)[0].replace(/^#job$/, '#jobs').replace('#answers', '#tracker').replace('#master', '#resume').replace('#profile', '#resume'), previousPage = useRef(page)
   useEffect(() => {
