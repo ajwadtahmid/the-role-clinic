@@ -65,7 +65,8 @@ function jobFromHash(): { id: string | null } {
 export function Workspace() {
   const start = jobFromHash()
   const [jobs, setJobs] = useState<Job[]>([]), [selected, setSelected] = useState<string | null>(start.id), [detail, setDetail] = useState<Detail | null>(null), [tab, setTab] = useState<JobTab>('overview')
-  const [query, setQuery] = useState(''), [statusFilter, setStatusFilter] = useState<JobStage>('new'), [feedOnly, setFeedOnly] = useState(false), [limit, setLimit] = useState(pageSize), [notice, setNotice] = useState<ReactNode>(''), [busy, setBusy] = useState(false)
+  const [activeRow, setActiveRow] = useState('')
+  const [query, setQuery] = useState(''),[statusFilter, setStatusFilter] = useState<JobStage>('new'), [feedOnly, setFeedOnly] = useState(false), [limit, setLimit] = useState(pageSize), [notice, setNotice] = useState<ReactNode>(''), [busy, setBusy] = useState(false)
   const [sort, setSort] = useState<'newest' | 'company'>('newest'), [counts, setCounts] = useState<Counts | null>(null)
   const [feed, setFeed] = useState<FeedStatus | null>(null), [checking, setChecking] = useState(false), lastCheck = useRef(0), chainTailor = useRef<string | null>(null), [showSubmit, setShowSubmit] = useState(false), [showAdd, setShowAdd] = useState(false)
   const [analysis, setAnalysis] = useState<Analysis | null>(null), [estimate, setEstimate] = useState<Estimate | null>(null), [estimateError, setEstimateError] = useState(''), [hasExport, setHasExport] = useState(false)
@@ -150,11 +151,12 @@ export function Workspace() {
     try { await api(`/api/jobs/${job.id}/status`, { method: 'PUT', body: JSON.stringify({ status, submittedText: '' }) }); await afterStatusChange(job.id, status) }
     catch (error) { setNotice((error as Error).message) }
   }
-  function rowActions(job: Job) {
+  // The list is one Tab stop: only the active row's buttons are tabbable, and the arrow keys move between rows.
+  function rowActions(job: Job, tab: 0 | -1) {
     const stage = stageOfStatus(job.status ?? 'new'), name = `${job.title || 'Untitled role'} at ${job.company || 'a company'}`
-    if (stage === 'new') return <><button className="button small" aria-label={`Save ${name}`} onClick={() => void changeStatus(job, 'saved')}>Save</button><button className="text-button small" aria-label={`Skip ${name}`} onClick={() => void changeStatus(job, 'skipped')}>Skip</button></>
-    if (stage === 'saved') return <button className="text-button small" aria-label={`Skip ${name}`} onClick={() => void changeStatus(job, 'skipped')}>Skip</button>
-    if (stage === 'skipped') return <button className="button small" aria-label={`Restore ${name} to To review`} onClick={() => void changeStatus(job, 'new')}>Restore</button>
+    if (stage === 'new') return <><button className="button small" tabIndex={tab} aria-label={`Save ${name}`} onClick={() => void changeStatus(job, 'saved')}>Save</button><button className="text-button small" tabIndex={tab} aria-label={`Skip ${name}`} onClick={() => void changeStatus(job, 'skipped')}>Skip</button></>
+    if (stage === 'saved') return <button className="text-button small" tabIndex={tab} aria-label={`Skip ${name}`} onClick={() => void changeStatus(job, 'skipped')}>Skip</button>
+    if (stage === 'skipped') return <button className="button small" tabIndex={tab} aria-label={`Restore ${name} to To review`} onClick={() => void changeStatus(job, 'new')}>Restore</button>
     return null
   }
   async function updateStatus(choice: string) {
@@ -179,6 +181,7 @@ export function Workspace() {
   }, [analysis])
   const detailOnly = !!detail && stageOfStatus(detail.job.status ?? 'new') === null
   const shownJobs = sortedJobs.slice(0, limit)
+  const stopId = shownJobs.some((job) => job.id === activeRow) ? activeRow : shownJobs.some((job) => job.id === selected) ? selected : shownJobs[0]?.id
   const active = latestRun(analysis), activeLabel = active && (active.status === 'queued' || active.status === 'running') ? (active.kind === 'extract' ? 'Checking…' : 'Tailoring…') : undefined
   const action = detail ? nextAction({ status: detail.job.status ?? 'new', hasExtraction: !!analysis?.extraction, hasDraft: !!analysis?.tailored, hasExport }) : null
   const noJobs = counts?.all === 0 && !selected
@@ -193,7 +196,7 @@ export function Workspace() {
     </>}
     {noJobs ? <Quickstart readiness={readiness} onAdd={() => setShowAdd(true)} /> : <div className={`jobs-layout ${selected ? 'has-selection' : ''} ${detailOnly ? 'detail-only' : ''}`}>
       <div className={`list-col ${feedOnly && statusFilter === 'new' ? 'feed-only' : ''}`}><div className="list-scroll" aria-label="Job list">
-        {shownJobs.length > 0 && <ul className="job-list" aria-label={`${stageOptions.find(([value]) => value === statusFilter)?.[1]} jobs`} onKeyDown={moveFocus}>{shownJobs.map((job) => <li key={job.id} className={`job-row ${selected === job.id ? 'sel' : ''}`}><button className={`job-card job-main ${selected === job.id ? 'selected' : ''}`} aria-current={selected === job.id ? 'true' : undefined} onClick={() => selectJob(job.id)}><span className="job-card-heading"><strong className="jr-title">{job.title || '(Untitled role)'}</strong></span><span className="jr-sub">{job.company || 'Company not set'}{job.location ? ` · ${job.location}` : ''}</span><span className="jr-meta"><PriorityMeter job={job} /><small>{job.origin === 'feed' ? `Found ${ago(job.postedAt ?? job.foundAt ?? job.capturedAt)}` : `Added ${ago(job.capturedAt)}`}</small>{runBadge(job)}{feedBadges(job)}{warningCount(job) > 0 && <span className="tag tag-warn">{warningCount(job)} to check</span>}</span></button><span className="jr-actions">{rowActions(job)}</span></li>)}</ul>}
+        {shownJobs.length > 0 && <ul className="job-list" aria-label={`${stageOptions.find(([value]) => value === statusFilter)?.[1]} jobs`} onKeyDown={moveFocus}>{shownJobs.map((job) => { const tab = job.id === stopId ? 0 : -1; return <li key={job.id} className={`job-row ${selected === job.id ? 'sel' : ''}`} onFocus={() => setActiveRow(job.id)}><button className={`job-card job-main ${selected === job.id ? 'selected' : ''}`} tabIndex={tab} aria-current={selected === job.id ? 'true' : undefined} onClick={() => selectJob(job.id)}><span className="job-card-heading"><strong className="jr-title">{job.title || '(Untitled role)'}</strong></span><span className="jr-sub">{job.company || 'Company not set'}{job.location ? ` · ${job.location}` : ''}</span><span className="jr-meta"><PriorityMeter job={job} /><small>{job.origin === 'feed' ? `Found ${ago(job.postedAt ?? job.foundAt ?? job.capturedAt)}` : `Added ${ago(job.capturedAt)}`}</small>{runBadge(job)}{feedBadges(job)}{warningCount(job) > 0 && <span className="tag tag-warn">{warningCount(job)} to check</span>}</span></button><span className="jr-actions">{rowActions(job, tab)}</span></li> })}</ul>}
         {jobs.length === 0 && <div className="empty-note"><strong>{feedOnly && statusFilter === 'new' ? 'Nothing from the job feed is waiting for you.' : query ? 'No jobs match your search.' : emptyText[statusFilter]}</strong></div>}
         {sortedJobs.length > limit && <button className="button more-jobs" onClick={() => setLimit(limit + pageSize)}>Show {Math.min(pageSize, sortedJobs.length - limit)} more ({sortedJobs.length - limit} left)</button>}
       </div></div>

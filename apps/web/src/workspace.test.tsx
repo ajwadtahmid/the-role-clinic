@@ -128,6 +128,12 @@ describe('job workspace flow', () => {
     expect(document.activeElement).toBe(cards[1])
     await user.keyboard('{ArrowUp}{ArrowUp}')
     expect(document.activeElement).toBe(cards[0])
+    // The list is one Tab stop: only the active row's card and buttons can take focus.
+    expect(cards.map((card) => card.tabIndex)).toEqual([0, -1])
+    expect([...document.querySelectorAll<HTMLButtonElement>('.jr-actions button')].map((button) => button.tabIndex)).toEqual([0, 0, -1, -1])
+    cards[1].focus()
+    await waitFor(() => expect(cards.map((card) => card.tabIndex)).toEqual([-1, 0]))
+    cards[0].focus()
     await user.click(screen.getByRole('button', { name: /^Saved/ }))
     await waitFor(() => expect(order()).toEqual(['Alpha']))
     await user.click(screen.getByRole('button', { name: /^Skipped/ }))
