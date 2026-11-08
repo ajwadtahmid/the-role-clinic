@@ -470,3 +470,7 @@ kbd{font:600 11px ui-monospace,SFMono-Regular,Consolas,monospace;border:1px soli
 .jr-actions .button,.jr-actions .text-button{min-width:44px}
 }
 .rv-sent{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.track-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px 18px;margin:14px 0 4px;padding:12px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.track-facts dt{font:600 12px system-ui;color:var(--muted);margin:0 0 2px}
+.track-facts dd{margin:0;font-size:14px;font-weight:600;overflow-wrap:anywhere}
+.track-facts .due{color:#8a3b2e}

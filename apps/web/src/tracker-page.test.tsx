@@ -58,6 +58,9 @@ describe('tracker browser flows', () => {
     expect((sqlite.prepare('SELECT follow_up_date FROM applications WHERE job_id=?').get(acme))).toEqual({ follow_up_date: null })
     await user.click(within(within(table).getByRole('button', { name: 'Software Engineer Acme' }).closest('tr')!).getByRole('button', { name: 'Recorded résumé text' }))
     await screen.findByText('Original résumé text, frozen at submission.')
+    const facts = screen.getByLabelText('Details for Acme')
+    expect(within(facts).getByText('Next follow-up')).toBeTruthy()
+    expect(within(facts).getByText('What you sent')).toBeTruthy()
     expect((await screen.findAllByText('I want to join Acme to build reliable systems.')).length).toBeGreaterThan(0)
     // A job that is only saved belongs to Jobs, so the Tracker never lists it.
     expect(within(table).queryByRole('button', { name: 'Software Engineer Globex' })).toBeNull()
