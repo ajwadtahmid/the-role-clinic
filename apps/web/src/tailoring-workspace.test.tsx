@@ -59,11 +59,10 @@ async function setup() {
 describe('review UI', () => {
   it('reviews an unsupported line, saves corrected wording, previews, exports and explicitly freezes the submitted file', async () => {
     const { sqlite, user, applied } = await setup()
-    await screen.findByRole('button', { name: 'Accept' })
+    // A model-written line that is not in the résumé cannot be accepted, only reworded or rejected.
+    await screen.findByText(/Cannot be exported/)
+    expect(screen.queryByRole('button', { name: 'Accept' })).toBeNull()
     const exportButton = screen.getByRole('button', { name: 'Export DOCX' }) as HTMLButtonElement
-    expect(exportButton.disabled).toBe(true)
-    await user.click(screen.getByRole('button', { name: 'Accept' }))
-    await screen.findByText('Review or remove unsupported model text: Reduced API latency by 20%')
     expect(exportButton.disabled).toBe(true)
     await user.click(screen.getByRole('button', { name: 'Edit' }))
     const editor = screen.getByRole('textbox', { name: 'Edit résumé line' })

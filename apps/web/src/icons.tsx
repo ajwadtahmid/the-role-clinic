@@ -7,6 +7,8 @@ const paths = {
   x: <path d="M6 6l12 12M18 6L6 18" />,
   up: <path d="M12 19V6M6.5 11.5L12 6l5.5 5.5" />,
   down: <path d="M12 5v13M6.5 12.5L12 18l5.5-5.5" />,
+  warn: <><path d="M12 4l9 16H3z" /><path d="M12 10v4M12 17.5v.01" /></>,
+  cross: <><circle cx="12" cy="12" r="8.5" /><path d="M9 9l6 6M15 9l-6 6" /></>,
 }
 export type IconName = keyof typeof paths
 

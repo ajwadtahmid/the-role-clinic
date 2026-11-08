@@ -1,4 +1,3 @@
-import { TailoringWorkspace } from './tailoring-workspace.js'
 import { choiceOf, stageClass, statusChoices, statusText, type NextAction } from './stages.js'
 
 export type LatestRun = { kind: string; status: string; step: string }
@@ -118,11 +117,11 @@ export function JobOverview({ job, text, analysis, busy, canExtract, onExtract }
   </div>
 }
 
-export function JobResume({ jobId, detail, analysis, busy, onRetry, onApplied, onExported }: { jobId: string; detail: Detail; analysis: Analysis | null; busy: boolean; onRetry: (id: string) => void; onApplied: () => void; onExported: () => void }) {
-  const active = analysis?.runs.some((run) => run.status === 'queued' || run.status === 'running') ?? false
+export function JobResume({ jobId, analysis, busy, onRetry }: { jobId: string; analysis: Analysis | null; busy: boolean; onRetry: (id: string) => void }) {
+  const active = analysis?.runs.some((run) => run.status === 'queued' || run.status === 'running') ?? false, lines = analysis?.tailored?.lines.length ?? 0
   return <div className="job-resume">
-    {!analysis?.tailored && <p className="subtle">{analysis?.extraction ? 'No draft yet. Use Tailor résumé above to write one from your master résumé.' : 'Check the fit first; the draft is written from the requirements it finds.'}</p>}
+    {analysis?.tailored ? <section className="review-entry"><h3>Tailor a résumé for this job</h3><p className="subtle">{lines} suggested line{lines === 1 ? ' is' : 's are'} ready. Review each one next to a live preview, then export a DOCX or PDF.</p><a className="button primary" href={`#jobs/${jobId}/review`}>Open the review</a></section>
+      : <p className="subtle">{analysis?.extraction ? 'No draft yet. Use Tailor résumé above to write one from your master résumé.' : 'Check the fit first; the draft is written from the requirements it finds.'}</p>}
     {!!analysis?.runs.length && <div className="run-list"><h4>Runs</h4>{analysis.runs.slice(0, 5).map((run) => { const usage = run.usage ? JSON.parse(run.usage) as { totalUsd?: number } : null; return <div className="run-row" key={run.id}><span>{run.kind} · {run.status} · {run.step}{usage?.totalUsd ? ` · $${usage.totalUsd.toFixed(4)}` : ''}</span>{run.error && <span className="review-flag">{run.error}</span>}{run.status === 'failed' && run.kind !== 'reverify' && <button className="text-button" disabled={busy || active} onClick={() => onRetry(run.id)}>Retry</button>}</div> })}</div>}
-    {analysis?.tailored && <TailoringWorkspace key={`${jobId}-${analysis.tailored.runId}`} jobId={jobId} company={detail.job.company} title={detail.job.title} onApplied={onApplied} onExported={onExported} />}
   </div>
 }

@@ -8,6 +8,7 @@ import { TrackerPage } from './tracker-page.js'
 import { Workspace } from './workspace.js'
 import { MasterPage, ProfilePage } from './master-page.js'
 import { RunNotices } from './run-notices.js'
+import { ReviewPage } from './review-page.js'
 import './style.css'
 
 installDesktopLinks()
@@ -28,6 +29,8 @@ function Pages() {
     }, 50)
     return () => window.clearInterval(timer)
   }, [page])
+  const review = route.match(/^#jobs\/([^/?]+)\/review(\?.*)?$/)
+  if (review) return <ReviewPage key={route} jobId={review[1]} startWithApply={review[2] === '?apply'} />
   if (route === '#answers') return <TrackerPage openLibrary />
   if (route.startsWith('#tracker')) return <TrackerPage key={route} />
   if (route === '#gaps') return <TrackerPage gapsOnly />

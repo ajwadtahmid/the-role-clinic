@@ -67,7 +67,7 @@ export function Workspace() {
   const [jobs, setJobs] = useState<Job[]>([]), [selected, setSelected] = useState<string | null>(start.id), [detail, setDetail] = useState<Detail | null>(null), [tab, setTab] = useState<JobTab>('overview')
   const [query, setQuery] = useState(''), [statusFilter, setStatusFilter] = useState<JobStage>('new'), [feedOnly, setFeedOnly] = useState(false), [limit, setLimit] = useState(pageSize), [notice, setNotice] = useState<ReactNode>(''), [busy, setBusy] = useState(false)
   const [sort, setSort] = useState<'newest' | 'company'>('newest'), [counts, setCounts] = useState<Counts | null>(null)
-  const [feed, setFeed] = useState<FeedStatus | null>(null), [checking, setChecking] = useState(false), lastCheck = useRef(0), [showSubmit, setShowSubmit] = useState(false), [showAdd, setShowAdd] = useState(false), [reveal, setReveal] = useState<'review' | 'apply' | null>(null)
+  const [feed, setFeed] = useState<FeedStatus | null>(null), [checking, setChecking] = useState(false), lastCheck = useRef(0), [showSubmit, setShowSubmit] = useState(false), [showAdd, setShowAdd] = useState(false)
   const [analysis, setAnalysis] = useState<Analysis | null>(null), [estimate, setEstimate] = useState<Estimate | null>(null), [estimateError, setEstimateError] = useState(''), [hasExport, setHasExport] = useState(false)
   const [readiness, setReadiness] = useState<Readiness | null>(null), [dismissedRun, setDismissedRun] = useState<string | null>(null)
   async function loadReadiness() { setReadiness(await api<Readiness>('/api/onboarding')) }
@@ -128,14 +128,6 @@ export function Workspace() {
     // A reconnect replays earlier events in a burst; refresh once after it settles.
     events.addEventListener('run', () => { window.clearTimeout(timer); timer = window.setTimeout(() => { if (selected) void loadAnalysis(selected).catch((error) => setNotice(error.message)); void loadJobs().catch((error) => setNotice(error.message)) }, 150) })
     return () => { window.clearTimeout(timer); events.close() } }, [selected, statusFilter, feedOnly, query])
-  // "Review and export" and "Mark as applied" live inside the Résumé section; open it and bring the right part into view.
-  useEffect(() => {
-    if (!reveal || tab !== 'resume') return
-    const target = document.querySelector<HTMLElement>(reveal === 'apply' ? '.submission-panel' : '.tailoring-workspace')
-    if (!target) return
-    if (reveal === 'apply') target.setAttribute('open', '')
-    target.scrollIntoView?.({ block: 'start' }); setReveal(null)
-  }, [reveal, tab, analysis])
 
   async function startRun(kind: 'extract' | 'tailor') { if (!selected) return; setBusy(true); try { const result = await api<{ run: { id: string } }>(`/api/jobs/${selected}/${kind}`, { method: 'POST', body: '{}' }); setNotice(`${kind === 'extract' ? 'Fit check' : 'Tailoring'} queued. Run ${result.run.id.slice(0, 8)}.`); await loadAnalysis(selected) } catch (error) { setNotice((error as Error).message) } finally { setBusy(false) } }
   async function retryRun(id: string) { if (!selected) return; setBusy(true); try { await api(`/api/runs/${id}/retry`, { method: 'POST', body: '{}' }); setNotice('Retry queued from the last saved step.'); await loadAnalysis(selected) } catch (error) { setNotice((error as Error).message) } finally { setBusy(false) } }
@@ -169,7 +161,7 @@ export function Workspace() {
   function runNextAction(id: NextActionId) {
     if (id === 'extract' || id === 'tailor') void startRun(id)
     else if (id === 'track') void updateStatus('saved')
-    else if (id === 'review' || id === 'apply') { setTab('resume'); setReveal(id) }
+    else if (id === 'review' || id === 'apply') location.hash = `#jobs/${selected}/review${id === 'apply' ? '?apply' : ''}`
   }
 
   const detailOnly = !!detail && stageOfStatus(detail.job.status ?? 'new') === null
@@ -200,7 +192,7 @@ export function Workspace() {
           <JobTabs tab={tab} onTab={setTab} />
           <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="job-tab-panel">
             {tab === 'overview' && <JobOverview job={detail.job} text={detail.job.text} analysis={analysis} busy={busy} canExtract={action.id !== 'extract'} onExtract={() => void startRun('extract')} />}
-            {tab === 'resume' && <JobResume jobId={selected!} detail={detail} analysis={analysis} busy={busy} onRetry={(id) => void retryRun(id)} onApplied={() => { void loadDetail(selected!); void loadJobs(); void loadReadiness() }} onExported={() => void loadExports(selected!)} />}
+            {tab === 'resume' && <JobResume jobId={selected!} analysis={analysis} busy={busy} onRetry={(id) => void retryRun(id)} />}
           </div>
         </div> : selected ? <p className="loading panel job-detail" role="status">Loading job…</p> : <div className="panel job-empty"><h2>Select a job</h2><p className="subtle">Pick a job from the list to see its requirements, résumé and history. Use Add job to save a new posting.</p></div>}
       </section>

@@ -363,3 +363,84 @@ summary{padding:13px 0}
 .role-h .text-button{white-space:nowrap}
 .block>.field,.block>.grid2{margin-top:12px}
 .block>.actions{margin-top:14px}
+
+/* Tailoring review: the suggested lines beside a live preview */
+.tailoring-workspace{border:0;margin:0;padding:0}
+.review-shell .rv-head{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;padding:14px 0 8px}
+.rv-head h1{font:600 28px/1.15 Georgia,serif;letter-spacing:-.02em;margin:2px 0 4px}
+.rv-head p{margin:0;color:var(--muted)}
+.rv-back{display:inline-flex;align-items:center;gap:6px;min-height:44px;text-decoration:none;font-weight:600;color:var(--green)}
+.review-entry{border:1px solid var(--line);border-radius:10px;background:var(--paper);padding:18px;margin:0 0 16px;display:grid;gap:8px;justify-items:start}
+.review-entry h3{margin:0;font-size:15px}
+.review-entry p{margin:0}
+.rv-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(430px,540px);gap:22px;align-items:start;padding-bottom:24px}
+.rv-bar{position:sticky;top:0;z-index:5;background:var(--cream);padding:8px 0 10px;display:grid;gap:8px}
+.rv-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.rv-bar .count{margin-left:auto;color:var(--muted);font-size:13px;font-weight:400;font-variant-numeric:tabular-nums}
+.rv-hint{margin:0;font-size:13px;color:var(--muted)}
+kbd{font:600 11px ui-monospace,SFMono-Regular,Consolas,monospace;border:1px solid #cfd3c5;border-bottom-width:2px;border-radius:4px;padding:0 5px;background:#f4f5ee;color:#3d443a;margin-left:2px}
+.button.primary kbd{background:#ffffff26;border-color:#ffffff66;color:#fff}
+.rv-options{border:1px solid var(--line);border-radius:10px;background:var(--paper);margin:0 0 8px}
+.rv-options>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;padding:0 14px;font-weight:600;color:var(--green)}
+.rv-options-body{padding:0 14px 14px;display:grid;gap:10px}
+.rv-options-body fieldset{border:0;padding:0;margin:0}
+.rv-options-body legend{font-size:12px;font-weight:600;color:#555b51;padding:0;margin-bottom:6px}
+.rv-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.rv-sec{margin:14px 0 2px;font-size:13px;font-weight:700;color:var(--muted)}
+.rv-line{border:1px solid var(--line);border-radius:10px;background:var(--paper);padding:12px 14px;display:grid;gap:6px;scroll-margin-top:120px}
+.rv-line:focus{outline:none}
+.rv-line:focus-visible,.rv-line.focus:focus-within{box-shadow:0 0 0 2px var(--green)}
+.rv-line.done{padding:8px 14px;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;background:#fbfbf6}
+.rv-state{font-size:12px;font-weight:700;white-space:nowrap}
+.rv-state.acc{color:#1f5a35}.rv-state.rej{color:#7a3c30}
+.rv-text{margin:0;line-height:1.5;font-size:15px}
+.rv-line.done .rv-text{font-size:14px;color:#3a4138;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rv-verdict{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700}
+.rv-verdict .i{width:16px;height:16px}
+.v-grounded{color:#1f5a35}.v-stretch{color:#7a4a12}.v-unsupported{color:#8a3b2e}
+.rv-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:2px}
+.rv-more{border-top:1px solid var(--line);margin-top:4px;padding-top:10px;display:grid;gap:8px;font-size:13px}
+.rv-more p,.rv-more ul{margin:0}
+.rv-more ul{padding-left:18px}
+.quote{margin:0;padding:8px 10px;background:#f4f5ee;border-radius:8px;color:#3a4138;font-size:13px}
+.rv-blocked{margin:0;font-size:13px;color:#8a3b2e;font-weight:600}
+.rv-note{margin:0;font-size:13px;color:var(--muted)}
+.linkish{border:0;background:transparent;color:var(--green);font:inherit;font-weight:600;padding:0 4px;min-height:44px;text-decoration:underline;text-underline-offset:3px}
+.rv-edit textarea{width:100%;min-height:84px;border:1px solid #dedfd6;border-radius:8px;padding:10px;font-size:15px;line-height:1.5;resize:vertical;background:#fffefa}
+.rv-orig{margin:0;font-size:13px;color:#4a5147;display:flex;gap:6px;align-items:baseline;min-width:0}
+.rv-orig .lbl{font-weight:700;white-space:nowrap;color:#3a4138}
+.rv-orig.one .clip{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
+.rv-orig.full{display:block}
+.rv-text ins,.rv-orig ins,.rv-doc ins{text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:3px;text-decoration-color:#315b45;background:none}
+.rv-orig del,.rv-doc del{text-decoration:line-through;text-decoration-thickness:1.5px;color:#7a3c30}
+.rv-own{display:grid;gap:6px;margin:2px 0}
+.rv-own .quote{display:flex;gap:10px;justify-content:space-between;align-items:center}
+.rv-own .quote span{flex:1}
+.rv-reject{border:1px solid #d8bfb6;background:#fbf4f1;border-radius:10px;padding:10px 12px;display:grid;gap:8px}
+.rv-reject p{margin:0;font-size:13px}
+.rv-preview{position:sticky;top:10px;display:grid;gap:10px}
+.rv-pv-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.rv-pv-bar .meter-text{margin:0;font-size:13px;color:var(--muted);flex:1;min-width:200px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff}
+.seg button{border:0;background:transparent;min-height:36px;padding:0 12px;font-size:13px;font-weight:600}
+.seg button[aria-pressed=true]{background:var(--green);color:#fff}
+.rv-doc{position:relative;border-radius:10px;max-height:calc(100vh - 260px);overflow:auto;min-height:0;padding:30px 34px;line-height:1.45}
+.rv-doc .resume-bullet,.rv-doc .resume-text{font-size:12px}
+.rv-doc .pv-orig{display:block;font:.82em system-ui,sans-serif;color:#4a5147;margin:1px 0 4px}
+.rv-doc .pv-note{font:600 12px system-ui,sans-serif;color:#7a4a12;margin:0 0 10px}
+.rv-export{padding:14px;display:grid;gap:8px}
+.rv-details{border-top:1px solid var(--line);padding-top:4px}
+.rv-details summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:600;color:var(--green)}
+.rv-details .pop{display:grid;gap:10px;padding-bottom:8px}
+.rv-seg-m{display:none}
+@media(max-width:860px){
+.rv-grid{grid-template-columns:minmax(0,1fr)}
+.rv-seg-m{display:inline-flex;margin:6px 0 10px}
+.rv-grid[data-tab=lines] .rv-preview{display:none}
+.rv-grid[data-tab=preview] .rv-lines{display:none}
+.rv-preview{position:static}
+.rv-doc{padding:20px 18px;max-height:none}
+.rv-head h1{font-size:24px}
+.rv-bar .count{margin-left:0;width:100%}
+}
+@media(forced-colors:active){.rv-line:focus-visible{outline:3px solid Highlight}.seg button[aria-pressed=true]{outline:2px solid Highlight}}
