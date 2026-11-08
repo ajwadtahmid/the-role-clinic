@@ -147,8 +147,9 @@ describe('job workspace flow', () => {
     expect(window.location.hash).toBe(`#jobs/${id}`)
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Overview', 'Résumé'])
     await waitFor(() => expect(screen.getByRole('button', { name: /^Saved/ }).getAttribute('aria-pressed')).toBe('true'))
+    // Before a fit check, both choices are offered: tailor straight away, or only check the fit.
     expect(screen.getByRole('button', { name: 'Check fit' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Tailor résumé' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Tailor résumé' })).toBeTruthy()
     await user.click(screen.getByRole('tab', { name: 'Résumé' }))
     expect(screen.getByText(/Check the fit first/)).toBeTruthy()
     await user.keyboard('{ArrowLeft}')
@@ -254,6 +255,21 @@ describe('job workspace flow', () => {
 })
 
 describe('job analysis view', () => {
+  it('runs the fit check first when Tailor résumé is chosen before one exists', async () => {
+    const modelRouter = { async complete(task: TaskName, _request: ModelRequest) {
+      if (task !== 'requirementExtraction') throw new Error('Only extraction should run in this test.')
+      return { text: JSON.stringify({ requirements: [{ quote: 'TypeScript experience is required', kind: 'hard', category: 'skill', skill: 'TypeScript', years: null }], seniority: '', vocabulary: ['TypeScript'] }), provider: 'ollama' as const, model: 'fake-local' }
+    } }
+    const { user, sqlite } = await setup(modelRouter)
+    const master = emptyMaster()
+    master.roles.push({ id: randomUUID(), company: 'Acme', title: 'Engineer', start: 'January 2025', end: 'Present', bullets: [{ id: randomUUID(), rev: 1, text: 'Built TypeScript APIs for customers', skills: ['TypeScript'], metrics: [], verbs: [], sourceRef: '' }] })
+    saveMaster(sqlite, master)
+    await addJob(user, 'Example', 'Software Engineer', 'TypeScript experience is required. Candidates build software for customers.')
+    await user.click(await screen.findByRole('button', { name: 'Tailor résumé' }))
+    await waitFor(() => expect((sqlite.prepare("SELECT status FROM runs WHERE kind='extract' ORDER BY rowid DESC LIMIT 1").get() as { status: string })?.status).toBe('done'))
+    sqlite.close()
+  })
+
   it('shows exact JD highlights, knockout basis, gaps, and a tailoring estimate', async () => {
     const modelRouter = { async complete(task: TaskName, _request: ModelRequest) {
       if (task !== 'requirementExtraction') throw new Error('Only extraction should run in this test.')

@@ -26,7 +26,7 @@ function highlighted(text: string, requirements: Requirement[]) {
   return parts
 }
 
-export function JobHeader({ detail, action, estimate, estimateError, busy, activeLabel, onAction, onStatus, onBack, inTracker = false }: { detail: Detail; action: NextAction; estimate: Estimate | null; estimateError: string; busy: boolean; activeLabel?: string; onAction: () => void; onStatus: (status: string) => void; onBack: () => void; inTracker?: boolean }) {
+export function JobHeader({ detail, action, estimate, estimateError, busy, activeLabel, onAction, onTailor, onStatus, onBack, inTracker = false }: { detail: Detail; onTailor: () => void; action: NextAction; estimate: Estimate | null; estimateError: string; busy: boolean; activeLabel?: string; onAction: () => void; onStatus: (status: string) => void; onBack: () => void; inTracker?: boolean }) {
   const { job } = detail
   const costNote = estimate ? `Estimated API cost: $${estimate.estimatedUsd.toFixed(4)} · per-run cap: $${estimate.capUsd.toFixed(2)} · this month: $${estimate.spentThisMonthUsd.toFixed(2)} of $${estimate.monthlyCapUsd.toFixed(2)}. ${estimate.note}` : estimateError || 'Checking the cost estimate…'
   const blocked = action.id === 'tailor' && !estimate?.allowed
@@ -37,7 +37,7 @@ export function JobHeader({ detail, action, estimate, estimateError, busy, activ
       <span className={stageClass(job.status ?? 'new')}>{statusText(job.status, job.outcome)}</span>
     </div>
     <div className="job-actions">
-      {action.id === 'tracker' ? <a className="button primary" href={`#tracker?job=${job.id}`}>{action.label}</a> : action.id !== 'none' && <button className="button primary" disabled={busy || blocked || Boolean(activeLabel)} onClick={onAction}>{activeLabel ?? action.label}</button>}
+      {action.id === 'extract' ? <><button className="button primary" disabled={busy || Boolean(activeLabel)} onClick={onTailor}>{activeLabel ?? 'Tailor résumé'}</button><button className="button" disabled={busy || Boolean(activeLabel)} onClick={onAction}>Check fit</button></> : action.id === 'tracker' ? <a className="button primary" href={`#tracker?job=${job.id}`}>{action.label}</a> : action.id !== 'none' && <button className="button primary" disabled={busy || blocked || Boolean(activeLabel)} onClick={onAction}>{activeLabel ?? action.label}</button>}
       {(job.status ?? 'new') === 'new' && <div className="triage-actions" role="group" aria-label="Decide about this job">{action.id !== 'tracker' && <button className="button" disabled={busy} onClick={() => onStatus('saved')}>Save job</button>}<button className="text-button" disabled={busy} onClick={() => onStatus('applied')}>Already applied</button><button className="text-button" disabled={busy} onClick={() => onStatus('skipped')}>Skip</button></div>}
       {job.status === 'saved' && <button className="text-button" disabled={busy} onClick={() => onStatus('skipped')}>Skip</button>}
       <details className="more-menu"><summary>More</summary><div className="more-panel">
@@ -48,7 +48,7 @@ export function JobHeader({ detail, action, estimate, estimateError, busy, activ
         <a className="external-link" href={`/api/jobs/${job.id}/snapshot`} download="job-capture.txt">Download original capture</a>
       </div></details>
     </div>
-    <p className="subtle next-hint">{action.id === 'tailor' ? costNote : action.hint}</p>
+    <p className="subtle next-hint">{action.id === 'tailor' ? costNote : action.id === 'extract' ? 'Tailor résumé checks the fit first, then writes a draft from your master résumé. Check fit only compares the posting with your profile and résumé.' : action.hint}</p>
   </header>
 }
 

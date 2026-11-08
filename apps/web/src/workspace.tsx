@@ -67,7 +67,7 @@ export function Workspace() {
   const [jobs, setJobs] = useState<Job[]>([]), [selected, setSelected] = useState<string | null>(start.id), [detail, setDetail] = useState<Detail | null>(null), [tab, setTab] = useState<JobTab>('overview')
   const [query, setQuery] = useState(''), [statusFilter, setStatusFilter] = useState<JobStage>('new'), [feedOnly, setFeedOnly] = useState(false), [limit, setLimit] = useState(pageSize), [notice, setNotice] = useState<ReactNode>(''), [busy, setBusy] = useState(false)
   const [sort, setSort] = useState<'newest' | 'company'>('newest'), [counts, setCounts] = useState<Counts | null>(null)
-  const [feed, setFeed] = useState<FeedStatus | null>(null), [checking, setChecking] = useState(false), lastCheck = useRef(0), [showSubmit, setShowSubmit] = useState(false), [showAdd, setShowAdd] = useState(false)
+  const [feed, setFeed] = useState<FeedStatus | null>(null), [checking, setChecking] = useState(false), lastCheck = useRef(0), chainTailor = useRef<string | null>(null), [showSubmit, setShowSubmit] = useState(false), [showAdd, setShowAdd] = useState(false)
   const [analysis, setAnalysis] = useState<Analysis | null>(null), [estimate, setEstimate] = useState<Estimate | null>(null), [estimateError, setEstimateError] = useState(''), [hasExport, setHasExport] = useState(false)
   const [readiness, setReadiness] = useState<Readiness | null>(null), [dismissedRun, setDismissedRun] = useState<string | null>(null)
   async function loadReadiness() { setReadiness(await api<Readiness>('/api/onboarding')) }
@@ -130,6 +130,12 @@ export function Workspace() {
     return () => { window.clearTimeout(timer); events.close() } }, [selected, statusFilter, feedOnly, query])
 
   async function startRun(kind: 'extract' | 'tailor') { if (!selected) return; setBusy(true); try { const result = await api<{ run: { id: string } }>(`/api/jobs/${selected}/${kind}`, { method: 'POST', body: '{}' }); setNotice(`${kind === 'extract' ? 'Fit check' : 'Tailoring'} queued. Run ${result.run.id.slice(0, 8)}.`); await loadAnalysis(selected) } catch (error) { setNotice((error as Error).message) } finally { setBusy(false) } }
+  // Tailor résumé needs the posting's requirements, so a job with no fit check yet gets one first and then goes straight on to tailoring.
+  async function tailorFirst() {
+    if (!selected) return
+    if (analysis?.extraction) { await startRun('tailor'); return }
+    chainTailor.current = selected; await startRun('extract')
+  }
   async function retryRun(id: string) { if (!selected) return; setBusy(true); try { await api(`/api/runs/${id}/retry`, { method: 'POST', body: '{}' }); setNotice('Retry queued from the last saved step.'); await loadAnalysis(selected) } catch (error) { setNotice((error as Error).message) } finally { setBusy(false) } }
   // After a status change: a job that has left the list being shown is followed by the next one in it, so a run of decisions needs no extra clicks.
   async function afterStatusChange(jobId: string, status: string, outcome?: string) {
@@ -164,6 +170,13 @@ export function Workspace() {
     else if (id === 'review' || id === 'apply') location.hash = `#jobs/${selected}/review${id === 'apply' ? '?apply' : ''}`
   }
 
+  // When the fit check that Tailor résumé asked for has finished, start tailoring; if it failed, stop waiting.
+  useEffect(() => {
+    if (!chainTailor.current || chainTailor.current !== selected || !analysis) return
+    const extractRun = analysis.runs.find((run) => run.kind === 'extract')
+    if (analysis.extraction) { chainTailor.current = null; void startRun('tailor') }
+    else if (extractRun?.status === 'failed') chainTailor.current = null
+  }, [analysis])
   const detailOnly = !!detail && stageOfStatus(detail.job.status ?? 'new') === null
   const shownJobs = sortedJobs.slice(0, limit)
   const active = latestRun(analysis), activeLabel = active && (active.status === 'queued' || active.status === 'running') ? (active.kind === 'extract' ? 'Checking…' : 'Tailoring…') : undefined
@@ -186,7 +199,7 @@ export function Workspace() {
       </div></div>
       <section className="job-pane" aria-label="Selected job">
         {detail && action ? <div className="panel job-detail">
-          <JobHeader detail={detail} action={action} estimate={estimate} estimateError={estimateError} busy={busy || !analysis} activeLabel={activeLabel} inTracker={detailOnly} onAction={() => runNextAction(action.id)} onStatus={(status) => void updateStatus(status)} onBack={backToList} />
+          <JobHeader detail={detail} action={action} estimate={estimate} estimateError={estimateError} busy={busy || !analysis} activeLabel={activeLabel} inTracker={detailOnly} onAction={() => runNextAction(action.id)} onTailor={() => void tailorFirst()} onStatus={(status) => void updateStatus(status)} onBack={backToList} />
           {showSubmit && <SubmissionForm key={selected} jobId={selected!} onSaved={async () => { setShowSubmit(false); await afterStatusChange(selected!, 'applied') }} onCancel={() => setShowSubmit(false)} />}
           <RunStrip analysis={analysis} dismissed={dismissedRun} onDismiss={setDismissedRun} onRetry={(id) => void retryRun(id)} busy={busy} />
           <JobTabs tab={tab} onTab={setTab} />
