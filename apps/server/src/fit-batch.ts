@@ -26,20 +26,32 @@ export class FitBatch {
       ORDER BY j.captured_at DESC`).all() as Array<{ id: string }>).map((row) => row.id)
   }
 
+  // Jobs checked before the local model matched bullets to requirements: their stored check has no suggestions field.
+  // They are checked again only when every model involved runs on this computer, so a refresh never spends money.
+  async stale(): Promise<string[]> {
+    const settings = await readSettings(this.dataDirectory)
+    if (settings.taskModels.requirementExtraction.provider !== 'ollama' || settings.taskModels.bulletScoring.provider !== 'ollama') return []
+    return (this.sqlite.prepare(`SELECT j.id FROM jobs j LEFT JOIN applications a ON a.job_id=j.id
+      WHERE COALESCE(a.status,'new') IN ('new','saved')
+        AND (SELECT r.document FROM requirements r WHERE r.job_id=j.id ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1) NOT LIKE '%"suggestions"%'
+        AND NOT EXISTS (SELECT 1 FROM runs u WHERE u.job_id=j.id AND u.kind='extract' AND u.status IN ('queued','running'))
+      ORDER BY j.captured_at DESC`).all() as Array<{ id: string }>).map((row) => row.id)
+  }
+
   async preview() {
-    const ids = this.waiting(), settings = await readSettings(this.dataDirectory)
+    const fresh = this.waiting(), refresh = await this.stale(), ids = [...fresh, ...refresh], settings = await readSettings(this.dataDirectory)
     const provider = settings.taskModels.requirementExtraction.provider
     let estimatedUsd: number | null = null, allowed = true
     if (provider === 'anthropic' && ids.length) {
       try { const one = await this.pipeline.estimate(ids[0], 'extract'); estimatedUsd = Math.round(one.estimatedUsd * ids.length * 10_000) / 10_000; allowed = one.allowed && estimatedUsd <= one.capUsd * ids.length && one.spentThisMonthUsd + estimatedUsd <= one.monthlyCapUsd }
       catch { allowed = false }
     }
-    return { count: ids.length, provider, estimatedUsd, allowed }
+    return { count: ids.length, refresh: refresh.length, provider, estimatedUsd, allowed }
   }
 
-  async start(): Promise<FitBatchState> {
+  async start(includeRefresh = true): Promise<FitBatchState> {
     if (this.state.running) return this.status()
-    const ids = this.waiting()
+    const ids = [...this.waiting(), ...(includeRefresh ? await this.stale() : [])]
     this.stopping = false
     this.state = { running: ids.length > 0, paused: false, total: ids.length, done: 0, failed: 0, message: ids.length ? '' : 'Every job already has a fit check.' }
     if (ids.length) void this.run(ids).catch((error) => { this.state = { ...this.state, running: false, message: (error as Error).message } })
@@ -49,7 +61,7 @@ export class FitBatch {
   // Starts only when the user chose automatic checks and the check runs on this computer.
   async maybeStart() {
     const settings = await readSettings(this.dataDirectory)
-    if (settings.autoFitCheck && settings.taskModels.requirementExtraction.provider === 'ollama') await this.start()
+    if (settings.autoFitCheck && settings.taskModels.requirementExtraction.provider === 'ollama') await this.start(false)
   }
 
   stop(): FitBatchState {

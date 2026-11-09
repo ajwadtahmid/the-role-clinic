@@ -80,7 +80,7 @@ export function JobFit({ jobId, analysis, busy, onCheck }: { jobId: string; anal
 }
 
 type BatchState = { running: boolean; paused: boolean; total: number; done: number; failed: number; message: string }
-type BatchPreview = { count: number; provider: string; estimatedUsd: number | null; allowed: boolean }
+type BatchPreview = { count: number; refresh?: number; provider: string; estimatedUsd: number | null; allowed: boolean }
 type BatchInfo = { state: BatchState; preview: BatchPreview | null }
 
 // "Check fits" on the Jobs page: asks first, then checks every job without a fit check, one at a time, in the background.
@@ -108,6 +108,7 @@ export function useFitBatch(onProgress: () => void, say: (text: string) => void)
   else if (asking && preview) {
     const local = preview.provider !== 'anthropic', minutes = Math.max(1, Math.round(preview.count * .5))
     panel = <div className="batch-note" role="group" aria-label="Confirm checking fits"><div className="grow"><b>Check the fit of {preview.count} job{preview.count === 1 ? '' : 's'}?</b>
+      {(preview.refresh ?? 0) > 0 && `${preview.refresh} of them ${preview.refresh === 1 ? 'was' : 'were'} checked before and will be checked again, so your local model can match what the keywords missed. `}
       {local ? `This runs your local model one job at a time, about half a minute each, so roughly ${minutes} minute${minutes === 1 ? '' : 's'} in all. It uses your computer, so start it when you are not busy. Tailoring a résumé does not wait behind it for long, and you can stop whenever you like. Finished checks are kept.`
         : `This uses Claude, about $${(preview.estimatedUsd ?? 0).toFixed(2)} in all. The postings and your résumé bullets are sent to Anthropic; your contact details never are. It counts toward your monthly cap${preview.allowed ? '.' : ', and that would be passed, so it will stop when the cap is reached.'}`}</div>
       <button className="button primary small" disabled={busy} onClick={() => void start()}>Start checking</button><button className="button quiet small" onClick={() => { setAsking(false); askRef.current?.focus() }}>Not now</button></div>

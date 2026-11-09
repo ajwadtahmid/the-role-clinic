@@ -310,6 +310,18 @@ describe('extraction and tailoring pipeline', () => {
     expect(sqlite.prepare('SELECT COUNT(DISTINCT job_id) AS n FROM requirements').get()).toEqual({ n: 2 })
     expect(((await (await request('/api/fit-batch')).json()) as { preview: { count: number } }).preview.count).toBe(0)
     expect(job.id).toBeTruthy()
+  it('checks a job again when its stored check predates the local match step, and not once it has been redone', async () => {
+    const { sqlite, post, request, job } = await setup()
+    sqlite.prepare('INSERT INTO requirements(id,job_id,document,created_at) VALUES(?,?,?,?)').run(randomUUID(), job.id, JSON.stringify({ requirements: [], seniority: '', vocabulary: [], partial: false }), new Date().toISOString())
+    const preview = async () => ((await (await request('/api/fit-batch')).json()) as { preview: { count: number; refresh: number } }).preview
+    expect(await preview()).toMatchObject({ count: 1, refresh: 1 })
+    expect((await post('/api/fit-batch')).status).toBe(202)
+    let running = true
+    for (let attempt = 0; attempt < 300 && running; attempt++) { await new Promise((resolve) => setTimeout(resolve, 20)); running = ((await (await request('/api/fit-batch')).json()) as { state: { running: boolean } }).state.running }
+    expect(await preview()).toMatchObject({ count: 0, refresh: 0 })
+    sqlite.close()
+  })
+
     sqlite.close()
   })
 
