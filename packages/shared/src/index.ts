@@ -72,6 +72,8 @@ export const summarySchema = z.object({ id: identifier, label: short(100), text:
 export const educationSchema = z.object({ id: identifier, school: short(), credential: short(), field: short(), start: short(100), end: short(100), details: short(2000) }).strict()
 export const masterSchema = z.object({ roles: z.array(roleSchema).max(100), projects: z.array(projectSchema).max(100), skills: z.array(skillSchema).max(300), education: z.array(educationSchema).max(100), summaries: z.array(summarySchema).max(10), meta: z.object({ sourceName: short(300), notes: short(5000) }).strict() }).strict()
 export type Master = z.infer<typeof masterSchema>
+// A PDF often repeats the last word of a name where the place begins ("University of California, Irvine Irvine, CA").
+export const collapseRepeatedWord = (text: string) => text.replace(/\b([\p{L}][\p{L}.'-]*)\s+\1\b(?=\s*,)/giu, '$1')
 export type Bullet = z.infer<typeof bulletSchema>
 export const emptyMaster = (): Master => ({ roles: [], projects: [], skills: [], education: [], summaries: [], meta: { sourceName: '', notes: '' } })
 

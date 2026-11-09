@@ -389,7 +389,7 @@ export class PipelineService {
       const summarySources = lines.flatMap((line) => line.sourceIds)
       const summaryFlags = selectedSummary ? verifyLayer1(selectedSummary.text, summarySources, master, synonyms) : []
       const summary = selectedSummary ? { variantId: selectedSummary.id, text: selectedSummary.text, sourceIds: [...new Set(summarySources)], verdict: claims.summaryVerdict, flags: summaryFlags } : null
-      const skillsLine = selectSkillsLine(master, extraction, job.title, synonyms)
+      const skillsLine = selectSkillsLine(master, extraction, job.title, synonyms, job.text.slice(0, MAX_JD_CHARS))
       verified = tailoredDocumentSchema.parse({ jobId: job.id, runId: run.id, snapshotHash: snap.hash, summary, skillsLine, lines, scores: scoring.scores, gaps: scoring.gaps, exportReady: lines.every((line) => line.verdict !== 'unsupported') && summary?.verdict !== 'unsupported' })
       saveCheckpoint(this.sqlite, run.id, 'verified', verified)
     }

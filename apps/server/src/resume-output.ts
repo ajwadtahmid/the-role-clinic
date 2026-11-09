@@ -4,7 +4,7 @@ import { join, dirname } from 'node:path'
 import { Document, Packer, Paragraph, TextRun } from 'docx'
 import mammoth from 'mammoth'
 import { extractText, getDocumentProxy } from 'unpdf'
-import type { Master, ParseCheck, Profile, ResumeBlock, Review } from '../../../packages/shared/src/index.js'
+import { collapseRepeatedWord, type Master, type ParseCheck, type Profile, type ResumeBlock, type Review } from '../../../packages/shared/src/index.js'
 
 const require = createRequire(import.meta.url)
 // pdfmake 0.3's server API differs from the 0.2 DefinitelyTyped API.
@@ -47,7 +47,7 @@ export function resumeBlocks(review: Review, profile: Profile): ResumeBlock[] {
   if (review.master.education.length) {
     add('education-heading', 'heading', 'Education')
     for (const item of review.master.education) {
-      add(item.id, 'section', [item.school, [item.credential, item.field].filter(Boolean).join(', '), dates(item.start, item.end)].filter(Boolean).join(' | '))
+      add(item.id, 'section', [collapseRepeatedWord(item.school), [item.credential, item.field].filter(Boolean).join(', '), dates(item.start, item.end)].filter(Boolean).join(' | '))
       add(`${item.id}-details`, 'text', item.details)
     }
   }

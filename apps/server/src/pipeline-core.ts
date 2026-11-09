@@ -146,13 +146,18 @@ export function chooseSummary(master: Master, jobText: string) {
     return score(`${b.label} ${b.text}`) - score(`${a.label} ${a.text}`)
   })[0] ?? null
 }
-export function selectSkillsLine(master: Master, extraction: Extraction, jobTitle: string, synonyms: Synonym[]) {
-  const jobText = `${jobTitle} ${extraction.requirements.map((r) => r.quote).join(' ')}`
-  return master.skills.filter((skill) => skill.name && equivalences(skill.name, synonyms).some((name) => includesTerm(jobText, name)))
+// The skills line: skills the posting names (anywhere in it, not only in the extracted requirements) come first, most relevant first.
+// A posting rarely names many of your skills, so the line is filled up to eight with skills your bullets actually show. Nothing outside the master is ever added.
+export function selectSkillsLine(master: Master, extraction: Extraction, jobTitle: string, synonyms: Synonym[], postingText = '') {
+  const jobText = `${jobTitle} ${extraction.requirements.map((r) => r.quote).join(' ')} ${postingText}`
+  const named = master.skills.filter((skill) => skill.name && equivalences(skill.name, synonyms).some((name) => includesTerm(jobText, name)))
     .sort((a, b) => {
       const relevance = (name: string) => extraction.requirements.reduce((score, requirement) => score + (equivalences(name, synonyms).some((term) => includesTerm(requirement.quote, term)) ? requirement.kind === 'nice' ? 1 : 2 : 0), 0)
       return relevance(b.name) - relevance(a.name) || Number(b.evidenceIds.length > 0) - Number(a.evidenceIds.length > 0)
-    }).slice(0, 20).map((skill) => skill.name)
+    }).slice(0, 20)
+  const evidence = evidenceRows(master).map((row) => `${row.bullet.text} ${row.bullet.skills.join(' ')} ${row.context}`)
+  const shown = master.skills.filter((skill) => skill.name && !named.includes(skill) && equivalences(skill.name, synonyms).some((name) => evidence.some((text) => includesTerm(text, name))))
+  return [...named, ...shown.slice(0, Math.max(0, 8 - named.length))].map((skill) => skill.name)
 }
 export function evidenceRows(master: Master) {
   return [...master.roles.flatMap((role) => role.bullets.filter((b) => !b.retired).map((bullet) => ({ bullet, context: `${role.title} at ${role.company}, ${role.start}–${role.end}`, kind: 'employment' as const }))), ...master.projects.flatMap((project) => project.bullets.filter((b) => !b.retired).map((bullet) => ({ bullet, context: `${project.name} project, ${project.start}–${project.end}, ${project.stack.join(', ')}`, kind: 'project' as const })))]

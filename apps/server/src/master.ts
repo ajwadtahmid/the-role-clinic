@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
 import { extractText, getDocumentProxy } from 'unpdf'
 import mammoth from 'mammoth'
-import { emptyMaster, emptyProfile, masterSchema, profileSchema, type Bullet, type Master, type Profile, type Synonym } from '../../../packages/shared/src/index.js'
+import { collapseRepeatedWord, emptyMaster, emptyProfile, masterSchema, profileSchema, type Bullet, type Master, type Profile, type Synonym } from '../../../packages/shared/src/index.js'
 
 export function readMaster(sqlite: Database.Database): { document: Master; updatedAt: string | null } {
   const row = sqlite.prepare('SELECT document,updated_at FROM master WHERE id=1').get() as { document: string; updated_at: string } | undefined
@@ -110,7 +110,7 @@ export function draftMasterFromText(text: string, sourceName: string) {
     if (section === 'summary') { master.summaries.push({ id: randomUUID(), label: `Summary ${master.summaries.length + 1}`, text: line }); continue }
     if (section === 'education') {
       if (!master.education.length || /university|college|institute|school/i.test(line)) {
-        master.education.push({ id: randomUUID(), school: line, credential: '', field: '', start: '', end: '', details: '' })
+        master.education.push({ id: randomUUID(), school: collapseRepeatedWord(line), credential: '', field: '', start: '', end: '', details: '' })
         issues.push(`Check school, credential, and dates for “${line}”.`)
       }
       else master.education[master.education.length - 1].details += `${master.education[master.education.length - 1].details ? '\n' : ''}${line}`

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { randomUUID } from 'node:crypto'
-import { emptyMaster, emptyProfile, type Requirement, type Synonym } from '../../../packages/shared/src/index.js'
+import { collapseRepeatedWord, emptyMaster, emptyProfile, type Requirement, type Synonym } from '../../../packages/shared/src/index.js'
 import { assessRequirement, chooseSummary, locateQuote, normalizeExtraction, selectSkillsLine, verifyLayer1 } from './pipeline-core.js'
 
 describe('deterministic pipeline checks', () => {
@@ -63,6 +63,21 @@ describe('deterministic pipeline checks', () => {
     const extraction = normalizeExtraction(JSON.stringify({ requirements: [{ quote: 'JS experience is required', kind: 'hard', category: 'skill', skill: 'JS', years: null }], seniority: '', vocabulary: [] }), jd, master, emptyProfile(), synonyms)
     expect(chooseSummary(master, jd)?.label).toBe('Backend')
     expect(selectSkillsLine(master, extraction, 'Good Engineer', synonyms)).toEqual(['JavaScript'])
+  })
+
+  it('fills the skills line with skills the bullets show, and reads the whole posting for skills it names', () => {
+    const own = emptyMaster()
+    own.projects.push({ id: randomUUID(), name: 'Shop', stack: ['Flutter'], start: 'March 2023', end: 'June 2023', summary: '', bullets: [{ id: randomUUID(), rev: 1, text: 'Deployed on AWS with Docker and MySQL', skills: [], metrics: [], verbs: [], sourceRef: '' }] })
+    own.skills.push(...['Rust', 'MySQL', 'AWS', 'Docker', 'Flutter', 'Java'].map((name) => ({ name, category: 'Tools', evidenceIds: [] })))
+    const none = normalizeExtraction(JSON.stringify({ requirements: [], seniority: '', vocabulary: [] }), 'Build things.', own, emptyProfile(), [])
+    // Nothing is named in the requirements, but the posting's own text names Java; the rest are skills the bullets show. Rust is listed only, so it stays out.
+    expect(selectSkillsLine(own, none, 'Engineer', [], 'You will write Java services.')).toEqual(['Java', 'MySQL', 'AWS', 'Docker', 'Flutter'])
+    expect(selectSkillsLine(own, none, 'Engineer', [])).toEqual(['MySQL', 'AWS', 'Docker', 'Flutter'])
+  })
+
+  it('collapses a word a PDF repeated before the place name', () => {
+    expect(collapseRepeatedWord('University of California, Irvine Irvine, CA')).toBe('University of California, Irvine, CA')
+    expect(collapseRepeatedWord('New York University, New York, NY')).toBe('New York University, New York, NY')
   })
 
   it('does not treat everyday words that are also tool names as unsupported tools', () => {
