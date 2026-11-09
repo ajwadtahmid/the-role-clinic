@@ -71,3 +71,29 @@ describe('local model context window', () => {
     } finally { globalThis.fetch = original }
   })
 })
+
+describe('local model errors', () => {
+  it('explains a missing model without exposing the server error body', async () => {
+    const original = globalThis.fetch
+    globalThis.fetch = (async () => new Response(JSON.stringify({ error: 'model "gemma4:12b" not found; PRIVATE_SERVER_DETAIL' }), { status: 404 })) as typeof fetch
+    try {
+      const adapter = new OllamaAdapter(async () => defaultSettings())
+      await expect(adapter.complete('gemma4:12b', { system: '', user: '', tier: 'fast' })).rejects.toThrow('Ollama model "gemma4:12b" was not found on this computer. Download it in Ollama or choose an installed model in Settings, then retry.')
+    } finally { globalThis.fetch = original }
+  })
+
+  it.each([
+    [404, 'Not found'],
+    [404, JSON.stringify({ error: 'route not found' })],
+    [404, JSON.stringify({ error: 404 })],
+    [404, 'null'],
+    [500, JSON.stringify({ error: 'model "gemma4:12b" not found' })],
+  ])('keeps the HTTP error for other responses: %s %s', async (status, body) => {
+    const original = globalThis.fetch
+    globalThis.fetch = (async () => new Response(body, { status })) as typeof fetch
+    try {
+      const adapter = new OllamaAdapter(async () => defaultSettings())
+      await expect(adapter.complete('gemma4:12b', { system: '', user: '', tier: 'fast' })).rejects.toThrow(`Ollama request failed with HTTP ${status}.`)
+    } finally { globalThis.fetch = original }
+  })
+})

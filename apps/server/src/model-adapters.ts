@@ -83,7 +83,15 @@ export class OllamaAdapter implements ModelAdapter {
       }),
       signal: AbortSignal.timeout(180000),
     })
-    if (!response.ok) throw new Error(`Ollama request failed with HTTP ${response.status}.`)
+    if (!response.ok) {
+      if (response.status === 404) {
+        const detail: unknown = await response.json().catch(() => null)
+        if (detail && typeof detail === 'object' && 'error' in detail && typeof detail.error === 'string' && /\bmodel\b.{0,300}\bnot found\b/i.test(detail.error)) {
+          throw new Error(`Ollama model "${model}" was not found on this computer. Download it in Ollama or choose an installed model in Settings, then retry.`)
+        }
+      }
+      throw new Error(`Ollama request failed with HTTP ${response.status}.`)
+    }
     const payload = await response.json() as { message?: { content?: string; thinking?: string }; prompt_eval_count?: number; eval_count?: number; model?: string; done_reason?: string }
     if (typeof payload.message?.content !== 'string') throw new Error('Ollama returned no message content.')
     if (payload.done_reason === 'length' && !request.allowTruncatedResponse) throw new Error(payload.message.content.trim() ? 'Ollama output was truncated at its token limit. Increase the task budget or reduce the input.' : 'Ollama exhausted its output budget before returning JSON (empty content; reasoning may have consumed the budget).')
