@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { tailoredDocumentSchema, tailoredLineSchema, type AppSettings, type BulletScore, type Extraction, type Gap, type Master, type TailoredDocument, type TailoredLine, type TaskName, type Review, type Suggestion } from '../../../packages/shared/src/index.js'
 import { readMaster, readProfile, listSynonyms, snapshotMaster } from './master.js'
 import { readSettings } from './settings.js'
+import { aiActive, resolveAiFeatures } from './ai-features.js'
 import { taskOutputLimits, type ModelRouter, type ModelRequest, type ModelResponse } from './model-adapters.js'
 import { scoreResponseSchema, fitMatchResponseSchema, verdictResponseSchema, slopResponseSchema, modelFormats, requireIds, parseDraft } from './model-schemas.js'
 import { type RunContext, type RunRecord, SerialRunQueue } from './queue.js'
@@ -122,7 +123,7 @@ export class PipelineService {
   async maybeAutoExtract(jobId: string) {
     if (!existsSync(join(this.dataDirectory, 'settings.json'))) return null
     const settings = await readSettings(this.dataDirectory)
-    if (!settings.autoFitCheck || settings.taskModels.requirementExtraction.provider !== 'ollama') return null
+    if (!settings.autoFitCheck || settings.taskModels.requirementExtraction.provider !== 'ollama' || !aiActive(resolveAiFeatures(this.sqlite, this.dataDirectory, settings))) return null
     const existing = this.sqlite.prepare("SELECT 1 FROM runs WHERE job_id=? AND kind='extract' AND status IN ('queued','running','done') LIMIT 1").get(jobId)
     if (existing) return null
     try { return await this.enqueueExtract(jobId) } catch { return null }

@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { appSettingsSchema, taskNames, type AppSettings, type PublicSettings } from '../../../packages/shared/src/index.js'
+import { appSettingsSchema, taskNames, type AiFeatures, type AppSettings, type PublicSettings } from '../../../packages/shared/src/index.js'
 import { protectPrivateFile } from './private-file.js'
 
 const DEFAULT_MODEL = 'gemma4:12b'
@@ -39,7 +39,7 @@ export async function writeSettings(dataDirectory: string, settings: AppSettings
   } finally { await rm(tmp, { force: true }) }
 }
 
-export function toPublicSettings(settings: AppSettings): PublicSettings {
+export function toPublicSettings(settings: AppSettings, aiFeatures: AiFeatures): PublicSettings {
   return {
     taskModels: settings.taskModels,
     ollamaBaseUrl: settings.ollamaBaseUrl,
@@ -49,5 +49,6 @@ export function toPublicSettings(settings: AppSettings): PublicSettings {
     modelPrices: settings.modelPrices,
     jobFeed: settings.jobFeed?.path ? settings.jobFeed : undefined,
     autoFitCheck: settings.autoFitCheck,
+    aiFeatures,
   }
 }

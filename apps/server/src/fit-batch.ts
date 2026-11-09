@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3'
 import type { PipelineService } from './pipeline.js'
 import { readSettings } from './settings.js'
+import { aiActive, resolveAiFeatures } from './ai-features.js'
 
 export type FitBatchState = { running: boolean; paused: boolean; total: number; done: number; failed: number; message: string }
 const idle: FitBatchState = { running: false, paused: false, total: 0, done: 0, failed: 0, message: '' }
@@ -61,7 +62,7 @@ export class FitBatch {
   // Starts only when the user chose automatic checks and the check runs on this computer.
   async maybeStart() {
     const settings = await readSettings(this.dataDirectory)
-    if (settings.autoFitCheck && settings.taskModels.requirementExtraction.provider === 'ollama') await this.start(false)
+    if (settings.autoFitCheck && settings.taskModels.requirementExtraction.provider === 'ollama' && aiActive(resolveAiFeatures(this.sqlite, this.dataDirectory, settings))) await this.start(false)
   }
 
   stop(): FitBatchState {

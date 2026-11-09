@@ -19,6 +19,9 @@ export const modelChoiceSchema = z.object({
   temperature: z.number().min(0).max(2).optional(),
 })
 
+export const aiFeaturesSchema = z.object({ chosen: z.boolean(), enabled: z.boolean(), hidden: z.boolean() }).strict()
+export type AiFeatures = z.infer<typeof aiFeaturesSchema>
+
 export const appSettingsSchema = z.object({
   taskModels: z.record(taskNameSchema, modelChoiceSchema),
   ollamaBaseUrl: z.string().url().max(500),
@@ -28,6 +31,7 @@ export const appSettingsSchema = z.object({
   modelPrices: z.record(z.string().min(1).max(160), z.object({ inputPerMillion: z.number().positive().max(1000), outputPerMillion: z.number().positive().max(1000) }).strict()).default({}),
   jobFeed: z.object({ path: z.string().trim().max(1000) }).strict().optional(),
   autoFitCheck: z.boolean().default(false),
+  aiFeatures: aiFeaturesSchema.optional(),
 })
 export type AppSettings = z.infer<typeof appSettingsSchema>
 
@@ -40,6 +44,7 @@ export const publicSettingsSchema = z.object({
   modelPrices: appSettingsSchema.shape.modelPrices,
   jobFeed: appSettingsSchema.shape.jobFeed,
   autoFitCheck: appSettingsSchema.shape.autoFitCheck,
+  aiFeatures: aiFeaturesSchema,
 })
 export type PublicSettings = z.infer<typeof publicSettingsSchema>
 

@@ -310,6 +310,16 @@ describe('extraction and tailoring pipeline', () => {
     sqlite.close()
   })
 
+  it('does not check new jobs on its own while AI features are hidden', async () => {
+    const { sqlite, post, request, job } = await setup(true)
+    expect(job.extractionRunId).toBeTruthy()
+    await waitFor(sqlite, 'extract', 'done')
+    expect((await request('/api/ai-features', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ hidden: true }) })).status).toBe(200)
+    const second = await (await post('/api/jobs', { company: 'Second', title: 'Developer', text: `${jd} Second posting.` })).json() as { extractionRunId: string | null }
+    expect(second.extractionRunId).toBeNull()
+    sqlite.close()
+  })
+
   it('checks a job again when its stored check predates the local match step, and not once it has been redone', async () => {
     const { sqlite, post, request, job } = await setup()
     sqlite.prepare('INSERT INTO requirements(id,job_id,document,created_at) VALUES(?,?,?,?)').run(randomUUID(), job.id, JSON.stringify({ requirements: [], seniority: '', vocabulary: [], partial: false }), new Date().toISOString())

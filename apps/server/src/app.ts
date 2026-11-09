@@ -9,6 +9,7 @@ import type Database from 'better-sqlite3'
 import type { ClinicDatabase } from './db.js'
 import { appSettingsSchema, applicationStatuses, closedOutcomes, taskNames, suggestAnswerCategory, type AppSettings } from '../../../packages/shared/src/index.js'
 import { readSettings, toPublicSettings, writeSettings } from './settings.js'
+import { aiActive, resolveAiFeatures } from './ai-features.js'
 import { SerialRunQueue } from './queue.js'
 import { ModelRouter } from './model-adapters.js'
 import { captureJobUrl } from './capture.js'
@@ -430,7 +431,36 @@ export function createApp(options: AppOptions) {
     } catch { return context.json({ answers: [] }) }
   })
 
-  app.get('/api/settings', async (context) => context.json(toPublicSettings(await readSettings(options.dataDirectory))))
+  // Public settings carry the resolved AI-features choice (an install that predates the choice counts as on).
+  const publicSettings = (settings: AppSettings) => toPublicSettings(settings, resolveAiFeatures(options.sqlite, options.dataDirectory, settings))
+  app.get('/api/settings', async (context) => context.json(publicSettings(await readSettings(options.dataDirectory))))
+
+  // Whether AI features are chosen, on and showing. Hiding changes only what is shown; nothing is deleted.
+  app.put('/api/ai-features', async (context) => {
+    const payload = await context.req.json().catch(() => null) as Record<string, unknown> | null
+    const flags = ['chosen', 'enabled', 'hidden'] as const
+    if (!payload || typeof payload !== 'object' || flags.some((flag) => payload[flag] !== undefined && typeof payload[flag] !== 'boolean')) return context.json({ error: 'Send chosen, enabled or hidden as true or false.' }, 400)
+    const settings = await readSettings(options.dataDirectory), current = resolveAiFeatures(options.sqlite, options.dataDirectory, settings)
+    const next = { ...current, ...Object.fromEntries(flags.filter((flag) => typeof payload[flag] === 'boolean').map((flag) => [flag, payload[flag]])) }
+    // Turning AI on (or choosing at all) shows it again, and turning it off settles the first question.
+    if (payload.enabled === true && payload.hidden === undefined) next.hidden = false
+    next.chosen = true
+    await writeSettings(options.dataDirectory, { ...settings, aiFeatures: next })
+    return context.json({ aiFeatures: next })
+  })
+
+  // One tiny question to the local model, so setup can say it works before AI features are turned on.
+  app.post('/api/ai/test', async (context) => {
+    const settings = await readSettings(options.dataDirectory), choice = settings.taskModels.requirementExtraction
+    if (choice.provider !== 'ollama') return context.json({ ok: false, error: 'The quick test only runs on a local model, so it never spends money.' }, 409)
+    const started = Date.now()
+    try {
+      await modelRouter.complete('requirementExtraction', { tier: 'fast', system: 'Answer with the single word OK.', user: 'Say OK.', temperature: 0, maxOutputTokens: 16 })
+      return context.json({ ok: true, seconds: Math.max(1, Math.round((Date.now() - started) / 1000)), model: choice.model })
+    } catch (error) {
+      return context.json({ ok: false, error: error instanceof Error ? error.message : 'The model did not answer.' }, 502)
+    }
+  })
 
   app.put('/api/settings', async (context) => {
     const payload = await context.req.json().catch(() => null)
@@ -446,14 +476,14 @@ export function createApp(options: AppOptions) {
     if (!Object.hasOwn(payload, 'anthropicApiKey')) value = { ...value, anthropicApiKey: current.anthropicApiKey }
     try { localOllamaUrl(value.ollamaBaseUrl) } catch (error) { return context.json({ error: error instanceof Error ? error.message : 'Invalid Ollama URL.' }, 400) }
     await writeSettings(options.dataDirectory, value)
-    return context.json(toPublicSettings(value))
+    return context.json(publicSettings(value))
   })
 
   app.delete('/api/settings/anthropic-key', async (context) => {
     const settings = await readSettings(options.dataDirectory)
     delete settings.anthropicApiKey
     await writeSettings(options.dataDirectory, settings)
-    return context.json(toPublicSettings(settings))
+    return context.json(publicSettings(settings))
   })
 
   app.post('/api/connections/:provider/test', async (context) => {
@@ -473,6 +503,8 @@ export function createApp(options: AppOptions) {
     }
   })
 
+    // The AI-features choice is changed only through /api/ai-features, never by saving model settings.
+    value = { ...value, aiFeatures: current.aiFeatures }
   app.post('/api/backups', async (context) => {
     return context.json({ ok: true, ...databaseBackup(options.sqlite, options.dataDirectory) }, 201)
   })
