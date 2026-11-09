@@ -1,12 +1,12 @@
 import { useEffect, useState, type ReactNode } from 'react'
 
-// A short confirmation at the bottom of the screen. It does not move the page, can offer Undo, and closes by itself unless told not to.
-export function Toast({ children, onUndo, onClose, error = false, autoClose = !error }: { children: ReactNode; onUndo?: () => void; onClose: () => void; error?: boolean; autoClose?: boolean }) {
+// A short message at the bottom of the screen. It does not move the page, can offer Undo, and closes by itself after ten seconds.
+export const toastSeconds = 10
+export function Toast({ children, onUndo, onClose, error = false }: { children: ReactNode; onUndo?: () => void; onClose: () => void; error?: boolean }) {
   useEffect(() => {
-    if (!autoClose) return
-    const timer = window.setTimeout(onClose, 8000)
+    const timer = window.setTimeout(onClose, toastSeconds * 1000)
     return () => window.clearTimeout(timer)
-  }, [children, autoClose])
+  }, [children])
   return <div className={`toast${error ? ' toast-error' : ''}`} role={error ? 'alert' : 'status'}>
     <span className="toast-text">{children}</span>
     {onUndo && <button className="button quiet small" onClick={() => { onUndo(); onClose() }}>Undo</button>}
