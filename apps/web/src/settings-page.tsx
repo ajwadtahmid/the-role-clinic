@@ -7,6 +7,8 @@ import { FollowUpSettings } from './followup-settings.js'
 import { Toast } from './toast.js'
 import { RestoreAnnouncer, SaveRegistry, type SaveSection } from './settings-save.js'
 import { readDraft, useDraft } from './unsaved.js'
+import { AiFeaturesPanel } from './ai-setup.js'
+import { useAiFeatures } from './ai-features.js'
 
 const labels: Record<TaskName, { title: string; description: string }> = {
   requirementExtraction: { title: 'Requirement extraction', description: 'Find required and preferred qualifications in a job posting.' },
@@ -28,6 +30,8 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export function SettingsPage() {
+  // The model settings are part of AI features: they show while AI is on, or when the advanced Claude option is opened.
+  const { features } = useAiFeatures(), [advanced, setAdvanced] = useState(false), showModels = (features.enabled && !features.hidden) || advanced
   const [settings, setSettings] = useState<SettingsDraft | null>(null)
   const [notice, setNotice] = useState<Notice>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -184,8 +188,10 @@ export function SettingsPage() {
 
     {notice && <Toast error={notice.kind === 'error'} onClose={() => setNotice(null)}>{notice.text}</Toast>}
 
-    <div className="rs-layout"><SectionRail items={[{ id: 'models', label: 'Résumé tailoring' }, { id: 'feed', label: 'Job feed' }, { id: 'followups', label: 'Follow-ups' }, { id: 'backups', label: 'Backups' }, { id: 'about', label: 'About' }]} /><div className="content">
-    <section className="panel provider-panel block" id="models" tabIndex={-1} aria-labelledby="tailoring-heading">
+    <div className="rs-layout"><SectionRail items={[{ id: 'ai', label: 'AI features' }, ...(showModels ? [{ id: 'models', label: 'Résumé tailoring' }] : []), { id: 'feed', label: 'Job feed' }, { id: 'followups', label: 'Follow-ups' }, { id: 'backups', label: 'Backups' }, { id: 'about', label: 'About' }]} /><div className="content">
+    <AiFeaturesPanel advancedOpen={advanced} onAdvanced={setAdvanced} />
+
+    {showModels && <section className="panel provider-panel block" id="models" tabIndex={-1} aria-labelledby="tailoring-heading">
       <div className="block-head"><h2 id="tailoring-heading">Résumé tailoring</h2></div>
       <div className={`status-line${status.tone === 'ok' ? '' : ` ${status.tone}`}`} role="status"><span className="dot" aria-hidden="true" /><div><b>{status.title}</b><span className="t">{status.text}</span></div></div>
       <div className="provider-grid" role="radiogroup" aria-label="Where tailoring runs">
@@ -251,7 +257,7 @@ export function SettingsPage() {
           <datalist id="installed-models">{ollamaModels.map((model) => <option value={model} key={model} />)}</datalist>
         </div>
       </details>
-    </section>
+    </section>}
 
     <div id="feed" tabIndex={-1}><FeedSettings /></div>
     <div id="followups" tabIndex={-1}><FollowUpSettings /></div>
