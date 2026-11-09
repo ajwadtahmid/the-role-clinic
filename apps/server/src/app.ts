@@ -444,7 +444,10 @@ export function createApp(options: AppOptions) {
   app.post('/api/connections/:provider/test', async (context) => {
     const provider = context.req.param('provider')
     if (provider !== 'ollama' && provider !== 'anthropic') return context.json({ ok: false, error: 'Unknown provider.' }, 404)
-    const settings = await readSettings(options.dataDirectory)
+    const saved = await readSettings(options.dataDirectory)
+    // The page may ask about an address it has not saved yet, so the test answers for what is on screen.
+    const body = await context.req.json().catch(() => null) as { ollamaBaseUrl?: unknown } | null
+    const settings = provider === 'ollama' && typeof body?.ollamaBaseUrl === 'string' && body.ollamaBaseUrl.trim() ? { ...saved, ollamaBaseUrl: body.ollamaBaseUrl.trim() } : saved
     try {
       return context.json(provider === 'ollama' ? await testOllama(settings) : await testAnthropic(settings))
     } catch (error) {

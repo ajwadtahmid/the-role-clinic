@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { api } from './api.js'
 import { useToast } from './toast.js'
-import { useSaveSection } from './settings-save.js'
+import { useContext } from 'react'
+import { RestoreAnnouncer, useSaveSection } from './settings-save.js'
+import { readDraft, useDraft } from './unsaved.js'
 
 type Status = { configured: boolean; path: string | null; isDefault: boolean; defaultPath: string | null; lastCheckedAt: string | null }
 type TestResult = { rows: number; valid: number; invalid: number; alreadyImported: number; newRows: number; missingColumns: string[] }
@@ -10,12 +12,13 @@ type Plan = { csvRows: number; triageJobs: Array<{ id: string; company: string; 
 // Settings for an optional job feed: a CSV that another tool fills with jobs it found. Role Clinic only reads it,
 // marks what it imported, and removes old rows when the owner asks. A different file path saves with the rest of the page.
 export function FeedSettings() {
-  const [status, setStatus] = useState<Status | null>(null), [path, setPath] = useState(''), [busy, setBusy] = useState(''), { say, fail, node: toastNode } = useToast()
+  const [status, setStatus] = useState<Status | null>(null), [path, setPath] = useState(''), [busy, setBusy] = useState(''), { say, fail, node: toastNode } = useToast(), announceRestored = useContext(RestoreAnnouncer)
   const [test, setTest] = useState<TestResult | null>(null), [days, setDays] = useState('60'), [plan, setPlan] = useState<Plan | null>(null)
   const savedPath = status ? (status.isDefault ? '' : status.path ?? '') : ''
   const dirty = status !== null && path !== savedPath
-  useEffect(() => { void api<Status>('/api/feed/status').then((value) => { setStatus(value); setPath(value.isDefault ? '' : value.path ?? '') }).catch(fail) }, [])
+  useEffect(() => { void api<Status>('/api/feed/status').then((value) => { const saved = value.isDefault ? '' : value.path ?? '', draft = readDraft<string>('feed', saved); setStatus(value); setPath(draft ?? saved); if (draft !== null) announceRestored() }).catch(fail) }, [])
   async function savePath() { const value = await api<Status>('/api/feed/path', { method: 'PUT', body: JSON.stringify({ path }) }); setStatus(value); setPath(value.isDefault ? '' : value.path ?? ''); setTest(null); setPlan(null) }
+  useDraft('feed', savedPath, path, dirty, status !== null)
   useSaveSection('feed', dirty, savePath, () => { setPath(savedPath); setTest(null) })
   async function run<T>(name: string, work: () => Promise<T>) { setBusy(name); say(''); try { return await work() } catch (error) { fail(error) } finally { setBusy('') } }
   const testFile = () => run('test', async () => { setTest(await api<TestResult>('/api/feed/test', { method: 'POST', body: JSON.stringify({ path }) })) })

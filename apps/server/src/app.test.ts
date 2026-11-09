@@ -105,6 +105,14 @@ describe('local server foundation', () => {
     sqlite.close()
   })
 
+  it('tests the Ollama address it is given, not only the saved one, and refuses one that is not on this computer', async () => {
+    const { app, sqlite } = await fixture()
+    const response = await request(app, '/api/connections/ollama/test', { method: 'POST', headers: sameOrigin, body: JSON.stringify({ ollamaBaseUrl: 'http://example.com:11434' }) })
+    expect(response.status).toBe(502)
+    expect((await response.json()).error).toContain('localhost or 127.0.0.1')
+    sqlite.close()
+  })
+
   it('creates a consistent database backup outside the app bundle', async () => {
     const { app, dataDirectory, sqlite } = await fixture()
     const response = await request(app, '/api/backups', { method: 'POST', headers: sameOrigin, body: '{}' })

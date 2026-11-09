@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -57,6 +57,39 @@ describe('settings page', () => {
     await user.click(screen.getByRole('button', { name: 'Save settings' }))
     await screen.findByText('Settings saved locally.')
     expect(screen.queryByRole('group', { name: 'Unsaved settings' })).toBeNull()
+    sqlite.close()
+  })
+
+  it('keeps unsaved settings, follow-up days and the feed path when you leave and come back', async () => {
+    const { user, sqlite } = await setup()
+    const address = await screen.findByLabelText('Local server address') as HTMLInputElement
+    await user.clear(address); await user.type(address, 'http://127.0.0.1:11555')
+    await user.type(screen.getByLabelText('API key'), 'sk-ant-typed')
+    const days = screen.getByLabelText('Days with no reply') as HTMLInputElement
+    await waitFor(() => expect(days.disabled).toBe(false))
+    await user.clear(days); await user.type(days, '21')
+    await user.type(screen.getByLabelText('Path to a different CSV file'), '/tmp/other.csv')
+    cleanup()
+    render(<SettingsPage />)
+    expect((await screen.findByLabelText('Local server address') as HTMLInputElement).value).toBe('http://127.0.0.1:11555')
+    expect((screen.getByLabelText('API key') as HTMLInputElement).value).toBe('sk-ant-typed')
+    await waitFor(() => expect((screen.getByLabelText('Days with no reply') as HTMLInputElement).value).toBe('21'))
+    await waitFor(() => expect((screen.getByLabelText('Path to a different CSV file') as HTMLInputElement).value).toBe('/tmp/other.csv'))
+    expect(screen.getByRole('group', { name: 'Unsaved settings' })).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Discard' })); await user.click(screen.getByRole('button', { name: 'Yes, discard' }))
+    cleanup()
+    render(<SettingsPage />)
+    expect((await screen.findByLabelText('Local server address') as HTMLInputElement).value).toBe('http://127.0.0.1:11434')
+    sqlite.close()
+  })
+
+  it('tests the address in the field and does not call it the saved address’s status', async () => {
+    const { user, sqlite } = await setup()
+    const address = await screen.findByLabelText('Local server address') as HTMLInputElement
+    await user.clear(address); await user.type(address, 'http://example.com:11434')
+    await user.click(screen.getByRole('button', { name: 'Test connection' }))
+    expect(await screen.findByText(/plain HTTP URL on this computer/)).toBeTruthy()
+    expect(screen.queryByText(/not running at http:\/\/example\.com/)).toBeNull()
     sqlite.close()
   })
 

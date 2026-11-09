@@ -5,7 +5,8 @@ import { taskNames, type PublicSettings, type TaskName } from '../../../packages
 import { AppHeader, PageHeader, SectionRail } from './layout.js'
 import { FollowUpSettings } from './followup-settings.js'
 import { Toast } from './toast.js'
-import { SaveRegistry, type SaveSection } from './settings-save.js'
+import { RestoreAnnouncer, SaveRegistry, type SaveSection } from './settings-save.js'
+import { readDraft, useDraft } from './unsaved.js'
 
 const labels: Record<TaskName, { title: string; description: string }> = {
   requirementExtraction: { title: 'Requirement extraction', description: 'Find required and preferred qualifications in a job posting.' },
@@ -57,10 +58,16 @@ export function SettingsPage() {
     if (section) next[key] = section; else delete next[key]
     return next
   }), [])
+  const announceRestored = useCallback(() => setNotice({ kind: 'neutral', text: 'Your unsaved changes are back. Save them or discard them.' }), [])
   const [editing, setEditing] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
-    request<PublicSettings>('/api/settings').then(adopt).catch((error: Error) => setNotice({ kind: 'error', text: error.message }))
+    request<PublicSettings>('/api/settings').then((value) => {
+      adopt(value)
+      // Edits made before leaving the page come back, as long as the saved settings have not changed since.
+      const draft = readDraft<SettingsDraft>('settings', JSON.stringify(value))
+      if (draft) { setSettings(draft); announceRestored() }
+    }).catch((error: Error) => setNotice({ kind: 'error', text: error.message }))
   }, [])
 
   function updateTask(task: TaskName, key: 'provider' | 'model' | 'reasoning' | 'temperature', value: string | number | undefined) {
@@ -129,10 +136,11 @@ export function SettingsPage() {
         const saved = await request<PublicSettings>('/api/settings', { method: 'PUT', body: JSON.stringify({ ...publicSettings, anthropicApiKey }) })
         adopt(saved)
       }
-      const result = await request<{ ok: boolean; detail?: string; error?: string; models?: string[] }>(`/api/connections/${provider}/test`, { method: 'POST', body: '{}' })
-      if (provider === 'ollama') { if (result.models) setOllamaModels(result.models); setOllama(result.ok ? { state: 'ok' } : { state: 'down', error: result.error }) }
+      // The address in the field is the one tested, saved or not.
+      const result = await request<{ ok: boolean; detail?: string; error?: string; models?: string[] }>(`/api/connections/${provider}/test`, { method: 'POST', body: JSON.stringify(provider === 'ollama' ? { ollamaBaseUrl: settings.ollamaBaseUrl } : {}) })
+      if (provider === 'ollama') { if (result.models) setOllamaModels(result.models); if (settings.ollamaBaseUrl === savedOllamaUrl) setOllama(result.ok ? { state: 'ok' } : { state: 'down', error: result.error }) }
       setNotice({ kind: result.ok ? 'success' : 'error', text: result.detail ?? result.error ?? 'Connection test failed.' })
-    } catch (error) { if (provider === 'ollama') setOllama({ state: 'down', error: (error as Error).message }); setNotice({ kind: 'error', text: (error as Error).message }) }
+    } catch (error) { if (provider === 'ollama' && settings.ollamaBaseUrl === savedOllamaUrl) setOllama({ state: 'down', error: (error as Error).message }); setNotice({ kind: 'error', text: (error as Error).message }) }
     finally { setBusy(null) }
   }
 
@@ -149,6 +157,7 @@ export function SettingsPage() {
   const settingsChanged = Boolean(settings) && (JSON.stringify({ ...settings, anthropicApiKey: undefined }) !== stored || Boolean(settings?.anthropicApiKey))
   const pending = settingsChanged || Object.keys(sections).length > 0
   const [confirmDiscard, setConfirmDiscard] = useState(false)
+  useDraft('settings', stored, settings, settingsChanged, settings !== null)
   const usesClaude = runsOn('anthropic').length > 0
   if (!settings) return <main className="shell"><p className="loading">Loading local settings…</p></main>
 
@@ -168,7 +177,7 @@ export function SettingsPage() {
     : { tone: 'ok', title: `Ollama is set up: ${localModel}`, text: 'Tailoring runs on this computer. Nothing leaves it.' }
   const modelSummary = (task: TaskName) => `${settings.taskModels[task].provider === 'ollama' ? 'Ollama' : 'Claude'} · ${settings.taskModels[task].model || 'no model'}`
 
-  return <SaveRegistry.Provider value={register}><main className="shell" id="main" tabIndex={-1}>
+  return <SaveRegistry.Provider value={register}><RestoreAnnouncer.Provider value={announceRestored}><main className="shell" id="main" tabIndex={-1}>
     <AppHeader current="settings" />
     <PageHeader title="Settings">Everything here stays on this computer unless you choose Claude.</PageHeader>
 
@@ -249,5 +258,5 @@ export function SettingsPage() {
 
     </div></div>
     {pending && <div className="savebar" role="group" aria-label="Unsaved settings">{confirmDiscard ? <><span>Discard every unsaved change?</span><button className="button danger small" onClick={discardAll}>Yes, discard</button><button className="button quiet small" onClick={() => setConfirmDiscard(false)}>Keep editing</button></> : <><span>You have unsaved settings.</span><button className="button primary small" disabled={busy === 'save'} onClick={saveAll}>{busy === 'save' ? 'Saving…' : 'Save settings'}</button><button className="button quiet small" disabled={busy === 'save'} onClick={() => setConfirmDiscard(true)}>Discard</button></>}</div>}
-  </main></SaveRegistry.Provider>
+  </main></RestoreAnnouncer.Provider></SaveRegistry.Provider>
 }

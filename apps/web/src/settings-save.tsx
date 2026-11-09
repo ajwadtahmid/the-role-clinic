@@ -5,6 +5,9 @@ import { createContext, useContext, useEffect, useRef } from 'react'
 export type SaveSection = { save: () => Promise<void>; discard: () => void }
 export const SaveRegistry = createContext<(key: string, section: SaveSection | null) => void>(() => {})
 
+// Sections that bring back an unsaved edit tell the page, which says so once.
+export const RestoreAnnouncer = createContext<() => void>(() => {})
+
 export function useSaveSection(key: string, dirty: boolean, save: () => Promise<void>, discard: () => void) {
   const register = useContext(SaveRegistry)
   const latest = useRef({ save, discard })
