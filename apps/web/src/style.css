@@ -401,6 +401,7 @@ kbd{font:600 11px ui-monospace,SFMono-Regular,Consolas,monospace;border:1px soli
 .seg button[aria-pressed=true]{background:var(--green);color:#fff}
 .rv-doc{position:relative;border-radius:10px;max-height:calc(100vh - 260px);overflow:auto;min-height:0;padding:30px 34px;line-height:1.45}
 .rv-doc .resume-bullet,.rv-doc .resume-text{font-size:12px}
+.rv-doc .pv-row{position:relative}.rv-doc .pv-copy{position:absolute;top:2px;right:2px;font:600 11px system-ui,sans-serif;color:var(--green);background:#fff;border:1px solid var(--line);border-radius:6px;padding:2px 8px;cursor:pointer;opacity:0}.rv-doc .pv-row:hover .pv-copy,.rv-doc .pv-copy:focus-visible{opacity:1}@media (hover:none){.rv-doc .pv-copy{opacity:1}}
 .rv-doc .pv-orig{display:block;font:.82em system-ui,sans-serif;color:var(--text-mid);margin:1px 0 4px}
 .rv-doc .pv-note{font:600 12px system-ui,sans-serif;color:var(--amber-text);margin:0 0 10px}
 .rv-export{padding:14px;display:grid;gap:8px}
