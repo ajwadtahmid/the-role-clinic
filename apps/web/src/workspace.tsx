@@ -200,7 +200,7 @@ export function Workspace() {
   return <main className={`shell${selected ? ' detail-open' : ''}`} id="main" tabIndex={-1}>
     <AppHeader current="jobs" />
     <PageHeader title="Jobs" actions={<>{feed?.configured && <>{feed.lastCheckedAt && <span className="subtle feed-checked">Last checked {new Date(feed.lastCheckedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>}<button className="button secondary" disabled={checking} onClick={() => void checkFeed(true)}>{checking ? 'Checking…' : 'Check for new jobs'}</button></>}<button className="button primary" onClick={() => setShowAdd(true)}><Icon name="plus" />Add job</button></>}>Jobs you have not applied to yet. Applied jobs are in the <a href="#tracker">Tracker</a>{counts && counts.applied > 0 ? ` (${counts.applied})` : ''}.</PageHeader>
-    {notice && <div className="notice neutral" role="status">{notice}</div>}
+    {notice && <Toast error onClose={() => setNotice('')}>{notice}</Toast>}
     {toast && <Toast onUndo={toast.undo} onClose={() => setToast(null)}>{toast.text}</Toast>}
     {listing && <>
       <div className="toolbar"><label className="search"><Icon name="search" /><input aria-label="Search jobs" value={query} placeholder="Search title or company" onChange={(e) => setQuery(e.target.value)} /></label><label className="select">Sort<select value={sort} onChange={(event) => setSort(event.target.value as 'newest' | 'company')}><option value="newest">Newest first</option><option value="company">Company A–Z</option></select></label></div>

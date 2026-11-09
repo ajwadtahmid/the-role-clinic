@@ -4,6 +4,7 @@ import { MaintenancePanel } from './runtime.js'
 import { taskNames, type PublicSettings, type TaskName } from '../../../packages/shared/src/index.js'
 import { AppHeader, PageHeader, SectionRail } from './layout.js'
 import { FollowUpSettings } from './followup-settings.js'
+import { Toast } from './toast.js'
 
 const labels: Record<TaskName, { title: string; description: string }> = {
   requirementExtraction: { title: 'Requirement extraction', description: 'Find required and preferred qualifications in a job posting.' },
@@ -100,7 +101,7 @@ export function SettingsPage() {
     <AppHeader current="settings" />
     <PageHeader title="Settings">Everything here stays on this computer unless you choose Claude.</PageHeader>
 
-    {notice && <div className={`notice ${notice.kind}`} role="status">{notice.text}</div>}
+    {notice && <Toast error={notice.kind === 'error'} onClose={() => setNotice(null)}>{notice.text}</Toast>}
 
     <div className="rs-layout"><SectionRail items={[{ id: 'models', label: 'Résumé tailoring' }, { id: 'feed', label: 'Job feed' }, { id: 'followups', label: 'Follow-ups' }, { id: 'help', label: 'Help' }, { id: 'backups', label: 'Backups and data' }, ...(usesClaude ? [{ id: 'costs', label: 'Cost cap' }] : [])]} /><div className="content">
     <section className="panel provider-panel block" id="models" tabIndex={-1}>

@@ -500,3 +500,5 @@ kbd{font:600 11px ui-monospace,SFMono-Regular,Consolas,monospace;border:1px soli
 .savebar,.toast{border:2px solid CanvasText}
 }
 .welcome-shell .topbar .local-chip{margin-left:auto}
+.toast-error{background:#7a2e22}
+.toast-error .toast-text{font-weight:600}

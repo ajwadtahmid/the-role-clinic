@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from './api.js'
+import { useToast } from './toast.js'
 
 type Status = { configured: boolean; path: string | null; isDefault: boolean; defaultPath: string | null; lastCheckedAt: string | null }
 type TestResult = { rows: number; valid: number; invalid: number; alreadyImported: number; newRows: number; missingColumns: string[] }
@@ -8,10 +9,10 @@ type Plan = { csvRows: number; triageJobs: Array<{ id: string; company: string; 
 // Settings for an optional job feed: a CSV that another tool fills with jobs it found. Role Clinic only reads it,
 // marks what it imported, and removes old rows when the owner asks.
 export function FeedSettings() {
-  const [status, setStatus] = useState<Status | null>(null), [path, setPath] = useState(''), [busy, setBusy] = useState(''), [message, setMessage] = useState('')
+  const [status, setStatus] = useState<Status | null>(null), [path, setPath] = useState(''), [busy, setBusy] = useState(''), { say: setMessage, fail, node: toastNode } = useToast()
   const [test, setTest] = useState<TestResult | null>(null), [days, setDays] = useState('60'), [plan, setPlan] = useState<Plan | null>(null)
-  useEffect(() => { void api<Status>('/api/feed/status').then((value) => { setStatus(value); setPath(value.isDefault ? '' : value.path ?? '') }).catch((error) => setMessage(error.message)) }, [])
-  async function run<T>(name: string, work: () => Promise<T>) { setBusy(name); setMessage(''); try { return await work() } catch (error) { setMessage((error as Error).message) } finally { setBusy('') } }
+  useEffect(() => { void api<Status>('/api/feed/status').then((value) => { setStatus(value); setPath(value.isDefault ? '' : value.path ?? '') }).catch(fail) }, [])
+  async function run<T>(name: string, work: () => Promise<T>) { setBusy(name); setMessage(''); try { return await work() } catch (error) { fail(error) } finally { setBusy('') } }
   const save = () => run('save', async () => { const value = await api<Status>('/api/feed/path', { method: 'PUT', body: JSON.stringify({ path }) }); setStatus(value); setTest(null); setPlan(null); setMessage(value.isDefault ? 'Using the default location. Use Check now to import.' : value.configured ? 'Job feed saved. Use Check now to import.' : 'No file found yet at the default location.') })
   const testFile = () => run('test', async () => { setTest(await api<TestResult>('/api/feed/test', { method: 'POST', body: JSON.stringify({ path }) })) })
   const check = () => run('check', async () => { const result = await api<{ imported: number; duplicates: number; invalid: number; notice: string | null }>('/api/feed/refresh', { method: 'POST', body: '{}' }); setMessage(`${result.imported} new job${result.imported === 1 ? '' : 's'} added to To review; ${result.duplicates} already known${result.invalid ? `; ${result.invalid} skipped for missing details` : ''}.${result.notice ? ` ${result.notice}` : ''}`) })
@@ -34,6 +35,6 @@ export function FeedSettings() {
       <div className="button-row"><label htmlFor="feed-days">Older than (days)</label><input id="feed-days" type="number" min={1} max={3650} value={days} onChange={(event) => { setDays(event.target.value); setPlan(null) }} /><button className="button secondary" disabled={!!busy} onClick={() => void preview()}>Preview</button></div>
       {plan && <div role="status"><p>{plan.csvRows} row{plan.csvRows === 1 ? '' : 's'} in the file and {plan.triageJobs.length} undecided feed job{plan.triageJobs.length === 1 ? '' : 's'} older than {plan.cutoff}.</p>{!!plan.triageJobs.length && <ul>{plan.triageJobs.slice(0, 10).map((job) => <li key={job.id}>{job.title}, {job.company} · {job.date}</li>)}</ul>}{plan.triageJobs.length > 10 && <p className="subtle">and {plan.triageJobs.length - 10} more.</p>}<button className="button secondary" disabled={!!busy || (!plan.csvRows && !plan.triageJobs.length)} onClick={() => void clean()}>Remove these</button></div>}
     </div>}
-    {message && <p role="status">{message}</p>}
+    {toastNode}
   </section>
 }
