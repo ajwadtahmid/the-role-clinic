@@ -96,7 +96,14 @@ export const requirementSchema = z.object({
   basis: short(1000).default(''),
 }).strict()
 export type Requirement = z.infer<typeof requirementSchema>
-export const extractionSchema = z.object({ requirements: z.array(requirementSchema).max(100), seniority: short(100), vocabulary: z.array(short(100)).max(100), partial: z.boolean() }).strict()
+// A condition no résumé bullet can show (where you live, whether you may work there, a degree, years): until the app can judge it,
+// it is listed as a check with its basis and left out of the fit score.
+export const isOpenCondition = (requirement: { kind: string; category: string; assessment: string }) =>
+  requirement.kind !== 'knockout' && requirement.assessment === 'unknown' && ['years', 'education', 'location', 'work_authorization', 'clearance'].includes(requirement.category)
+// A requirement the local model says one master bullet shows, with the words it quoted. Checked again whenever it is used.
+export const suggestionSchema = z.object({ requirementId: identifier, bulletId: identifier, evidence: short(400), reason: short(300) }).strict()
+export type Suggestion = z.infer<typeof suggestionSchema>
+export const extractionSchema = z.object({ requirements: z.array(requirementSchema).max(100), seniority: short(100), vocabulary: z.array(short(100)).max(100), partial: z.boolean(), suggestions: z.array(suggestionSchema).max(100).optional() }).strict()
 export type Extraction = z.infer<typeof extractionSchema>
 export const bulletScoreSchema = z.object({ bulletId: identifier, score: z.number().min(0).max(100), requirementIds: z.array(identifier).max(100), rationale: short(1000) }).strict()
 export type BulletScore = z.infer<typeof bulletScoreSchema>

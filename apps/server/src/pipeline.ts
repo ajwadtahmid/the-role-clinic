@@ -4,14 +4,14 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type Database from 'better-sqlite3'
 import { z } from 'zod'
-import { tailoredDocumentSchema, tailoredLineSchema, type AppSettings, type BulletScore, type Extraction, type Gap, type Master, type TailoredDocument, type TailoredLine, type TaskName, type Review } from '../../../packages/shared/src/index.js'
+import { tailoredDocumentSchema, tailoredLineSchema, type AppSettings, type BulletScore, type Extraction, type Gap, type Master, type TailoredDocument, type TailoredLine, type TaskName, type Review, type Suggestion } from '../../../packages/shared/src/index.js'
 import { readMaster, readProfile, listSynonyms, snapshotMaster } from './master.js'
 import { readSettings } from './settings.js'
 import { taskOutputLimits, type ModelRouter, type ModelRequest, type ModelResponse } from './model-adapters.js'
-import { scoreResponseSchema, verdictResponseSchema, slopResponseSchema, modelFormats, requireIds, parseDraft } from './model-schemas.js'
+import { scoreResponseSchema, fitMatchResponseSchema, verdictResponseSchema, slopResponseSchema, modelFormats, requireIds, parseDraft } from './model-schemas.js'
 import { type RunContext, type RunRecord, SerialRunQueue } from './queue.js'
 import { prompts } from './prompts.js'
-import { bestMatches, computeFit } from './fit.js'
+import { bestMatches, computeFit, fitGaps } from './fit.js'
 import { antiSlop, assessRequirement, chooseSummary, evidenceRows, findGaps, normalizeExtraction, parseModelJson, scoreEvidence, selectSkillsLine, verifyLayer1 } from './pipeline-core.js'
 
 const promptVersions = { requirementExtraction: prompts.requirementExtraction.version, bulletScoring: prompts.bulletScoring.version, resumeDrafting: prompts.resumeDrafting.version, claimVerification: prompts.claimVerification.version, antiSlop: prompts.antiSlop.version }
@@ -82,7 +82,7 @@ export class PipelineService {
     const master = readMaster(this.sqlite).document, profile = readProfile(this.sqlite).document, synonyms = listSynonyms(this.sqlite)
     if (extraction) for (const requirement of extraction.requirements) Object.assign(requirement, assessRequirement(requirement, master, profile, synonyms))
     const scores = extraction ? scoreEvidence(master, extraction, synonyms) : []
-    const preliminaryGaps = extraction ? findGaps(extraction, scores, master) : []
+    const preliminaryGaps = extraction ? fitGaps(extraction, scores, master) : []
     const tailoredRow = selectLatest(this.sqlite, 'tailored', jobId)
     const tailored = tailoredRow ? tailoredDocumentSchema.parse(JSON.parse(tailoredRow.document)) : null
     const runs = this.sqlite.prepare('SELECT id,kind,status,step,error,usage,cost_estimate AS costEstimate,created_at AS createdAt,finished_at AS finishedAt FROM runs WHERE job_id=? ORDER BY created_at DESC,rowid DESC LIMIT 20').all(jobId)
@@ -131,7 +131,7 @@ export class PipelineService {
     const estimate = await this.estimate(jobId, 'extract')
     if (!estimate.allowed) throw capError('extraction', await readSettings(this.dataDirectory), estimate.estimatedUsd, estimate.spentThisMonthUsd)
     const run = this.queue.enqueueWork('extract', jobId, (record, context) => this.extract(record, context), quiet)
-    this.sqlite.prepare('UPDATE runs SET cost_estimate=?,prompt_versions=? WHERE id=?').run(estimate.estimatedUsd, JSON.stringify({ requirementExtraction: promptVersions.requirementExtraction }), run.id)
+    this.sqlite.prepare('UPDATE runs SET cost_estimate=?,prompt_versions=? WHERE id=?').run(estimate.estimatedUsd, JSON.stringify({ requirementExtraction: promptVersions.requirementExtraction, fitMatch: prompts.fitMatch.version }), run.id)
     return run
   }
   async enqueueTailor(jobId: string) {
@@ -274,9 +274,37 @@ export class PipelineService {
       extraction.partial ||= job.text.length > MAX_JD_CHARS
       saveCheckpoint(this.sqlite, run.id, 'extraction', extraction)
     }
+    extraction.suggestions = await this.suggestMatches(run, context, extraction)
     context.progress('saving', 'Saving extracted requirements and their source locations.')
     const document = JSON.stringify(extraction)
     this.sqlite.prepare('INSERT OR IGNORE INTO requirements(id,job_id,document,created_at) VALUES(?,?,?,?)').run(run.id, job.id, document, new Date().toISOString())
+  }
+
+  // After the keyword check, the local model looks for bullets that show the requirements the keywords missed. It only suggests:
+  // each pick must quote its bullet word for word (checked again whenever it is used), and if the step fails the keyword result stands.
+  private async suggestMatches(run: RunRecord, context: RunContext, extraction: Extraction): Promise<Suggestion[]> {
+    const saved = checkpoint<Suggestion[]>(this.sqlite, run.id, 'suggestions')
+    if (saved) return saved
+    const settings = await readSettings(this.dataDirectory)
+    if (settings.taskModels.bulletScoring.provider !== 'ollama') return []
+    const master = readMaster(this.sqlite).document, synonyms = listSynonyms(this.sqlite), rows = evidenceRows(master)
+    const scores = scoreEvidence(master, extraction, synonyms), missing = new Set(findGaps(extraction, scores, master).map((gap) => gap.requirementId))
+    // Years, degrees, places and permits are judged from dates and the profile, not from bullets.
+    const asked = extraction.requirements.filter((item) => item.kind !== 'knockout' && missing.has(item.id) && !['years', 'education', 'location', 'work_authorization', 'clearance'].includes(item.category)).slice(0, 40)
+    if (!rows.length || !asked.length) return []
+    context.progress('fitMatch', 'Looking for résumé bullets that show the remaining requirements.')
+    const byId = new Map(rows.map((row) => [row.bullet.id, row])), shown = (rows.length > 80 ? scores.slice(0, 80).map((score) => byId.get(score.bulletId)!) : rows)
+    let suggestions: Suggestion[] = []
+    try {
+      const parsed = await this.callParsed(run, 'bulletScoring', { tier: 'fast', system: prompts.fitMatch.system, user: JSON.stringify({ requirements: asked.map((item) => ({ id: item.id, quote: item.quote.slice(0, 400) })), bullets: shown.map((row) => ({ id: row.bullet.id, text: row.bullet.text.slice(0, 500), context: row.context.slice(0, 160) })) }), schema: modelFormats.fitMatch, temperature: 0, seed: 7 }, taskOutputLimits.bulletScoring, (text) => fitMatchResponseSchema.parse(parseModelJson(text)))
+      const askedIds = new Set(asked.map((item) => item.id))
+      suggestions = parsed.matches.flatMap((match) => {
+        const requirementId = match.requirementIds[0], row = match.bulletId ? byId.get(match.bulletId) : undefined
+        return row && askedIds.has(requirementId) ? [{ requirementId, bulletId: row.bullet.id, evidence: match.evidence.trim(), reason: match.reason.trim() }] : []
+      })
+    } catch { /* the fit check still finishes with the keyword result */ }
+    saveCheckpoint(this.sqlite, run.id, 'suggestions', suggestions)
+    return suggestions
   }
 
   private async tailor(run: RunRecord, context: RunContext) {

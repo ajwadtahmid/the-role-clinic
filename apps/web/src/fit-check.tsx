@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { api } from './api.js'
 import { Icon } from './icons.js'
+import { isOpenCondition } from '../../../packages/shared/src/index.js'
 import type { Analysis, Estimate, Requirement } from './job-detail.js'
 
 export type FitScore = { pct: number; label: string }
 export type FitDetail = FitScore & { hardCovered: number; hardTotal: number; niceCovered: number; niceTotal: number }
-export type FitMatch = { requirementId: string; bulletId: string; text: string; context: string }
+export type FitMatch = { requirementId: string; bulletId: string; text: string; context: string; suggested?: boolean; reason?: string }
 const tone = (pct: number) => pct >= 55 ? '' : pct >= 40 ? ' partial' : ' weak'
 // Four bars on a job card: the stronger the fit the more are filled.
 const bars = (pct: number) => pct >= 75 ? 4 : pct >= 55 ? 3 : pct >= 40 ? 2 : 1
@@ -38,7 +39,7 @@ export function FitStrip({ analysis, busy, onCheck, onView }: { analysis: Analys
 
 function Row({ requirement, covered, match }: { requirement: Requirement; covered: boolean; match?: FitMatch }) {
   return <div className="req"><strong>{requirement.quote}</strong>
-    {covered ? <span className="ev">{match ? `${match.text}${match.context ? ` (${match.context})` : ''}` : 'Covered by your résumé.'}</span> : <span className="ev none">No strong matching bullet in your master résumé.</span>}
+    {covered ? <span className="ev">{match ? `${match.text}${match.context ? ` (${match.context})` : ''}` : 'Covered by your résumé.'}{match?.suggested && <em className="subtle"> Suggested by your local model{match.reason ? `: ${match.reason}` : ''} Check that it fits.</em>}</span> : <span className="ev none">No strong matching bullet in your master résumé.</span>}
     {!covered && requirement.category === 'skill' && <a href={`#resume?skill=${encodeURIComponent(requirement.skill || requirement.quote)}`}>Add real evidence ↗</a>}</div>
 }
 
@@ -54,7 +55,9 @@ export function JobFit({ jobId, analysis, busy, onCheck }: { jobId: string; anal
     <p className="subtle">Compares what this posting asks for with your master résumé and shows how much of it you already cover.{cost && cost.estimatedUsd > 0 ? ` This check uses Claude: about $${cost.estimatedUsd.toFixed(4)}. The posting and your résumé bullets are sent to Anthropic; your contact details never are.` : ' It runs on this computer.'}</p>
     <div className="actions"><button className="button primary" disabled={busy} onClick={onCheck}>{last?.status === 'failed' ? 'Try again' : 'Check fit'}</button></div></section>
   const requirements = analysis.extraction.requirements, missing = new Set(analysis.preliminaryGaps.map((gap) => gap.requirementId)), matches = new Map(analysis.matches.map((match) => [match.requirementId, match]))
-  const hard = requirements.filter((r) => r.kind === 'hard'), nice = requirements.filter((r) => r.kind === 'nice'), knockouts = requirements.filter((r) => r.kind === 'knockout')
+  // A location or degree the app cannot judge is shown with the knockout checks (with its basis), not as a missing skill.
+  const open = requirements.filter(isOpenCondition), scored = requirements.filter((r) => !isOpenCondition(r))
+  const hard = scored.filter((r) => r.kind === 'hard'), nice = scored.filter((r) => r.kind === 'nice'), knockouts = [...requirements.filter((r) => r.kind === 'knockout'), ...open]
   const gaps = hard.filter((r) => missing.has(r.id)), covered = hard.filter((r) => !missing.has(r.id)), fit = analysis.fit, warn = knockouts.filter((r) => r.assessment !== 'met')
   const finished = last?.finishedAt ? new Date(last.finishedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''
   return <section className="fit-card" aria-labelledby="fit-h">
@@ -62,7 +65,7 @@ export function JobFit({ jobId, analysis, busy, onCheck }: { jobId: string; anal
     {fit ? <>
       <div className="fit-top"><span className="fit-score">{fit.pct}%</span><span className="fit-label">{fit.label}</span><span className="fit-when">{finished && `Checked ${finished} · `}<button className="text-button" disabled={busy} onClick={onCheck}>Re-check</button></span></div>
       <div className={`fit-bar${tone(fit.pct)}`} role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={fit.pct} aria-label={`Fit ${fit.pct} percent`}><i style={{ width: `${fit.pct}%` }} /></div>
-      <p className="fit-counts">{fit.hardCovered} of {fit.hardTotal} key requirements covered{fit.niceTotal > 0 && ` · ${fit.niceCovered} of ${fit.niceTotal} nice-to-haves`}. Key requirements count in full, nice-to-haves a quarter.</p>
+      <p className="fit-counts">{fit.hardCovered} of {fit.hardTotal} key requirements covered{fit.niceTotal > 0 && ` · ${fit.niceCovered} of ${fit.niceTotal} nice-to-haves`}. Key requirements count in full, nice-to-haves a quarter.{[...matches.values()].some((m) => m.suggested) && ` ${[...matches.values()].filter((m) => m.suggested).length} found by your local model, not by keywords.`}</p>
       <div className="fit-cols"><div><h4>Strongest matches</h4><ul>{covered.slice(0, 2).map((r) => <li key={r.id}>{r.quote}<span>{matches.get(r.id)?.text ?? 'Covered by your résumé.'}</span></li>)}{!covered.length && <li>None of the key requirements are covered yet.</li>}</ul></div>
         <div><h4>Biggest gaps</h4><ul>{gaps.slice(0, 2).map((r) => <li key={r.id}>{r.quote}{r.category === 'skill' && <span><a href={`#resume?skill=${encodeURIComponent(r.skill || r.quote)}`}>Add real evidence ↗</a></span>}</li>)}{!gaps.length && <li>No gaps in the key requirements.</li>}</ul></div></div>
     </> : <><p className="subtle">The posting did not state any key requirements to score.</p><div className="actions"><button className="button" disabled={busy} onClick={onCheck}>Re-check</button></div></>}

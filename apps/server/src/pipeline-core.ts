@@ -3,7 +3,7 @@ import { extractionSchema, type BulletScore, type Extraction, type Gap, type Mas
 import { extractionCandidatesSchema } from './model-schemas.js'
 
 const stop = new Set('a an and are as at be by for from has have in into is of on or our the their to with you your will required preferred experience ability knowledge skills strong working using use including'.split(' '))
-const techNames = ['JavaScript','TypeScript','Python','Java','C++','C#','Go','Rust','Kotlin','Swift','React','React Native','Node.js','Express','Flask','Django','Spring','PostgreSQL','Postgres','MySQL','SQLite','Redis','MongoDB','Docker','Kubernetes','k8s','AWS','Azure','GCP','Terraform','Linux','GitHub Actions','GraphQL','REST','gRPC','Flutter','Dart','Android','iOS','Kafka','Spark','PyTorch','TensorFlow']
+export const techNames = ['JavaScript','TypeScript','Python','Java','C++','C#','Go','Rust','Kotlin','Swift','React','React Native','Node.js','Express','Flask','Django','Spring','PostgreSQL','Postgres','MySQL','SQLite','Redis','MongoDB','Docker','Kubernetes','k8s','AWS','Azure','GCP','Terraform','Linux','GitHub Actions','GraphQL','REST','gRPC','Flutter','Dart','Android','iOS','Kafka','Spark','PyTorch','TensorFlow']
 const now = () => new Date().toISOString()
 
 export function parseModelJson(text: string): unknown {
@@ -95,13 +95,15 @@ export function assessRequirement(requirement: Requirement, master: Master, prof
   if (requirement.category === 'location') return { assessment: 'unknown', basis: profile.location ? `Profile location: ${profile.location}. Confirm commute, relocation, or remote policy manually.` : 'Profile location is not recorded.' }
   if (requirement.category === 'clearance') return { assessment: 'unknown', basis: 'Clearance status is not recorded as a verified field.' }
   if (requirement.category === 'skill' && requirement.skill) {
-    if (/\s+or\s+/i.test(requirement.skill)) {
-      const alternatives = requirement.skill.split(/\s+or\s+/i).map((skill) => assessRequirement({ ...requirement, skill }, master, profile, synonyms))
-      return alternatives.find((result) => result.assessment === 'met') ?? { assessment: 'unknown', basis: 'No listed alternative has verified active evidence; review the alternatives manually.' }
-    }
-    const names = equivalences(requirement.skill, synonyms)
-    const evidence = evidenceRows(master).find((row) => names.some((name) => includesTerm(`${row.bullet.text} ${row.bullet.skills.join(' ')}`, name)))
+    // "relational databases (Postgres, MySQL)" or "A or B" is met by evidence of any one named part.
+    const items = skillItems(requirement.skill)
+    const evidence = evidenceRows(master).find((row) => {
+      const source = `${row.bullet.text} ${row.bullet.skills.join(' ')}`
+      return items.some((item) => itemHit(source, stemsOf(source), item, synonyms))
+    })
     if (evidence) return { assessment: 'met', basis: `Master bullet ${evidence.bullet.id}: ${evidence.bullet.text.slice(0, 220)}` }
+    if (/\s+or\s+/i.test(requirement.skill)) return { assessment: 'unknown', basis: 'No listed alternative has verified active evidence; review the alternatives manually.' }
+    const names = items.flatMap((item) => equivalences(item, synonyms))
     const listed = master.skills.find((skill) => names.includes(skill.name.toLowerCase()))
     return { assessment: 'gap', basis: listed ? `${listed.name} is listed, but no active bullet demonstrates its use. Add real evidence if you have it.` : `No active master bullet demonstrates ${requirement.skill}. This is an evidence gap, not proof you lack the skill.` }
   }
@@ -155,21 +157,78 @@ export function selectSkillsLine(master: Master, extraction: Extraction, jobTitl
 export function evidenceRows(master: Master) {
   return [...master.roles.flatMap((role) => role.bullets.filter((b) => !b.retired).map((bullet) => ({ bullet, context: `${role.title} at ${role.company}, ${role.start}–${role.end}`, kind: 'employment' as const }))), ...master.projects.flatMap((project) => project.bullets.filter((b) => !b.retired).map((bullet) => ({ bullet, context: `${project.name} project, ${project.start}–${project.end}, ${project.stack.join(', ')}`, kind: 'project' as const })))]
 }
+// Words that say how much or how well, not what. They are ignored when a requirement is compared with a bullet.
+const filler = new Set('solid good basic familiarity familiar understanding proficient proficiency hands-on hands demonstrated proven track record comfortable comfort able excellent clear clearly such like etc similar other related least more most one two years year work role roles team teams new tools tool technologies technology fundamentals concepts coursework projects internships internship hackathons exposure interest across many all any also both well ensure highly very'.split(' '))
+// What counts as evidence of a broad area a posting names. A person's own synonyms still apply on top.
+const concepts: Array<[RegExp, string[]]> = [
+  [/\bdatabases?\b|\bsql\b/i, ['sql', 'mysql', 'postgres', 'postgresql', 'sqlite', 'mariadb', 'oracle', 'database']],
+  [/non-?relational|nosql/i, ['mongodb', 'redis', 'dynamodb', 'cassandra', 'elasticsearch', 'nosql']],
+  [/\bai\b|\bml\b|machine learning|artificial intelligence|\bllms?\b/i, ['ai', 'ml', 'machine learning', 'llm', 'neural network', 'deep learning', 'nlp', 'pytorch', 'tensorflow', 'scikit-learn', 'openai', 'claude', 'gemini']],
+  [/ai[ -](?:assisted|coding|tools?)|coding (?:assistants?|agents?)|agentic/i, ['ai', 'llm', 'claude', 'cursor', 'copilot', 'chatgpt', 'codex', 'gemini']],
+  [/algorithms?|data structures?/i, ['algorithm', 'data structure', 'tf-idf', 'pagerank', 'hash table', 'binary tree', 'graph traversal', 'sorting', 'dynamic programming']],
+  [/distributed/i, ['distributed', 'replication', 'sharding', 'microservice', 'load balancing', 'kafka', 'message queue']],
+  [/cloud|\baws\b|azure|\bgcp\b/i, ['aws', 'azure', 'gcp', 'google cloud', 'ec2', 'lambda', 'cloud']],
+  [/ci[/-]cd|continuous integration|release (?:pipeline|engineering)/i, ['ci/cd', 'github actions', 'jenkins', 'gitlab ci', 'circleci', 'continuous integration']],
+  [/version control|\bgit\b/i, ['git', 'github', 'gitlab', 'version control']],
+  [/front-?end|client-side|web (?:app|application)s?/i, ['react', 'html', 'css', 'javascript', 'typescript', 'frontend', 'front-end', 'flutter', 'vue', 'angular']],
+  [/back-?end|server-side|\bapis?\b/i, ['node.js', 'express', 'tomcat', 'flask', 'django', 'spring', 'api', 'backend', 'back-end']],
+  [/programming languages?|\blanguages?\b/i, ['python', 'java', 'c++', 'c#', 'javascript', 'typescript', 'kotlin', 'dart', 'rust', 'swift', 'ruby', 'php', 'scala']],
+  [/dashboards?|data visuali[sz]ation|analytics/i, ['dashboard', 'visualization', 'visualisation', 'analytics', 'tableau', 'grafana', 'looker', 'power bi']],
+  [/security|cyber/i, ['security', 'secure', 'authentication', 'encryption', 'https', 'tls', 'ssl', 'recaptcha', 'oauth', 'iam', 'access control', 'vulnerability', 'vulnerabilities']],
+  [/audit|compliance|\bgrc\b|regulat/i, ['audit', 'compliance', 'regulatory', 'regulation', 'sop', 'standard operating procedure', 'quality management', 'gxp', 'fda']],
+]
+const wordsOf = (value: string) => value.toLowerCase().match(/[a-z][a-z0-9+#]*(?:[.-][a-z0-9+#]+)*/g) ?? []
+// A crude stem, applied twice, so "coordinating" matches "coordinate" and "algorithm" matches "algorithms".
+const stem1 = (word: string) => word.length < 5 ? word : word.replace(/(?:ing|ed|es|s)$/, '').replace(/e$/, '')
+const stem = (word: string) => stem1(stem1(word))
+const stemsOf = (value: string) => new Set(wordsOf(value).map(stem))
+const contentWords = (value: string) => wordsOf(value).filter((word) => word.length > 2 && !stop.has(word) && !filler.has(word))
+// The named parts of a skill: "relational databases (Postgres, MySQL)" is three, "A or B" two.
+export function skillItems(skill: string) {
+  const parts = skill.replace(/ci\/cd/gi, 'CI-CD').split(/\s*(?:,|;|\/|\(|\)|\band\b|\bor\b|\bsuch as\b|\blike\b|\be\.g\.?|\bincluding\b)\s*/i).map((part) => part.trim())
+    .filter((part) => part && (contentWords(part).length || /^[a-z+#]{2,3}$/i.test(part)))
+  return parts.length ? parts : skill.trim() ? [skill.trim()] : []
+}
+function hasTerm(source: string, stems: Set<string>, term: string) {
+  if (includesTerm(source, term) || includesTerm(source, `${term}s`)) return true
+  return /^[a-z]+$/i.test(term) && !ambiguousTerms.has(term.toLowerCase()) && stems.has(stem(term.toLowerCase()))
+}
+// Whether the bullet shows one named part of a requirement: the phrase itself, an equivalent, or a stand-in for a broad area.
+function itemHit(source: string, stems: Set<string>, item: string, synonyms: Synonym[]) {
+  if (ambiguousTerms.has(item.toLowerCase())) return includesTerm(source, item, true)
+  const words = contentWords(item)
+  // A broad area ("databases", "GRC support") stands in for its tools only when the item is a short name for it,
+  // not when the word sits inside a longer description such as "interpreting customer security requests".
+  const terms = [...equivalences(item, synonyms), ...(words.length <= 2 ? concepts.filter(([pattern]) => pattern.test(item)).flatMap(([, list]) => list) : [])]
+  if (terms.some((term) => hasTerm(source, stems, term))) return true
+  if (!words.length) return false
+  const matched = words.filter((word) => equivalences(word, synonyms).some((term) => hasTerm(source, stems, term))).length
+  return words.length === 1 ? matched === 1 : matched / words.length >= .6
+}
+const SUPPORT = 40
+// 0-100: how well one bullet shows one requirement. A named part of the skill (any one, from a list) is enough on its own;
+// otherwise the share of the requirement's own meaningful words the bullet uses has to be high.
+function supportStrength(requirement: Requirement, source: string, stems: Set<string>, synonyms: Synonym[]) {
+  const items = skillItems(requirement.skill), hits = items.filter((item) => itemHit(source, stems, item, synonyms)).length
+  const words = contentWords(requirement.quote), matched = words.filter((word) => equivalences(word, synonyms).some((term) => hasTerm(source, stems, term))).length
+  const overlap = words.length ? matched / words.length : 0
+  return Math.round(Math.min(100, Math.max(hits ? Math.max(45, hits / items.length * 100) : 0, matched >= 2 && overlap >= .4 ? overlap * 100 : overlap * 50)))
+}
 export function scoreEvidence(master: Master, extraction: Extraction, synonyms: Synonym[]): BulletScore[] {
   return evidenceRows(master).map(({ bullet, context }) => {
-    const source = `${bullet.text} ${bullet.skills.join(' ')} ${context}`.toLowerCase()
-    const matches = extraction.requirements.flatMap((requirement) => {
-      const terms = [...tokens(requirement.quote), ...tokens(requirement.skill)]
-      const overlap = terms.filter((term) => equivalences(term, synonyms).some((v) => includesTerm(source, v))).length
-      return overlap > 0 ? [{ id: requirement.id, overlap, denominator: Math.max(terms.length, 1), kind: requirement.kind }] : []
-    })
-    const score = Math.min(100, Math.round(matches.reduce((sum, match) => sum + Math.min(30, match.overlap / match.denominator * 60) * (match.kind === 'nice' ? .65 : 1), 0)))
-    return { bulletId: bullet.id, score, requirementIds: matches.map((m) => m.id), rationale: matches.length ? `Shares terms with ${matches.length} cited job requirement(s).` : 'No direct vocabulary overlap; review manually.' }
+    // The role or project name and its stack count a little less than the bullet's own words, so direct evidence ranks first.
+    const own = `${bullet.text} ${bullet.skills.join(' ')}`, wide = `${own} ${context}`, ownStems = stemsOf(own), wideStems = stemsOf(wide)
+    const pairs = extraction.requirements.map((requirement) => ({ requirement, strength: Math.max(supportStrength(requirement, own, ownStems, synonyms), Math.round(supportStrength(requirement, wide, wideStems, synonyms) * .75)) })).filter((pair) => pair.strength > 0)
+    const values = pairs.map((pair) => pair.strength * (pair.requirement.kind === 'nice' ? .65 : 1)), top = Math.max(0, ...values)
+    const score = Math.min(100, Math.round(top + (values.reduce((sum, value) => sum + value, 0) - top) * .25))
+    const supported = pairs.filter((pair) => pair.strength >= SUPPORT)
+    return { bulletId: bullet.id, score, requirementIds: supported.map((pair) => pair.requirement.id), rationale: supported.length ? `Shows ${supported.length} cited job requirement(s).` : pairs.length ? 'Only a loose vocabulary overlap; review manually.' : 'No direct vocabulary overlap; review manually.' }
   }).sort((a, b) => b.score - a.score)
 }
 export function findGaps(extraction: Extraction, scores: BulletScore[], master: Master): Gap[] {
   const active = new Set(evidenceRows(master).map((row) => row.bullet.id))
   return extraction.requirements.flatMap((requirement) => {
+    if (requirement.assessment === 'met') return []
     const support = scores.filter((s) => s.score >= 25 && s.requirementIds.includes(requirement.id) && active.has(s.bulletId))
     if (support.length && requirement.assessment !== 'gap') return []
     const reason = requirement.assessment === 'gap' ? requirement.basis : requirement.category === 'skill' && master.skills.some((s) => s.name.toLowerCase() === requirement.skill.toLowerCase()) ? 'Listed in the master, but no matching evidence bullet was found.' : 'No strong matching bullet was found; verify or add real evidence.'

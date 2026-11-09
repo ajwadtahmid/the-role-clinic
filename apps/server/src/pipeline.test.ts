@@ -9,10 +9,11 @@ import { saveMaster, saveProfile, readMaster } from './master.js'
 import { defaultSettings, writeSettings } from './settings.js'
 import { emptyMaster, emptyProfile, type TaskName } from '../../../packages/shared/src/index.js'
 import type { ModelRequest } from './model-adapters.js'
+import { prompts } from './prompts.js'
 
 const dirs: string[] = []
 const jd = 'TypeScript experience is required. Rust experience is preferred. Candidates need 5+ years of software engineering experience. Must be authorized to work in the US.'
-async function setup(auto = false, failSlop = false, draftText = 'Reduced API latency by 20% using TypeScript and Rust', semanticVerdict: 'grounded' | 'stretch' | 'unsupported' = 'grounded', countedTokens: number | null = null, unusableExtractionReplies = 0, truncatedExtractionReplies = 0) {
+async function setup(auto = false, failSlop = false, draftText = 'Reduced API latency by 20% using TypeScript and Rust', semanticVerdict: 'grounded' | 'stretch' | 'unsupported' = 'grounded', countedTokens: number | null = null, unusableExtractionReplies = 0, truncatedExtractionReplies = 0, suggestFor: ((text: string) => string) | null = null) {
   const dir = await mkdtemp(join(tmpdir(), 'clinic-pipeline-')); dirs.push(dir)
   const { sqlite, db } = createDatabase(dir)
   const master = emptyMaster(), bulletId = randomUUID()
@@ -21,11 +22,13 @@ async function setup(auto = false, failSlop = false, draftText = 'Reduced API la
   saveMaster(sqlite, master)
   saveProfile(sqlite, { ...emptyProfile(), email: 'private-secret@example.test', workAuthorization: 'Authorized to work in the US; PRIVATE_PROFILE_MARKER' })
   if (auto) await writeSettings(dir, { ...defaultSettings(), autoFitCheck: true })
-  const calls: TaskName[] = [], inputs: string[] = []
+  const calls: string[] = [], inputs: string[] = []
   let slopFailures = 0, unusableReplies = unusableExtractionReplies, truncatedReplies = truncatedExtractionReplies
   const budgets: number[] = []
   const modelRouter = { async countInputTokens() { return countedTokens }, async complete(task: TaskName, request: ModelRequest) {
-    calls.push(task); inputs.push(request.user); budgets.push(request.maxOutputTokens ?? 0)
+    // The fit check's match step runs on the scoring model; it is recorded under its own name so the tailoring counts stay exact.
+    const matching = task === 'bulletScoring' && request.system === prompts.fitMatch.system
+    calls.push(matching ? 'fitMatch' : task); inputs.push(request.user); budgets.push(request.maxOutputTokens ?? 0)
     if (task === 'requirementExtraction' && truncatedReplies-- > 0) return { text: '', provider: 'ollama' as const, model: 'fake-local', finishReason: 'length', usage: { inputTokens: 100, outputTokens: 512 } }
     if (task === 'requirementExtraction' && unusableReplies-- > 0) return { text: 'Sure! Here are the requirements you asked for.', provider: 'ollama' as const, model: 'fake-local' }
     let value: unknown
@@ -35,7 +38,10 @@ async function setup(auto = false, failSlop = false, draftText = 'Reduced API la
       { quote: '5+ years of software engineering experience', kind: 'knockout', category: 'years', skill: '', years: 5 },
       { quote: 'Must be authorized to work in the US', kind: 'knockout', category: 'work_authorization', skill: '', years: null },
     ], seniority: 'mid-level', vocabulary: ['TypeScript'] }
-    else if (task === 'bulletScoring') {
+    else if (matching) {
+      const input = JSON.parse(request.user) as { bullets: Array<{ id: string; text: string }>; requirements: Array<{ id: string }> }
+      value = { matches: input.requirements.map((item) => suggestFor ? { requirementIds: [item.id], reason: 'Shows the same work.', bulletId: input.bullets[0].id, evidence: suggestFor(input.bullets[0].text) } : { requirementIds: [item.id], reason: 'No bullet shows it.', bulletId: null, evidence: '' }) }
+    } else if (task === 'bulletScoring') {
       const input = JSON.parse(request.user) as { bullets: Array<{ id: string }>; requirements: Array<{ id: string }> }
       value = { scores: input.bullets.map((b) => ({ bulletId: b.id, score: 90, requirementIds: [input.requirements[0].id], rationale: 'Direct TypeScript experience.' })) }
     } else if (task === 'resumeDrafting') {
@@ -72,9 +78,9 @@ describe('extraction and tailoring pipeline', () => {
     const { sqlite, post, job, calls, budgets } = await setup(false, false, undefined, undefined, null, 0, 1)
     await post(`/api/jobs/${job.id}/extract`)
     const row = await waitFor(sqlite, 'extract', 'done')
-    expect(calls).toHaveLength(2); expect(budgets[1]).toBeGreaterThan(budgets[0])
+    expect(calls).toEqual(['requirementExtraction', 'requirementExtraction', 'fitMatch']); expect(budgets[1]).toBeGreaterThan(budgets[0])
     const record = sqlite.prepare('SELECT usage FROM runs WHERE id=?').get(row.id) as { usage: string }
-    expect(JSON.parse(record.usage).calls.map((call: { outputTokens: number }) => call.outputTokens)).toEqual([512, 50])
+    expect(JSON.parse(record.usage).calls.map((call: { outputTokens: number }) => call.outputTokens)).toEqual([512, 50, 50])
     sqlite.close()
   })
 
@@ -94,6 +100,17 @@ describe('extraction and tailoring pipeline', () => {
     sqlite.close()
   })
 
+  it('never lets the match step cover a requirement that names a technology', async () => {
+    // The fake model says the first bullet shows every requirement it is asked about and quotes it correctly; Rust must still be a gap.
+    const { sqlite, post, request, job, calls } = await setup(false, false, undefined, undefined, null, 0, 0, (text) => text.slice(0, 30))
+    await post(`/api/jobs/${job.id}/extract`); await waitFor(sqlite, 'extract', 'done')
+    expect(calls).toContain('fitMatch')
+    const analysis = await (await request(`/api/jobs/${job.id}/analysis`)).json() as { preliminaryGaps: Array<{ quote: string }>; matches: Array<{ suggested?: boolean }> }
+    expect(analysis.preliminaryGaps.map((gap) => gap.quote)).toContain('Rust experience is preferred')
+    expect(analysis.matches.some((match) => match.suggested)).toBe(false)
+    sqlite.close()
+  })
+
   it('auto-extracts exact JD spans, shows knockout basis, and keeps profile out of model requests', async () => {
     const { sqlite, request, job, calls, inputs } = await setup(true)
     expect(job.extractionRunId).toBeTruthy()
@@ -103,7 +120,7 @@ describe('extraction and tailoring pipeline', () => {
     for (const requirement of analysis.extraction.requirements) expect(jd.slice(requirement.start, requirement.end)).toBe(requirement.quote)
     expect(analysis.extraction.requirements.find((r) => r.quote.startsWith('5+'))).toMatchObject({ assessment: 'gap' })
     expect(analysis.extraction.requirements.find((r) => r.quote.startsWith('Must be'))).toMatchObject({ assessment: 'met' })
-    expect(calls).toEqual(['requirementExtraction'])
+    expect(calls).toEqual(['requirementExtraction', 'fitMatch'])
     expect(inputs.join('\n')).not.toContain('private-secret@example.test')
     expect(inputs.join('\n')).not.toContain('PRIVATE_PROFILE_MARKER')
     sqlite.close()
@@ -113,7 +130,7 @@ describe('extraction and tailoring pipeline', () => {
     const { sqlite, post, job, calls, inputs } = await setup(false, false, undefined, undefined, null, 1)
     expect((await post(`/api/jobs/${job.id}/extract`)).status).toBe(202)
     await waitFor(sqlite, 'extract', 'done')
-    expect(calls).toEqual(['requirementExtraction', 'requirementExtraction'])
+    expect(calls).toEqual(['requirementExtraction', 'requirementExtraction', 'fitMatch'])
     expect(inputs[1]).toContain('Your previous reply could not be used')
     expect(inputs[1]).toContain('did not return valid JSON')
     sqlite.close()

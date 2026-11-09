@@ -15,7 +15,7 @@ import { captureJobUrl } from './capture.js'
 import { FeedService, normalizeFeedUrl, type PostingCapture } from './feed.js'
 import { registerFeedRoutes } from './feed-routes.js'
 import { FitBatch } from './fit-batch.js'
-import { computeFit } from './fit.js'
+import { computeFit, fitGaps } from './fit.js'
 import { databaseBackup } from './database-backups.js'
 import { registerRuntimeRoutes, type RuntimeInfo } from './runtime-routes.js'
 import { registerMasterRoutes } from './master-routes.js'
@@ -24,7 +24,7 @@ import { latestByJob } from './tracker.js'
 import { registerReviewRoutes } from './review-routes.js'
 import { PipelineService } from './pipeline.js'
 import { listSynonyms, readMaster, readProfile } from './master.js'
-import { assessRequirement, findGaps, scoreEvidence } from './pipeline-core.js'
+import { assessRequirement, scoreEvidence } from './pipeline-core.js'
 import type { Extraction, Requirement } from '../../../packages/shared/src/index.js'
 
 const isLoopback = (host: string) => ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(host.toLowerCase())
@@ -259,7 +259,7 @@ export function createApp(options: AppOptions) {
       if (latest) {
         const extraction = JSON.parse(latest) as Extraction
         for (const requirement of extraction.requirements) Object.assign(requirement, assessRequirement(requirement, master, profile, synonyms))
-        const scored = computeFit(extraction, findGaps(extraction, scoreEvidence(master, extraction, synonyms), master))
+        const scored = computeFit(extraction, fitGaps(extraction, scoreEvidence(master, extraction, synonyms), master))
         if (scored) fit = { pct: scored.pct, label: scored.label }
       }
       return { ...rest, fit, flagCount: parseFinderNote(finderNote).flags.split(/[;\n]+/).filter((flag) => flag.trim()).length, latestRun: latestRuns.get(row.id) ?? null, knockouts: requirements.filter((item) => item.kind === 'knockout').map((item) => ({ quote: item.quote, ...assessRequirement(item, master, profile, synonyms) })) }
