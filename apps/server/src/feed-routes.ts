@@ -5,7 +5,7 @@ import { readSettings, writeSettings } from './settings.js'
 
 const days = (value: unknown) => { const n = Number(value); return Number.isInteger(n) && n >= 1 && n <= 3650 ? n : null }
 
-export function registerFeedRoutes(app: Hono, feed: FeedService, dataDirectory: string) {
+export function registerFeedRoutes(app: Hono, feed: FeedService, dataDirectory: string, onImported: (count: number) => void = () => {}) {
   app.get('/api/feed/status', async (context) => context.json(await feed.status()))
 
   // An empty path turns the feed off. Saving the path never reads or changes the file.
@@ -32,6 +32,7 @@ export function registerFeedRoutes(app: Hono, feed: FeedService, dataDirectory: 
     if (!(await feed.status()).configured) return context.json({ error: 'No job feed file is set.' }, 409)
     try {
       const { importedIds, ...result } = await feed.refresh()
+      if (importedIds.length) onImported(importedIds.length)
       return context.json(result)
     } catch (error) { return context.json({ error: (error as Error).message }, 422) }
   })

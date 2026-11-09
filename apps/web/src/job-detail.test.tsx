@@ -8,7 +8,7 @@ afterEach(() => cleanup())
 
 const requirement = (id: string, kind: 'knockout' | 'hard') => ({ id, quote: id, kind, category: 'skill', skill: '', start: 0, end: 1, assessment: 'unknown' as const, basis: '' })
 function analysis(run: Partial<Analysis['runs'][number]> & { status: string }, extra: Partial<Analysis> = {}): Analysis {
-  return { extraction: { requirements: [requirement('a', 'knockout'), requirement('b', 'hard'), requirement('c', 'hard')], seniority: '', vocabulary: [], partial: false }, preliminaryGaps: [], tailored: null, runs: [{ id: 'run-1', kind: 'extract', step: 'complete', error: null, usage: null, costEstimate: null, finishedAt: new Date().toISOString(), ...run }], ...extra }
+  return { extraction: { requirements: [requirement('a', 'knockout'), requirement('b', 'hard'), requirement('c', 'hard')], seniority: '', vocabulary: [], partial: false }, preliminaryGaps: [], tailored: null, runs: [{ id: 'run-1', kind: 'extract', step: 'complete', error: null, usage: null, costEstimate: null, finishedAt: new Date().toISOString(), ...run }], ...extra } as Analysis
 }
 const show = (value: Analysis | null, dismissed: string | null = null, retry = vi.fn(), dismiss = vi.fn()) => render(<RunStrip analysis={value} dismissed={dismissed} onDismiss={dismiss} onRetry={retry} busy={false} />)
 

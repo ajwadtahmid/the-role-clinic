@@ -151,14 +151,14 @@ describe('job workspace flow', () => {
     render(<Workspace />)
     expect(await screen.findByRole('heading', { level: 2, name: 'Platform Engineer' })).toBeTruthy()
     expect(window.location.hash).toBe(`#jobs/${id}`)
-    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Overview', 'Résumé'])
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Overview', 'Fit check', 'Résumé'])
     await waitFor(() => expect(screen.getByRole('button', { name: /^Saved/ }).getAttribute('aria-pressed')).toBe('true'))
-    // Before a fit check, both choices are offered: tailor straight away, or only check the fit.
-    expect(screen.getByRole('button', { name: 'Check fit' })).toBeTruthy()
+    // Tailor résumé is the one header button; the fit check is asked for from Overview or its own tab.
+    expect(await screen.findByRole('button', { name: 'Check fit' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Tailor résumé' })).toBeTruthy()
     await user.click(screen.getByRole('tab', { name: 'Résumé' }))
     expect(screen.getByText(/Check the fit first/)).toBeTruthy()
-    await user.keyboard('{ArrowLeft}')
+    await user.keyboard('{ArrowLeft}{ArrowLeft}')
     expect(screen.getByRole('tab', { name: 'Overview' }).getAttribute('aria-selected')).toBe('true')
     await user.click(screen.getByRole('button', { name: '← All jobs' }))
     expect(window.location.hash).toBe('#jobs')
@@ -329,7 +329,15 @@ describe('job analysis view', () => {
     const jobTitle = await screen.findByText('Software Engineer', { selector: '.job-card strong' })
     await user.click(jobTitle.closest('button')!)
     expect(await screen.findByText('TypeScript experience is required', { selector: 'mark' })).toBeTruthy()
+    // Overview says how it came out; the Fit check tab holds the score, the knockout basis and the requirement lists.
+    expect(screen.getByText('Strong fit', { selector: '.fit-strip b' })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: 'Fit check · 100%' })).toBeTruthy()
+    expect(screen.getByText('100%', { selector: '.job-card .pc' })).toBeTruthy()
+    await user.click(screen.getByRole('tab', { name: 'Fit check · 100%' }))
+    expect(screen.getByRole('meter', { name: 'Fit 100 percent' })).toBeTruthy()
     expect((await screen.findAllByText(/years across dated employment roles/)).length).toBeGreaterThan(0)
+    expect(screen.getByText(/Covered \(1\)/)).toBeTruthy()
+    await user.click(screen.getByRole('tab', { name: 'Overview' }))
     await user.click(await screen.findByText('To review', { selector: '.pill-menu summary' }))
     await user.click(await screen.findByRole('button', { name: /^Save for later/ }))
     await user.click(await screen.findByRole('button', { name: /^Saved/ }))
@@ -338,4 +346,28 @@ describe('job analysis view', () => {
     expect(screen.getByRole('button', { name: 'Tailor résumé' })).toBeTruthy()
     sqlite.close()
   })
+
+  it('checks the fit of every unchecked job after asking, then shows each job\'s fit on its card', async () => {
+    const modelRouter = { async complete(task: TaskName, _request: ModelRequest) {
+      if (task !== 'requirementExtraction') throw new Error('Only extraction should run in this test.')
+      return { text: JSON.stringify({ requirements: [{ quote: 'TypeScript experience is required', kind: 'hard', category: 'skill', skill: 'TypeScript', years: null }], seniority: '', vocabulary: [] }), provider: 'ollama' as const, model: 'fake-local' }
+    } }
+    const { user, sqlite } = await setup(modelRouter)
+    const master = emptyMaster()
+    master.roles.push({ id: randomUUID(), company: 'Acme', title: 'Engineer', start: 'January 2025', end: 'Present', bullets: [{ id: randomUUID(), rev: 1, text: 'Built TypeScript APIs for customers', skills: ['TypeScript'], metrics: [], verbs: [], sourceRef: 'test' }] })
+    saveMaster(sqlite, master)
+    for (const [company, title] of [['Orbit', 'Platform Engineer'], ['Nimbus', 'Backend Engineer']]) sqlite.prepare('INSERT INTO jobs(id,company,title,captured_at,raw_snapshot,text) VALUES(?,?,?,?,?,?)').run(randomUUID(), company, title, '2026-10-03T00:00:00.000Z', 'raw', 'TypeScript experience is required. A long enough job description for the list to show.')
+    cleanup()
+    window.location.hash = ''
+    render(<Workspace />)
+    expect((await screen.findAllByText('Not checked')).length).toBe(2)
+    await user.click(await screen.findByRole('button', { name: 'Check fits' }))
+    expect(screen.getByText('Check the fit of 2 jobs?')).toBeTruthy()
+    expect(screen.getByText(/one job at a time, about half a minute each/)).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Start checking' }))
+    await waitFor(() => expect(screen.getAllByText('Strong fit')).toHaveLength(2), { timeout: 10_000 })
+    expect(screen.queryByRole('button', { name: 'Check fits' })).toBeNull()
+    sqlite.close()
+  }, 15_000)
+
 })

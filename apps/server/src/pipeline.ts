@@ -11,6 +11,7 @@ import { taskOutputLimits, type ModelRouter, type ModelRequest, type ModelRespon
 import { scoreResponseSchema, verdictResponseSchema, slopResponseSchema, modelFormats, requireIds, parseDraft } from './model-schemas.js'
 import { type RunContext, type RunRecord, SerialRunQueue } from './queue.js'
 import { prompts } from './prompts.js'
+import { bestMatches, computeFit } from './fit.js'
 import { antiSlop, assessRequirement, chooseSummary, evidenceRows, findGaps, normalizeExtraction, parseModelJson, scoreEvidence, selectSkillsLine, verifyLayer1 } from './pipeline-core.js'
 
 const promptVersions = { requirementExtraction: prompts.requirementExtraction.version, bulletScoring: prompts.bulletScoring.version, resumeDrafting: prompts.resumeDrafting.version, claimVerification: prompts.claimVerification.version, antiSlop: prompts.antiSlop.version }
@@ -80,11 +81,13 @@ export class PipelineService {
     const extraction = extractionRow ? JSON.parse(extractionRow.document) as Extraction : null
     const master = readMaster(this.sqlite).document, profile = readProfile(this.sqlite).document, synonyms = listSynonyms(this.sqlite)
     if (extraction) for (const requirement of extraction.requirements) Object.assign(requirement, assessRequirement(requirement, master, profile, synonyms))
-    const preliminaryGaps = extraction ? findGaps(extraction, scoreEvidence(master, extraction, synonyms), master) : []
+    const scores = extraction ? scoreEvidence(master, extraction, synonyms) : []
+    const preliminaryGaps = extraction ? findGaps(extraction, scores, master) : []
     const tailoredRow = selectLatest(this.sqlite, 'tailored', jobId)
     const tailored = tailoredRow ? tailoredDocumentSchema.parse(JSON.parse(tailoredRow.document)) : null
     const runs = this.sqlite.prepare('SELECT id,kind,status,step,error,usage,cost_estimate AS costEstimate,created_at AS createdAt,finished_at AS finishedAt FROM runs WHERE job_id=? ORDER BY created_at DESC,rowid DESC LIMIT 20').all(jobId)
-    return { extraction, preliminaryGaps, tailored, runs }
+    const fit = extraction ? computeFit(extraction, preliminaryGaps) : null, matches = extraction ? bestMatches(extraction, preliminaryGaps, scores, master) : []
+    return { extraction, preliminaryGaps, fit, matches, tailored, runs }
   }
 
   async estimate(jobId: string, kind: 'extract' | 'tailor') {
@@ -115,16 +118,19 @@ export class PipelineService {
     return { kind, lines, estimatedUsd, capUsd: settings.costCapUsd, monthlyCapUsd: settings.monthlyCapUsd, spentThisMonthUsd, allowed: withinCaps(settings, estimatedUsd, spentThisMonthUsd), note: 'Estimated from text length and output limits; actual token use can differ.' }
   }
 
+  // A new job is checked on its own only when the user turned that on and the check runs on this computer; a paid check is always asked for.
   async maybeAutoExtract(jobId: string) {
     if (!existsSync(join(this.dataDirectory, 'settings.json'))) return null
+    const settings = await readSettings(this.dataDirectory)
+    if (!settings.autoFitCheck || settings.taskModels.requirementExtraction.provider !== 'ollama') return null
     const existing = this.sqlite.prepare("SELECT 1 FROM runs WHERE job_id=? AND kind='extract' AND status IN ('queued','running','done') LIMIT 1").get(jobId)
     if (existing) return null
     try { return await this.enqueueExtract(jobId) } catch { return null }
   }
-  async enqueueExtract(jobId: string) {
+  async enqueueExtract(jobId: string, quiet = false) {
     const estimate = await this.estimate(jobId, 'extract')
     if (!estimate.allowed) throw capError('extraction', await readSettings(this.dataDirectory), estimate.estimatedUsd, estimate.spentThisMonthUsd)
-    const run = this.queue.enqueueWork('extract', jobId, (record, context) => this.extract(record, context))
+    const run = this.queue.enqueueWork('extract', jobId, (record, context) => this.extract(record, context), quiet)
     this.sqlite.prepare('UPDATE runs SET cost_estimate=?,prompt_versions=? WHERE id=?').run(estimate.estimatedUsd, JSON.stringify({ requirementExtraction: promptVersions.requirementExtraction }), run.id)
     return run
   }

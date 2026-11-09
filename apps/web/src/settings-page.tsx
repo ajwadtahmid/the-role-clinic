@@ -204,6 +204,7 @@ export function SettingsPage() {
           <div className="button-row"><button className="button small" disabled={busy === 'anthropic'} onClick={() => testConnection('anthropic')}>{busy === 'anthropic' ? 'Checking…' : 'Test key'}</button>{settings.anthropicApiKeyConfigured && <button className="button small quiet danger" disabled={busy === 'clear-key'} onClick={clearKey}>Remove saved key</button>}</div>
         </article>
       </div>
+      {settings.taskModels.requirementExtraction.provider === 'ollama' && <label className="auto-fit"><input type="checkbox" checked={settings.autoFitCheck} onChange={(event) => setSettings({ ...settings, autoFitCheck: event.target.checked })} /><span><b>Check each new job’s fit automatically</b><span className="t">Off by default. Uses this computer in the background while you work, including for jobs the job feed brings in. You can always check a job yourself, or press Check fits on the Jobs page.</span></span></label>}
 
       {usesClaude && <details className="more" open>
         <summary>Spending limits <span className="muted">· ${settings.costCapUsd} a run · ${settings.monthlyCapUsd} a month</span></summary>

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api } from './api.js'
 
 type Notice = { key: string; jobId: string; failed: boolean; text: string }
-type RunEventData = { id: number; jobId?: string; kind?: string; status: string; message?: string; timestamp: string }
+type RunEventData = { id: number; jobId?: string; kind?: string; status: string; message?: string; quiet?: boolean; timestamp: string }
 const labels: Record<string, string> = { extract: 'Fit check', tailor: 'Tailoring', reverify: 'Re-check' }
 
 // Tells you when a fit check or tailoring run ends, on whatever page you are on. Events from before this page loaded, and
@@ -17,6 +17,8 @@ export function RunNotices() {
       const event = JSON.parse((message as MessageEvent).data) as RunEventData
       if (seen.current.has(event.id)) return
       seen.current.add(event.id)
+      // Background fit checks are summed up on the Jobs page, not announced one by one.
+      if (event.quiet) return
       if ((event.status !== 'done' && event.status !== 'failed') || !event.jobId || Date.parse(event.timestamp) < opened.current - 1000) return
       if (location.hash.startsWith(`#jobs/${event.jobId}`) || location.hash.startsWith(`#job/${event.jobId}`)) return
       const label = labels[event.kind ?? ''] ?? 'Run'

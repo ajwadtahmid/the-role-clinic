@@ -12,6 +12,7 @@ export function defaultSettings(): AppSettings {
     costCapUsd: 1,
     monthlyCapUsd: 20,
     modelPrices: {},
+    autoFitCheck: false,
   }
 }
 
@@ -47,5 +48,6 @@ export function toPublicSettings(settings: AppSettings): PublicSettings {
     monthlyCapUsd: settings.monthlyCapUsd,
     modelPrices: settings.modelPrices,
     jobFeed: settings.jobFeed?.path ? settings.jobFeed : undefined,
+    autoFitCheck: settings.autoFitCheck,
   }
 }

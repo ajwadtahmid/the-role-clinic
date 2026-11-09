@@ -14,6 +14,8 @@ import { ModelRouter } from './model-adapters.js'
 import { captureJobUrl } from './capture.js'
 import { FeedService, normalizeFeedUrl, type PostingCapture } from './feed.js'
 import { registerFeedRoutes } from './feed-routes.js'
+import { FitBatch } from './fit-batch.js'
+import { computeFit } from './fit.js'
 import { databaseBackup } from './database-backups.js'
 import { registerRuntimeRoutes, type RuntimeInfo } from './runtime-routes.js'
 import { registerMasterRoutes } from './master-routes.js'
@@ -22,8 +24,8 @@ import { latestByJob } from './tracker.js'
 import { registerReviewRoutes } from './review-routes.js'
 import { PipelineService } from './pipeline.js'
 import { listSynonyms, readMaster, readProfile } from './master.js'
-import { assessRequirement } from './pipeline-core.js'
-import type { Requirement } from '../../../packages/shared/src/index.js'
+import { assessRequirement, findGaps, scoreEvidence } from './pipeline-core.js'
+import type { Extraction, Requirement } from '../../../packages/shared/src/index.js'
 
 const isLoopback = (host: string) => ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(host.toLowerCase())
 // Named groups of statuses the jobs list can show.
@@ -160,6 +162,7 @@ export function createApp(options: AppOptions) {
   const queue = options.queue ?? new SerialRunQueue(options.db)
   const modelRouter = options.modelRouter ?? new ModelRouter(() => readSettings(options.dataDirectory))
   const pipeline = new PipelineService(options.sqlite, options.dataDirectory, queue, modelRouter)
+  const fitBatch = new FitBatch(options.sqlite, options.dataDirectory, pipeline)
   const feed = new FeedService(options.sqlite, async () => (await readSettings(options.dataDirectory)).jobFeed?.path || null, options.postingCapture ?? ((url) => captureJobUrl(url)), { spacingMs: options.feedSpacingMs }, join(options.dataDirectory, 'job-search', 'data', 'jobs.csv'))
   const app = new Hono()
   app.use('*', securityMiddleware({ port, webPort, development }))
@@ -184,7 +187,7 @@ export function createApp(options: AppOptions) {
   registerMasterRoutes(app, options.sqlite, options.dataDirectory)
   registerReviewRoutes(app, options.sqlite, options.dataDirectory, pipeline)
   registerTrackerRoutes(app, options.sqlite, options.dataDirectory)
-  registerFeedRoutes(app, feed, options.dataDirectory)
+  registerFeedRoutes(app, feed, options.dataDirectory, () => { void fitBatch.maybeStart().catch(() => {}) })
   // Check the feed once at start; a missing or unreadable file is shown later in Settings, never here.
   void feed.status().then((status) => status.configured ? feed.refresh() : undefined).catch(() => undefined)
   app.get('/api/jobs/:id/analysis', (context) => {
@@ -223,6 +226,10 @@ export function createApp(options: AppOptions) {
     }
     catch (error) { return context.json({ error: (error as Error).message }, 422) }
   })
+  // Fit checks for every job still waiting for one: what it would take, then start, watch and stop.
+  app.get('/api/fit-batch', async (context) => context.json({ state: fitBatch.status(), preview: fitBatch.status().running ? null : await fitBatch.preview() }))
+  app.post('/api/fit-batch', async (context) => context.json({ state: await fitBatch.start() }, 202))
+  app.delete('/api/fit-batch', (context) => context.json({ state: fitBatch.stop() }))
   app.post('/api/runs/:id/retry', (context) => {
     try { return context.json({ run: pipeline.retry(context.req.param('id')) }, 202) }
     catch (error) { return context.json({ error: (error as Error).message }, 409) }
@@ -247,7 +254,15 @@ export function createApp(options: AppOptions) {
       const latest = latestRequirements.get(row.id)
       const requirements = latest ? (JSON.parse(latest) as { requirements: Requirement[] }).requirements : []
       const { finderNote, ...rest } = row
-      return { ...rest, flagCount: parseFinderNote(finderNote).flags.split(/[;\n]+/).filter((flag) => flag.trim()).length, latestRun: latestRuns.get(row.id) ?? null, knockouts: requirements.filter((item) => item.kind === 'knockout').map((item) => ({ quote: item.quote, ...assessRequirement(item, master, profile, synonyms) })) }
+      // The fit score shown on the list, worked out the same way as on the job's Fit check tab.
+      let fit = null
+      if (latest) {
+        const extraction = JSON.parse(latest) as Extraction
+        for (const requirement of extraction.requirements) Object.assign(requirement, assessRequirement(requirement, master, profile, synonyms))
+        const scored = computeFit(extraction, findGaps(extraction, scoreEvidence(master, extraction, synonyms), master))
+        if (scored) fit = { pct: scored.pct, label: scored.label }
+      }
+      return { ...rest, fit, flagCount: parseFinderNote(finderNote).flags.split(/[;\n]+/).filter((flag) => flag.trim()).length, latestRun: latestRuns.get(row.id) ?? null, knockouts: requirements.filter((item) => item.kind === 'knockout').map((item) => ({ quote: item.quote, ...assessRequirement(item, master, profile, synonyms) })) }
     })
     return context.json({ jobs })
   })

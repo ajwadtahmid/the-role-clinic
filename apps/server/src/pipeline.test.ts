@@ -20,7 +20,7 @@ async function setup(auto = false, failSlop = false, draftText = 'Reduced API la
   master.skills.push({ name: 'TypeScript', category: 'Languages', evidenceIds: [bulletId] }, { name: 'Rust', category: 'Languages', evidenceIds: [] })
   saveMaster(sqlite, master)
   saveProfile(sqlite, { ...emptyProfile(), email: 'private-secret@example.test', workAuthorization: 'Authorized to work in the US; PRIVATE_PROFILE_MARKER' })
-  if (auto) await writeSettings(dir, defaultSettings())
+  if (auto) await writeSettings(dir, { ...defaultSettings(), autoFitCheck: true })
   const calls: TaskName[] = [], inputs: string[] = []
   let slopFailures = 0, unusableReplies = unusableExtractionReplies, truncatedReplies = truncatedExtractionReplies
   const budgets: number[] = []
@@ -258,4 +258,42 @@ describe('extraction and tailoring pipeline', () => {
     await waitFor(sqlite, 'extract', 'done')
     sqlite.close()
   })
+
+  it('does not check a new job on its own unless the user turned that on', async () => {
+    const { sqlite, job } = await setup(false)
+    expect(job.extractionRunId).toBeNull()
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM runs').get()).toEqual({ n: 0 })
+    sqlite.close()
+  })
+
+  it('scores a checked job and shows the score in its analysis and in the job list', async () => {
+    const { sqlite, post, request, job, bulletId } = await setup()
+    expect((await (await request(`/api/jobs/${job.id}/analysis`)).json() as { fit: unknown }).fit).toBeNull()
+    expect((await post(`/api/jobs/${job.id}/extract`)).status).toBe(202)
+    await waitFor(sqlite, 'extract', 'done')
+    const analysis = await (await request(`/api/jobs/${job.id}/analysis`)).json() as { fit: { pct: number; label: string; hardCovered: number; hardTotal: number; niceCovered: number; niceTotal: number }; matches: Array<{ bulletId: string }> }
+    // TypeScript (key) is covered and Rust (nice-to-have) is not: 1 of 1.25 weighted points. The two knockouts are not scored.
+    expect(analysis.fit).toEqual({ pct: 80, label: 'Strong fit', hardCovered: 1, hardTotal: 1, niceCovered: 0, niceTotal: 1 })
+    expect(analysis.matches.map((match) => match.bulletId)).toEqual([bulletId])
+    const list = await (await request('/api/jobs')).json() as { jobs: Array<{ id: string; fit: { pct: number; label: string } | null }> }
+    expect(list.jobs.find((item) => item.id === job.id)?.fit).toEqual({ pct: 80, label: 'Strong fit' })
+    sqlite.close()
+  })
+
+  it('checks every job that has no fit check yet, one after another, without notices of their own', async () => {
+    const { sqlite, post, request, job } = await setup()
+    await post('/api/jobs', { company: 'Second', title: 'Developer', text: `${jd} Second posting.` })
+    const before = await (await request('/api/fit-batch')).json() as { state: { running: boolean }; preview: { count: number; provider: string; estimatedUsd: number | null } }
+    expect(before.state.running).toBe(false)
+    expect(before.preview).toMatchObject({ count: 2, provider: 'ollama', estimatedUsd: null })
+    expect((await post('/api/fit-batch')).status).toBe(202)
+    let state = { running: true, done: 0, total: 0, message: '' }
+    for (let attempt = 0; attempt < 300 && state.running; attempt++) { await new Promise((resolve) => setTimeout(resolve, 20)); state = (await (await request('/api/fit-batch')).json() as { state: typeof state }).state }
+    expect(state).toMatchObject({ running: false, done: 2, total: 2, message: 'Checked 2 jobs.' })
+    expect(sqlite.prepare('SELECT COUNT(DISTINCT job_id) AS n FROM requirements').get()).toEqual({ n: 2 })
+    expect(((await (await request('/api/fit-batch')).json()) as { preview: { count: number } }).preview.count).toBe(0)
+    expect(job.id).toBeTruthy()
+    sqlite.close()
+  })
+
 })

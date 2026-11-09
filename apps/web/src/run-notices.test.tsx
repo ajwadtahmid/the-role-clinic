@@ -41,4 +41,11 @@ describe('run notices', () => {
     await act(async () => { FakeEventSource.last.emit(event({ id: 4 })) })
     expect(screen.queryByRole('status')).toBeNull()
   })
+
+  it('stays quiet about background fit checks', async () => {
+    setup()
+    await act(async () => { FakeEventSource.last.emit(event({ id: 9, quiet: true })) })
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
 })

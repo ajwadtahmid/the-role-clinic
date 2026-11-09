@@ -5,6 +5,7 @@ import { Icon } from './icons.js'
 import { api } from './api.js'
 import { AddJobDialog, Quickstart } from './add-job.js'
 import { Toast } from './toast.js'
+import { FitMeter, JobFit, useFitBatch } from './fit-check.js'
 import { JobHeader, JobOverview, RunStrip, latestRun, JobResume, JobTabs, type Analysis, type Detail, type Estimate, type Job, type JobTab } from './job-detail.js'
 import { nextAction, splitChoice, stageLabels, statusText, type NextActionId } from './stages.js'
 
@@ -72,6 +73,7 @@ export function Workspace() {
   const [feed, setFeed] = useState<FeedStatus | null>(null), [checking, setChecking] = useState(false), lastCheck = useRef(0), chainTailor = useRef<string | null>(null), [showSubmit, setShowSubmit] = useState(false), [showAdd, setShowAdd] = useState(false)
   const [analysis, setAnalysis] = useState<Analysis | null>(null), [estimate, setEstimate] = useState<Estimate | null>(null), [estimateError, setEstimateError] = useState(''), [hasExport, setHasExport] = useState(false)
   const [readiness, setReadiness] = useState<Readiness | null>(null), [dismissedRun, setDismissedRun] = useState<string | null>(null)
+  const batch = useFitBatch(() => { void loadJobs().catch(() => undefined) }, (text) => flash(text))
   async function loadReadiness() { setReadiness(await api<Readiness>('/api/onboarding')) }
   // The feed filter only applies to To review; the server names that view `triage`.
   async function loadJobs(filter = statusFilter, onlyFeed = feedOnly) { const view = onlyFeed && filter === 'new' ? 'triage' : filter; const [result, summary] = await Promise.all([api<{ jobs: Job[] }>(`/api/jobs?q=${encodeURIComponent(query)}&status=${encodeURIComponent(view)}`), api<Counts>('/api/jobs/counts')]); setJobs(result.jobs); setCounts(summary) }
@@ -136,7 +138,7 @@ export function Workspace() {
   async function tailorFirst() {
     if (!selected) return
     if (analysis?.extraction) { await startRun('tailor'); return }
-    chainTailor.current = selected; await startRun('extract')
+    chainTailor.current = selected; setTab('fit'); await startRun('extract')
   }
   async function retryRun(id: string) { if (!selected) return; setBusy(true); try { await api(`/api/runs/${id}/retry`, { method: 'POST', body: '{}' }); flash('Retry queued from the last saved step.'); await loadAnalysis(selected) } catch (error) { setNotice((error as Error).message) } finally { setBusy(false) } }
   // After a status change: a job that has left the list being shown is followed by the next one in it, so a run of decisions needs no extra clicks.
@@ -200,9 +202,10 @@ export function Workspace() {
   useEffect(() => { if (selected || noJobs || !firstId || !window.matchMedia?.('(min-width: 881px)').matches) return; if (!/^(#jobs?)?$/.test(location.hash)) return; location.replace(`#jobs/${firstId}`) }, [selected, noJobs, firstId])
   return <main className={`shell${selected ? ' detail-open' : ''}`} id="main" tabIndex={-1}>
     <AppHeader current="jobs" />
-    <PageHeader title="Jobs" actions={<>{feed?.configured && <>{feed.lastCheckedAt && <span className="subtle feed-checked">Last checked {new Date(feed.lastCheckedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>}<button className="button secondary" disabled={checking} onClick={() => void checkFeed(true)}>{checking ? 'Checking…' : 'Check for new jobs'}</button></>}<button className="button primary" onClick={() => setShowAdd(true)}><Icon name="plus" />Add job</button></>}>Jobs you have not applied to yet. Applied jobs are in the <a href="#tracker">Tracker</a>{counts && counts.applied > 0 ? ` (${counts.applied})` : ''}.</PageHeader>
+    <PageHeader title="Jobs" actions={<>{feed?.configured && <>{feed.lastCheckedAt && <span className="subtle feed-checked">Last checked {new Date(feed.lastCheckedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>}<button className="button secondary" disabled={checking} onClick={() => void checkFeed(true)}>{checking ? 'Checking…' : 'Check for new jobs'}</button></>}{batch.button}<button className="button primary" onClick={() => setShowAdd(true)}><Icon name="plus" />Add job</button></>}>Jobs you have not applied to yet. Applied jobs are in the <a href="#tracker">Tracker</a>{counts && counts.applied > 0 ? ` (${counts.applied})` : ''}.</PageHeader>
     {notice && <Toast error onClose={() => setNotice('')}>{notice}</Toast>}
     {toast && <Toast onUndo={toast.undo} onClose={() => setToast(null)}>{toast.text}</Toast>}
+    {batch.panel}
     {listing && <>
       <div className="toolbar"><label className="search"><Icon name="search" /><input aria-label="Search jobs" value={query} placeholder="Search title or company" onChange={(e) => setQuery(e.target.value)} /></label><label className="select">Sort<select value={sort} onChange={(event) => setSort(event.target.value as 'newest' | 'company')}><option value="newest">Newest first</option><option value="company">Company A–Z</option></select></label></div>
       <div className="chips" role="group" aria-label="Show jobs">{stageOptions.map(([value, label]) => <button key={value} type="button" className="chip" aria-pressed={statusFilter === value} onClick={() => setStatusFilter(value)}><Icon name="check" />{label}{counts && <span className="n">{counts[value]}</span>}</button>)}<span className="spacer" />{(feed?.configured || (counts?.triage ?? 0) > 0) && <label className="toggle"><input type="checkbox" checked={feedOnly && statusFilter === 'new'} disabled={statusFilter !== 'new'} onChange={(event) => setFeedOnly(event.target.checked)} />Only from the job feed{counts ? ` (${counts.triage})` : ''}</label>}</div>
@@ -210,7 +213,7 @@ export function Workspace() {
     {noJobs ? <Quickstart readiness={readiness} onAdd={() => setShowAdd(true)} /> : <div className={`jobs-layout ${selected ? 'has-selection' : ''} ${detailOnly ? 'detail-only' : ''}`}>
       <div className={`list-col ${feedOnly && statusFilter === 'new' ? 'feed-only' : ''}`}><div className="list-scroll" aria-label="Job list">
         {shownJobs.length > 1 && <p className="list-hint" id="list-hint">Use the up and down arrow keys to move between jobs.</p>}
-        {shownJobs.length > 0 && <ul className="job-list" aria-describedby={shownJobs.length > 1 ? 'list-hint' : undefined} aria-label={`${stageOptions.find(([value]) => value === statusFilter)?.[1]} jobs`} onKeyDown={moveFocus}>{shownJobs.map((job) => { const tab = job.id === stopId ? 0 : -1; return <li key={job.id} className={`job-row ${selected === job.id ? 'sel' : ''}`} onFocus={() => setActiveRow(job.id)}><button className={`job-card job-main ${selected === job.id ? 'selected' : ''}`} tabIndex={tab} aria-current={selected === job.id ? 'true' : undefined} onClick={() => selectJob(job.id)}><span className="job-card-heading"><strong className="jr-title">{job.title || '(Untitled role)'}</strong></span><span className="jr-sub">{job.company || 'Company not set'}{job.location ? ` · ${job.location}` : ''}</span><span className="jr-meta"><PriorityMeter job={job} /><small>{job.origin === 'feed' ? `Found ${ago(job.postedAt ?? job.foundAt ?? job.capturedAt)}` : `Added ${ago(job.capturedAt)}`}</small>{runBadge(job)}{feedBadges(job)}{warningCount(job) > 0 && <span className="tag tag-warn">{warningCount(job)} to check</span>}</span></button><span className="jr-actions">{rowActions(job, tab)}</span></li> })}</ul>}
+        {shownJobs.length > 0 && <ul className="job-list" aria-describedby={shownJobs.length > 1 ? 'list-hint' : undefined} aria-label={`${stageOptions.find(([value]) => value === statusFilter)?.[1]} jobs`} onKeyDown={moveFocus}>{shownJobs.map((job) => { const tab = job.id === stopId ? 0 : -1; return <li key={job.id} className={`job-row ${selected === job.id ? 'sel' : ''}`} onFocus={() => setActiveRow(job.id)}><button className={`job-card job-main ${selected === job.id ? 'selected' : ''}`} tabIndex={tab} aria-current={selected === job.id ? 'true' : undefined} onClick={() => selectJob(job.id)}><span className="job-card-heading"><strong className="jr-title">{job.title || '(Untitled role)'}</strong></span><span className="jr-sub">{job.company || 'Company not set'}{job.location ? ` · ${job.location}` : ''}</span><span className="jr-meta">{job.status !== 'skipped' && <FitMeter fit={job.fit} pending={job.latestRun?.kind === 'extract' && job.latestRun.status !== 'done' && job.latestRun.status !== 'failed'} />}<PriorityMeter job={job} /><small>{job.origin === 'feed' ? `Found ${ago(job.postedAt ?? job.foundAt ?? job.capturedAt)}` : `Added ${ago(job.capturedAt)}`}</small>{runBadge(job)}{feedBadges(job)}{warningCount(job) > 0 && <span className="tag tag-warn">{warningCount(job)} to check</span>}</span></button><span className="jr-actions">{rowActions(job, tab)}</span></li> })}</ul>}
         {jobs.length === 0 && <div className="empty-note"><strong>{feedOnly && statusFilter === 'new' ? 'Nothing from the job feed is waiting for you.' : query ? 'No jobs match your search.' : emptyText[statusFilter]}</strong></div>}
         {sortedJobs.length > limit && <button className="button more-jobs" onClick={() => setLimit(limit + pageSize)}>Show {Math.min(pageSize, sortedJobs.length - limit)} more ({sortedJobs.length - limit} left)</button>}
       </div></div>
@@ -219,9 +222,10 @@ export function Workspace() {
           <JobHeader detail={detail} action={action} estimate={estimate} estimateError={estimateError} busy={busy || !analysis} activeLabel={activeLabel} inTracker={detailOnly} onAction={() => runNextAction(action.id)} onTailor={() => void tailorFirst()} onStatus={(status) => void updateStatus(status)} onBack={backToList} />
           {showSubmit && <SubmissionForm key={selected} jobId={selected!} onSaved={async () => { setShowSubmit(false); await afterStatusChange(selected!, 'applied') }} onCancel={() => setShowSubmit(false)} />}
           <RunStrip analysis={analysis} dismissed={dismissedRun} onDismiss={setDismissedRun} onRetry={(id) => void retryRun(id)} busy={busy} />
-          <JobTabs tab={tab} onTab={setTab} />
+          <JobTabs tab={tab} onTab={setTab} analysis={analysis} />
           <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="job-tab-panel">
-            {tab === 'overview' && <JobOverview job={detail.job} text={detail.job.text} analysis={analysis} busy={busy} canExtract={action.id !== 'extract'} onExtract={() => void startRun('extract')} />}
+            {tab === 'overview' && <JobOverview job={detail.job} text={detail.job.text} analysis={analysis} busy={busy} onCheck={() => { setTab('fit'); void startRun('extract') }} onViewFit={() => setTab('fit')} />}
+            {tab === 'fit' && <JobFit jobId={selected!} analysis={analysis} busy={busy} onCheck={() => void startRun('extract')} />}
             {tab === 'resume' && <JobResume jobId={selected!} analysis={analysis} busy={busy} onRetry={(id) => void retryRun(id)} />}
           </div>
         </div> : selected ? <p className="loading panel job-detail" role="status">Loading job…</p> : <div className="panel job-empty"><h2>Select a job</h2><p className="subtle">Pick a job from the list to see its requirements, résumé and history. Use Add job to save a new posting.</p></div>}

@@ -1,18 +1,19 @@
 import { Icon } from './icons.js'
+import { FitStrip, fitTabLabel, type FitDetail, type FitMatch, type FitScore } from './fit-check.js'
 import { choiceOf, stageClass, statusChoices, statusText, type NextAction } from './stages.js'
 
 export type LatestRun = { kind: string; status: string; step: string }
-export type Job = { id: string; latestRun?: LatestRun | null; company: string; title: string; capturedAt: string; status: string; outcome?: string | null; location: string; summary: string; sourceUrl?: string; applyUrl?: string; knockouts?: Array<{ quote: string; assessment: 'met' | 'gap' | 'unknown' }>; origin?: 'manual' | 'feed'; foundAt?: string | null; postedAt?: string | null; finderPriority?: string | null; postingState?: 'summary' | 'summary_only' | 'full' | 'maybe_closed' | null; flagCount?: number; finder?: Finder | null }
+export type Job = { id: string; latestRun?: LatestRun | null; company: string; title: string; capturedAt: string; status: string; outcome?: string | null; location: string; summary: string; sourceUrl?: string; applyUrl?: string; fit?: FitScore | null; knockouts?: Array<{ quote: string; assessment: 'met' | 'gap' | 'unknown' }>; origin?: 'manual' | 'feed'; foundAt?: string | null; postedAt?: string | null; finderPriority?: string | null; postingState?: 'summary' | 'summary_only' | 'full' | 'maybe_closed' | null; flagCount?: number; finder?: Finder | null }
 export type Finder = { flags: string; whyItFits: string; source: string; similarTo: string | null }
 export type Answer = { id: string; question: string; answer: string; submittedAnswer: string | null; category: string; charLimit: number | null }
 export type Detail = { job: Job & { text: string; notes?: string; submittedText?: string; appliedAt?: string }; answers: Answer[]; events: { status: string; createdAt: string }[] }
 export type Requirement = { id: string; quote: string; kind: 'knockout' | 'hard' | 'nice'; category: string; skill: string; start: number; end: number; assessment: 'met' | 'gap' | 'unknown'; basis: string }
 export type Gap = { requirementId: string; quote: string; reason: string }
-export type Analysis = { extraction: { requirements: Requirement[]; seniority: string; vocabulary: string[]; partial: boolean } | null; preliminaryGaps: Gap[]; tailored: { runId: string; summary: { text: string; verdict: string; flags: string[] } | null; skillsLine: string[]; lines: Array<{ outId: string; text: string; sourceIds: string[]; verdict: string; layer1Flags: string[]; layer2Reason: string; slopFlags: string[] }>; gaps: Gap[]; exportReady: boolean } | null; runs: Array<{ id: string; kind: string; status: string; step: string; error: string | null; usage: string | null; costEstimate: number | null; finishedAt?: string | null }> }
+export type Analysis = { extraction: { requirements: Requirement[]; seniority: string; vocabulary: string[]; partial: boolean } | null; preliminaryGaps: Gap[]; fit: FitDetail | null; matches: FitMatch[]; tailored: { runId: string; summary: { text: string; verdict: string; flags: string[] } | null; skillsLine: string[]; lines: Array<{ outId: string; text: string; sourceIds: string[]; verdict: string; layer1Flags: string[]; layer2Reason: string; slopFlags: string[] }>; gaps: Gap[]; exportReady: boolean } | null; runs: Array<{ id: string; kind: string; status: string; step: string; error: string | null; usage: string | null; costEstimate: number | null; finishedAt?: string | null }> }
 export type Estimate = { estimatedUsd: number; capUsd: number; monthlyCapUsd: number; spentThisMonthUsd: number; allowed: boolean; note: string }
 
-export type JobTab = 'overview' | 'resume'
-const tabLabels: Record<JobTab, string> = { overview: 'Overview', resume: 'Résumé' }
+export type JobTab = 'overview' | 'fit' | 'resume'
+const tabLabels: Record<JobTab, string> = { overview: 'Overview', fit: 'Fit check', resume: 'Résumé' }
 
 function highlighted(text: string, requirements: Requirement[]) {
   const ordered = [...requirements].sort((a, b) => a.start - b.start || b.end - a.end)
@@ -53,7 +54,7 @@ export function JobHeader({ detail, action, estimate, estimateError, busy, activ
       {deciding ? <StageMenu job={job} busy={busy} onStatus={onStatus} /> : <span className={stageClass(job.status ?? 'new')}>{statusText(job.status, job.outcome)}</span>}
     </div>
     <div className="job-actions">
-      {action.id === 'extract' ? <><button className="button primary" disabled={busy || Boolean(activeLabel)} onClick={onTailor}>{activeLabel ?? 'Tailor résumé'}</button><button className="button" disabled={busy || Boolean(activeLabel)} onClick={onAction}>Check fit</button></> : action.id === 'tracker' ? <a className="button primary" href={`#tracker?job=${job.id}`}>{action.label}</a> : action.id !== 'none' && <button className="button primary" disabled={busy || blocked || Boolean(activeLabel)} onClick={onAction}>{activeLabel ?? action.label}</button>}
+      {action.id === 'extract' ? <button className="button primary" disabled={busy || Boolean(activeLabel)} onClick={onTailor}>{activeLabel ?? 'Tailor résumé'}</button> : action.id === 'tracker' ? <a className="button primary" href={`#tracker?job=${job.id}`}>{action.label}</a> : action.id !== 'none' && <button className="button primary" disabled={busy || blocked || Boolean(activeLabel)} onClick={onAction}>{activeLabel ?? action.label}</button>}
       {postingUrl && <a className="button ext" href={postingUrl} target="_blank" rel="noreferrer">{job.sourceUrl ? 'Open posting' : 'Open application'}<Icon name="external" /></a>}
       <details className="more-menu"><summary>More</summary><div className="more-panel">
         <label className="status-select">Exact status<select value={choiceOf(job.status ?? 'new', job.outcome)} onChange={(e) => onStatus(e.target.value)}>{statusChoices.map((choice) => <option key={choice.value} value={choice.value}>{choice.label}</option>)}</select></label>
@@ -62,7 +63,7 @@ export function JobHeader({ detail, action, estimate, estimateError, busy, activ
         <a className="external-link" href={`/api/jobs/${job.id}/snapshot`} download="job-capture.txt">Download original capture</a>
       </div></details>
     </div>
-    <p className="subtle next-hint">{action.id === 'tailor' ? costNote : action.id === 'extract' ? 'Tailor résumé checks the fit first, then writes a draft from your master résumé. Check fit only compares the posting with your profile and résumé.' : action.hint}</p>
+    <p className="subtle next-hint">{action.id === 'tailor' ? costNote : action.id === 'extract' ? 'Tailor résumé checks the fit first, then writes a draft from your master résumé. To see the fit before deciding, open the Fit check tab.' : action.hint}</p>
   </header>
 }
 
@@ -103,7 +104,7 @@ export function PostingNotice({ job }: { job: Detail['job'] }) {
   return null
 }
 
-export function JobTabs({ tab, onTab }: { tab: JobTab; onTab: (tab: JobTab) => void }) {
+export function JobTabs({ tab, onTab, analysis = null }: { tab: JobTab; onTab: (tab: JobTab) => void; analysis?: Analysis | null }) {
   // Left and Right move between sections; only the current one is in the Tab order.
   function keys(event: React.KeyboardEvent<HTMLDivElement>) {
     const order = Object.keys(tabLabels) as JobTab[], step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0
@@ -112,22 +113,18 @@ export function JobTabs({ tab, onTab }: { tab: JobTab; onTab: (tab: JobTab) => v
     const next = order[(order.indexOf(tab) + step + order.length) % order.length]
     onTab(next); document.getElementById(`tab-${next}`)?.focus()
   }
-  return <div className="job-tabs" role="tablist" aria-label="Job sections" onKeyDown={keys}>{(Object.keys(tabLabels) as JobTab[]).map((key) => <button key={key} role="tab" id={`tab-${key}`} aria-selected={tab === key} aria-controls={`panel-${key}`} tabIndex={tab === key ? 0 : -1} className={`job-tab ${tab === key ? 'active' : ''}`} onClick={() => onTab(key)}>{tabLabels[key]}</button>)}</div>
+  return <div className="job-tabs" role="tablist" aria-label="Job sections" onKeyDown={keys}>{(Object.keys(tabLabels) as JobTab[]).map((key) => <button key={key} role="tab" id={`tab-${key}`} aria-selected={tab === key} aria-controls={`panel-${key}`} tabIndex={tab === key ? 0 : -1} className={`job-tab ${tab === key ? 'active' : ''}`} onClick={() => onTab(key)}>{key === 'fit' ? fitTabLabel(analysis) : tabLabels[key]}</button>)}</div>
 }
 
-export function JobOverview({ job, text, analysis, busy, canExtract, onExtract }: { job?: Detail['job']; text: string; analysis: Analysis | null; busy: boolean; canExtract: boolean; onExtract: () => void }) {
+export function JobOverview({ job, text, analysis, busy, onCheck, onViewFit }: { job?: Detail['job']; text: string; analysis: Analysis | null; busy: boolean; onCheck: () => void; onViewFit: () => void }) {
   const requirements = analysis?.extraction?.requirements ?? []
-  const active = analysis?.runs.some((run) => run.status === 'queued' || run.status === 'running') ?? false
-  const gaps = analysis?.tailored?.gaps ?? analysis?.preliminaryGaps ?? []
   return <div className="job-overview">
     {job && <PostingNotice job={job} />}
     {job?.finder && <FinderPanel job={job} finder={job.finder} />}
-    <div className="panel-heading"><div><h3>What the posting asks for</h3></div>{analysis?.extraction ? <button className="button secondary" disabled={busy || active} onClick={onExtract}>Refresh requirements</button> : canExtract && <button className="button secondary" disabled={busy || active} onClick={onExtract}>Check fit</button>}</div>
-    {!analysis?.extraction && <p className="subtle">Check fit finds the requirements in this posting and compares them with your profile and résumé.</p>}
+    <FitStrip analysis={analysis} busy={busy} onCheck={onCheck} onView={onViewFit} />
     {analysis?.extraction?.partial && <p className="review-flag">Extraction covered only part of this posting or skipped an unmatched quote. Review the full description.</p>}
-    <details open={requirements.length > 0}><summary>Saved job description {requirements.length ? '· cited highlights' : ''}</summary><pre className="job-text">{highlighted(text, requirements)}</pre></details>
-    {analysis?.extraction && <div className="requirement-grid"><div><h4>Knockout checks</h4><p className="subtle">Conditions the posting states outright, such as years of experience or work authorization. They warn you; they never block anything.</p>{requirements.filter((r) => r.kind === 'knockout').map((r) => <article className="requirement-card" key={r.id}><span className={`gate gate-${r.assessment}`}>{r.assessment}</span><strong>{r.quote}</strong><p>{r.basis}</p></article>)}{!requirements.some((r) => r.kind === 'knockout') && <p className="subtle">No explicit knockout condition was extracted.</p>}</div><div><h4>Other requirements</h4>{requirements.filter((r) => r.kind !== 'knockout').map((r) => <article className="requirement-card" key={r.id}><span className="gate gate-neutral">{r.kind}</span><strong>{r.quote}</strong><p>{r.basis}</p></article>)}{!requirements.length && <p className="subtle">No requirements were extracted. Review the source posting.</p>}</div></div>}
-    {analysis?.extraction && <div className="gap-panel"><h4>Experience your résumé doesn’t show yet</h4>{gaps.length ? gaps.map((gap) => { const requirement = requirements.find((r) => r.id === gap.requirementId); return <article className="gap-row" key={gap.requirementId}><div><strong>{gap.quote}</strong><p>{gap.reason}</p></div>{requirement?.category === 'skill' && <a href={`#resume?skill=${encodeURIComponent(requirement.skill || requirement.quote)}`}>Add real evidence ↗</a>}</article> }) : <p className="subtle">No clear gaps found in the extracted requirements. Review the posting and your master résumé yourself.</p>}</div>}
+    <h3>Job description</h3>
+    <pre className="job-text">{highlighted(text, requirements)}</pre>
   </div>
 }
 

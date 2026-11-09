@@ -15,6 +15,7 @@ export interface RunRecord {
   startedAt?: string
   finishedAt?: string
   message?: string
+  quiet?: boolean
 }
 export interface RunContext { progress(step: string, message: string): void }
 type Work = (run: RunRecord, context: RunContext) => Promise<void>
@@ -30,7 +31,7 @@ export class SerialRunQueue {
   constructor(private db: ClinicDatabase) {}
 
   enqueueDemo(): RunRecord { return this.enqueue('demo') }
-  enqueueWork(kind: 'extract' | 'tailor' | 'reverify', jobId: string, work: Work): RunRecord { return this.enqueue(kind, jobId, work) }
+  enqueueWork(kind: 'extract' | 'tailor' | 'reverify', jobId: string, work: Work, quiet = false): RunRecord { return this.enqueue(kind, jobId, work, quiet) }
 
   retryWork(run: RunRecord, work: Work): RunRecord {
     if (run.status !== 'failed') throw new Error('Only failed runs can be retried.')
@@ -44,8 +45,8 @@ export class SerialRunQueue {
   getEventsAfter(id: number): RunEvent[] { return this.recent.filter((event) => event.id > id) }
   subscribe(listener: (event: RunEvent) => void): () => void { this.emitter.on('event', listener); return () => this.emitter.off('event', listener) }
 
-  private enqueue(kind: RunRecord['kind'], jobId?: string, work?: Work): RunRecord {
-    const run: RunRecord = { id: randomUUID(), kind, jobId, status: 'queued', step: 'queued', createdAt: new Date().toISOString() }
+  private enqueue(kind: RunRecord['kind'], jobId?: string, work?: Work, quiet = false): RunRecord {
+    const run: RunRecord = { id: randomUUID(), kind, jobId, status: 'queued', step: 'queued', createdAt: new Date().toISOString(), ...(quiet ? { quiet } : {}) }
     this.db.insert(runs).values({ id: run.id, jobId, kind, status: run.status, step: run.step, promptVersions: '{}', createdAt: run.createdAt }).run()
     this.pending.push({ run, work })
     this.publish(run, kind === 'demo' ? 'Infrastructure test queued; no résumé work will run.' : `${kind} queued.`)
@@ -54,7 +55,7 @@ export class SerialRunQueue {
   }
 
   private publish(run: RunRecord, message?: string): void {
-    const event: RunEvent = { id: ++this.eventId, runId: run.id, jobId: run.jobId, kind: run.kind, status: run.status, step: run.step, message, timestamp: new Date().toISOString() }
+    const event: RunEvent = { id: ++this.eventId, runId: run.id, jobId: run.jobId, kind: run.kind, status: run.status, step: run.step, message, ...(run.quiet ? { quiet: true } : {}), timestamp: new Date().toISOString() }
     this.recent.push(event)
     if (this.recent.length > 200) this.recent.shift()
     this.emitter.emit('event', event)

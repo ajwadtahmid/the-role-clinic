@@ -136,4 +136,18 @@ describe('settings page', () => {
     expect(screen.queryAllByText('Claude · no model')).toHaveLength(0)
     sqlite.close()
   })
+
+  it('offers automatic fit checks only for a local model, off until chosen, and saves the choice', async () => {
+    const { user, sqlite } = await setup()
+    const box = await screen.findByRole('checkbox', { name: /Check each new job’s fit automatically/ }) as HTMLInputElement
+    expect(box.checked).toBe(false)
+    await user.click(box)
+    await user.click(screen.getByRole('button', { name: 'Save settings' }))
+    await screen.findByText('Settings saved locally.')
+    expect((await (await fetch('/api/settings')).json() as { autoFitCheck: boolean }).autoFitCheck).toBe(true)
+    await user.click(screen.getByRole('radio', { name: 'Use this' }))
+    expect(screen.queryByRole('checkbox', { name: /Check each new job’s fit automatically/ })).toBeNull()
+    sqlite.close()
+  })
+
 })

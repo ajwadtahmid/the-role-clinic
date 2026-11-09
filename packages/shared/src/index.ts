@@ -27,6 +27,7 @@ export const appSettingsSchema = z.object({
   monthlyCapUsd: z.number().nonnegative().max(10000).default(20),
   modelPrices: z.record(z.string().min(1).max(160), z.object({ inputPerMillion: z.number().positive().max(1000), outputPerMillion: z.number().positive().max(1000) }).strict()).default({}),
   jobFeed: z.object({ path: z.string().trim().max(1000) }).strict().optional(),
+  autoFitCheck: z.boolean().default(false),
 })
 export type AppSettings = z.infer<typeof appSettingsSchema>
 
@@ -38,6 +39,7 @@ export const publicSettingsSchema = z.object({
   monthlyCapUsd: appSettingsSchema.shape.monthlyCapUsd,
   modelPrices: appSettingsSchema.shape.modelPrices,
   jobFeed: appSettingsSchema.shape.jobFeed,
+  autoFitCheck: appSettingsSchema.shape.autoFitCheck,
 })
 export type PublicSettings = z.infer<typeof publicSettingsSchema>
 
@@ -52,6 +54,8 @@ export const runEventSchema = z.object({
   status: runStatusSchema,
   step: z.string(),
   message: z.string().optional(),
+  // Background fit checks finish without a notice of their own.
+  quiet: z.boolean().optional(),
   timestamp: z.string(),
 })
 export type RunEvent = z.infer<typeof runEventSchema>
