@@ -2,6 +2,7 @@ import { isDesktop, quitDesktop } from './desktop.js'
 import { useEffect, useState } from 'react'
 import { localApi } from './answers.js'
 import { useToast } from './toast.js'
+import { loadAiFeatures, setAiFeatures, useAiFeatures } from './ai-features.js'
 
 interface Status { version: string; platform: string; arch: string; nodeVersion: string; schemaVersion: number; dataDirectory: string; instanceId: string | null; managed: boolean; canShutdown: boolean; welcomeComplete: boolean; activeRuns: number }
 const welcomeSteps: Array<{ title: string; body: string[]; action: string; target: string }> = [
@@ -11,12 +12,32 @@ const welcomeSteps: Array<{ title: string; body: string[]; action: string; targe
 ]
 // A short walkthrough of the three things to set up. Every step can be skipped, and it can be shown again at `#welcome`.
 export function Welcome({ busy, error, onFinish }: { busy: boolean; error: string; onFinish: (target: string) => void }) {
-  const [step, setStep] = useState(0), current = welcomeSteps[step], last = step === welcomeSteps.length - 1
+  const { features } = useAiFeatures(), [choosing, setChoosing] = useState(false), [problem, setProblem] = useState('')
+  const [step, setStep] = useState(0)
+  // Without AI features the walkthrough is just the last step.
+  const steps = features.enabled ? welcomeSteps : [{ ...welcomeSteps[2], body: [welcomeSteps[2].body[0], 'AI features are off. You can turn them on at any time in Settings.'] }]
+  const current = steps[step], last = step === steps.length - 1
+  async function choose(withAi: boolean) {
+    setChoosing(true); setProblem('')
+    try { await setAiFeatures({ enabled: false }); onFinish(withAi ? '#settings?setup' : '#jobs') } catch (issue) { setProblem((issue as Error).message) } finally { setChoosing(false) }
+  }
+  if (!features.chosen) return <main className="shell welcome-shell" id="main" tabIndex={-1}>
+    <header className="topbar"><span className="wordmark"><span className="mark">RC</span><span>The Role Clinic</span></span><span className="local-chip"><svg className="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>Private · on this device</span></header>
+    <section className="page-header"><h1>How do you want to start?</h1><p className="page-note">Everything stays on this device either way. You can change this at any time in Settings.</p></section>
+    <section className="panel welcome-panel" aria-label="Choose how to start">
+      <div className="start-choices">
+        <button className="start-choice" disabled={busy || choosing} onClick={() => void choose(false)}><strong>Just track my applications</strong><span>Save jobs, record what you applied to, set follow-ups and keep notes. Nothing else to set up.</span><span className="pill-note">Ready in a minute</span></button>
+        <button className="start-choice" disabled={busy || choosing} onClick={() => void choose(true)}><strong>Also tailor résumés with AI</strong><span>Check how well you fit a job and write a tailored résumé from your own facts. Needs a local AI model; we will walk you through it.</span><span className="pill-note">Takes a few minutes the first time</span></button>
+      </div>
+      <p className="subtle">Not sure? Start with tracking. Setting up AI later does not change anything you have saved.</p>
+      {(problem || error) && <p role="alert" className="notice error">{problem || error}</p>}
+    </section>
+  </main>
   return <main className="shell welcome-shell" id="main" tabIndex={-1}>
     <header className="topbar"><span className="wordmark"><span className="mark">RC</span><span>The Role Clinic</span></span><span className="local-chip"><svg className="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>Private · on this device</span></header>
     <section className="page-header"><h1>Welcome</h1><p className="page-note">Save jobs, tailor a résumé for each one, and keep what you sent together. Everything stays on this device unless you choose Claude.</p></section>
     <section className="panel welcome-panel" aria-labelledby="welcome-step-title">
-      <p className="subtle" aria-live="polite">Step {step + 1} of {welcomeSteps.length}</p>
+      <p className="subtle" aria-live="polite">Step {step + 1} of {steps.length}</p>
       <h2 id="welcome-step-title">{current.title}</h2>
       {current.body.map((text) => <p key={text}>{text}</p>)}
       <div className="button-row">
@@ -31,7 +52,8 @@ export function Welcome({ busy, error, onFinish }: { busy: boolean; error: strin
   </main>
 }
 export function FirstRun({ children }: { children: React.ReactNode }) {
-  const [status, setStatus] = useState<Status | null>(null), [error, setError] = useState(''), [busy, setBusy] = useState(false), [hash, setHash] = useState(location.hash)
+  const [status, setStatus] = useState<Status | null>(null), [error, setError] = useState(''), [busy, setBusy] = useState(false), [hash, setHash] = useState(location.hash), [featuresReady, setFeaturesReady] = useState(false)
+  useEffect(() => { void loadAiFeatures().then(() => setFeaturesReady(true)) }, [])
   useEffect(() => { let alive = true; void localApi<Status>('/api/app/status').then((value) => { if (alive) setStatus(value) }).catch((error) => { if (alive) setError(error.message) }); return () => { alive = false } }, [])
   useEffect(() => { const update = () => setHash(location.hash); window.addEventListener('hashchange', update); return () => window.removeEventListener('hashchange', update) }, [])
   async function finish(target: string) {
@@ -39,7 +61,7 @@ export function FirstRun({ children }: { children: React.ReactNode }) {
     try { await localApi('/api/app/welcome', { method: 'POST', body: JSON.stringify({ acknowledged: true }) }); setStatus((s) => s ? { ...s, welcomeComplete: true } : s); try { localStorage.removeItem('rc-quickstart-hidden') } catch { /* storage may be unavailable */ } location.hash = target } catch (error) { setError((error as Error).message) } finally { setBusy(false) }
   }
   if (error && !status) return <main className="shell"><p role="alert" className="notice error">{error}</p><button className="button secondary" onClick={() => location.reload()}>Reconnect to local app</button></main>
-  if (!status) return <main className="shell"><p className="loading">Connecting to your local workspace…</p></main>
+  if (!status || !featuresReady) return <main className="shell"><p className="loading">Connecting to your local workspace…</p></main>
   if (status.welcomeComplete && hash !== '#welcome') return <>{children}</>
   return <Welcome busy={busy} error={error} onFinish={(target) => void finish(target)} />
 }

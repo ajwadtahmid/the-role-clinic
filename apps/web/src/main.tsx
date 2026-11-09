@@ -50,7 +50,7 @@ function Pages() {
   if (route === '#answers') return <TrackerPage openLibrary />
   if (route.startsWith('#tracker')) return <TrackerPage key={route} />
   if (route === '#gaps') return <TrackerPage gapsOnly />
-  if (route === '#settings') return <SettingsPage />
+  if (route.split('?')[0] === '#settings') return <SettingsPage />
   if (route === '#resume/profile' || route === '#profile') return <ProfilePage />
   if (route.startsWith('#resume') || route.startsWith('#master')) return <MasterPage key={route} />
   return <Workspace />

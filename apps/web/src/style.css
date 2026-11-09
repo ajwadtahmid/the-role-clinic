@@ -619,3 +619,17 @@ details.more .actions label{font:600 12px system-ui;color:var(--text-soft)}
 @keyframes toast-rise{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}}
 @media(prefers-reduced-motion:reduce){.toast-timer{animation:none;transform:none;opacity:.5}}
 @media(max-width:760px),(pointer:coarse){.toast-action,.toast-close{min-height:44px;min-width:44px}.toast-close{width:44px}}
+
+/* First-run choice and the AI features setup */
+.start-choices{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
+.start-choice{display:grid;gap:8px;text-align:left;border:2px solid var(--line);border-radius:13px;background:#fff;padding:18px;color:var(--ink)}
+.start-choice:hover:not(:disabled){border-color:var(--green)}.start-choice strong{font-size:17px;letter-spacing:-.02em}.start-choice span{color:var(--muted);font-size:14px}
+.pill-note{justify-self:start;background:var(--tint);color:var(--green-mid);border-radius:20px;padding:3px 11px;font:600 12px system-ui}
+@media(max-width:700px){.start-choices{grid-template-columns:1fr}}
+.ai-steps{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.ai-steps li{display:grid;grid-template-columns:30px 1fr;gap:12px;padding:12px 14px;border:1px solid var(--line);border-radius:11px;background:#fff}
+.ai-steps li>div{display:grid;gap:8px;min-width:0}.ai-steps .n{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--tint);font-weight:700;color:var(--green-mid)}
+.ai-steps li.done .n{background:var(--green);color:#fff}.ai-steps li.now{border-color:var(--green);box-shadow:0 0 0 2px #315b4522}.ai-steps li.wait{opacity:.6}
+.ai-cmd{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:8px;background:#f1f2ec;padding:8px 10px}.ai-cmd code{font-family:var(--mono);font-size:13px;flex:1;overflow-wrap:anywhere}
+.inline-check{display:flex;gap:8px;align-items:center;font-weight:400}.inline-check input{width:auto}
+.ai-steps{margin-top:12px}

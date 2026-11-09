@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useAiFeatures } from './ai-features.js'
 
 export type NavKey = 'jobs' | 'tracker' | 'resume' | 'settings'
 const links: Array<[NavKey, string, string]> = [
@@ -12,13 +13,15 @@ function skipToMain(event: React.MouseEvent) {
   document.getElementById('main')?.focus()
 }
 
-// One header for every screen: the same four destinations in the same order, with the current one marked.
+// One header for every screen: the same destinations in the same order, with the current one marked. The Résumé page is for tailoring,
+// so it shows only while AI features are on.
 export function AppHeader({ current }: { current: NavKey }) {
+  const { active } = useAiFeatures()
   return <>
     <a className="skip-link" href="#main" onClick={skipToMain}>Skip to main content</a>
     <header className="topbar">
       <a className="wordmark" href="#top"><span className="mark">RC</span><span>The Role Clinic</span></a>
-      <nav aria-label="Primary">{links.map(([key, href, label]) => <a key={key} href={href} aria-current={key === current ? 'page' : undefined}>{label}</a>)}</nav>
+      <nav aria-label="Primary">{links.filter(([key]) => key !== 'resume' || active).map(([key, href, label]) => <a key={key} href={href} aria-current={key === current ? 'page' : undefined}>{label}</a>)}</nav>
       <span className="local-chip">
         <svg className="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>
         Private · on this device

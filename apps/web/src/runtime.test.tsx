@@ -21,8 +21,26 @@ async function setup() {
   return { sqlite, shutdown, directory, user: userEvent.setup() }
 }
 describe('first run and maintenance UI', () => {
+  it('asks a new install once how it will be used, and records the choice either way', async () => {
+    for (const [name, target, enabled] of [['Just track my applications', '#jobs', false], ['Also tailor résumés with AI', '#settings?setup', false]] as const) {
+      const { user, sqlite } = await setup()
+      window.location.hash = ''
+      const view = render(<FirstRun><p>Workspace ready</p></FirstRun>)
+      expect(await screen.findByRole('heading', { name: 'How do you want to start?' })).toBeTruthy()
+      await user.click(screen.getByRole('button', { name: new RegExp(name) }))
+      await screen.findByText('Workspace ready')
+      expect(window.location.hash).toBe(target)
+      const saved = (await (await fetch('/api/settings')).json()) as { aiFeatures: { chosen: boolean; enabled: boolean } }
+      // Choosing AI only says the person wants it; it turns on once setup has passed.
+      expect(saved.aiFeatures).toMatchObject({ chosen: true, enabled })
+      view.unmount(); cleanup(); sqlite.close()
+    }
+    window.location.hash = ''
+  })
   it('walks through résumé, model and first job, lets every step be skipped, persists completion, and can be shown again', async () => {
     const { user } = await setup()
+    // An install that already uses AI features (the walkthrough is about setting those up).
+    await fetch('/api/ai-features', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ enabled: true }) })
     window.location.hash = ''
     const view = render(<FirstRun><p>Workspace ready</p></FirstRun>)
     expect(await screen.findByRole('heading', { name: 'Add your résumé' })).toBeTruthy()

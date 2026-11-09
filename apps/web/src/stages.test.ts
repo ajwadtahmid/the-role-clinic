@@ -40,6 +40,15 @@ describe('stages', () => {
     expect(nextAction({ status: 'saved', hasExtraction: true, hasDraft: true, hasExport: true }).label).toBe('Mark as applied')
   })
 
+  it('offers Mark as applied first when AI features are off or the job has no description to check', () => {
+    expect(nextAction({ status: 'new', ...progress, ai: false })).toMatchObject({ id: 'markApplied', label: 'Mark as applied' })
+    expect(nextAction({ status: 'saved', ...progress, ai: false, hasExtraction: true })).toMatchObject({ id: 'markApplied' })
+    expect(nextAction({ status: 'new', ...progress, hasText: false })).toMatchObject({ id: 'markApplied', hint: expect.stringContaining('Add the job description') })
+    // Once applied, closed or skipped it behaves the same with or without AI.
+    expect(nextAction({ status: 'applied', ...progress, ai: false }).id).toBe('tracker')
+    expect(nextAction({ status: 'skipped', ...progress, ai: false }).id).toBe('none')
+  })
+
   it('points to the Tracker once applied and offers nothing for a closed or skipped job', () => {
     for (const status of ['applied', 'interviewing', 'offer']) expect(nextAction({ status, ...progress }).id).toBe('tracker')
     for (const status of ['closed', 'skipped']) expect(nextAction({ status, ...progress }).id).toBe('none')

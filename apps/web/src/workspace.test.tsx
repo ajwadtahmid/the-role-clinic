@@ -54,7 +54,7 @@ async function addJob(user: ReturnType<typeof userEvent.setup>, company: string,
   await user.click(screen.getByRole('button', { name: 'Add job' }))
   await user.type(screen.getByRole('textbox', { name: 'Company' }), company)
   await user.type(screen.getByRole('textbox', { name: 'Role title' }), title)
-  await user.type(screen.getByRole('textbox', { name: 'Job description' }), description)
+  await user.type(screen.getByRole('textbox', { name: 'Job description (optional)' }), description)
   await user.click(screen.getByRole('button', { name: 'Save job' }))
   await screen.findByText('Job saved.')
 }

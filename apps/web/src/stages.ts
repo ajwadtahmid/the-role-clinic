@@ -33,16 +33,20 @@ export function splitChoice(choice: string): { status: string; outcome?: string 
   return outcome ? { status, outcome } : { status }
 }
 
-export type NextActionId = 'extract' | 'track' | 'tailor' | 'review' | 'apply' | 'tracker' | 'none'
+export type NextActionId = 'extract' | 'track' | 'tailor' | 'review' | 'apply' | 'tracker' | 'markApplied' | 'none'
 export type NextAction = { id: NextActionId; label: string; hint: string }
-export type JobProgress = { status: string; hasExtraction: boolean; hasDraft: boolean; hasExport: boolean }
+export type JobProgress = { status: string; hasExtraction: boolean; hasDraft: boolean; hasExport: boolean; ai?: boolean; hasText?: boolean }
 
 // One button for the step a job needs next, worked out from data the page already holds.
-export function nextAction({ status, hasExtraction, hasDraft, hasExport }: JobProgress): NextAction {
+export function nextAction({ status, hasExtraction, hasDraft, hasExport, ai = true, hasText = true }: JobProgress): NextAction {
   const stage = stageOf(status)
   if (stage === 'closed') return { id: 'none', label: '', hint: 'This job is closed. Change the status under More to reopen it.' }
   if (stage === 'skipped') return { id: 'none', label: '', hint: 'You skipped this job. Change the status under More to bring it back.' }
   if (stage !== 'review' && stage !== 'saved') return { id: 'tracker', label: 'Open in Tracker', hint: 'Follow-ups, contacts, notes and the answers you gave are kept in the tracker.' }
+  // Without AI features the next step is simply recording that you applied.
+  if (!ai) return { id: 'markApplied', label: 'Mark as applied', hint: 'Moves it to the Tracker, where you can add notes and a follow-up date.' }
+  // A job saved without its description has nothing to check yet.
+  if (!hasText) return { id: 'markApplied', label: 'Mark as applied', hint: 'Add the job description below to check the fit and tailor a résumé.' }
   if (!hasExtraction) return { id: 'extract', label: 'Check fit', hint: 'Finds what the posting requires and compares it with your profile and résumé.' }
   // Tailoring is the next real step; starting it also tracks a job that is still waiting for review.
   if (!hasDraft && stage === 'review') return { id: 'tailor', label: 'Tailor résumé', hint: 'Writes a draft from your master résumé; every line cites its source. This also saves the job.' }

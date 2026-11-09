@@ -1,4 +1,7 @@
+import { useState } from 'react'
+import { api } from './api.js'
 import { Icon } from './icons.js'
+import { useAiFeatures } from './ai-features.js'
 import { FitStrip, fitTabLabel, type FitDetail, type FitMatch, type FitScore } from './fit-check.js'
 import { choiceOf, stageClass, statusChoices, statusText, type NextAction } from './stages.js'
 
@@ -116,15 +119,27 @@ export function JobTabs({ tab, onTab, analysis = null }: { tab: JobTab; onTab: (
   return <div className="job-tabs" role="tablist" aria-label="Job sections" onKeyDown={keys}>{(Object.keys(tabLabels) as JobTab[]).map((key) => <button key={key} role="tab" id={`tab-${key}`} aria-selected={tab === key} aria-controls={`panel-${key}`} tabIndex={tab === key ? 0 : -1} className={`job-tab ${tab === key ? 'active' : ''}`} onClick={() => onTab(key)}>{key === 'fit' ? fitTabLabel(analysis) : tabLabels[key]}</button>)}</div>
 }
 
-export function JobOverview({ job, text, analysis, busy, onCheck, onViewFit }: { job?: Detail['job']; text: string; analysis: Analysis | null; busy: boolean; onCheck: () => void; onViewFit: () => void }) {
-  const requirements = analysis?.extraction?.requirements ?? []
+// A job saved to track, without its description: it can be added once, and is then kept as saved.
+function AddDescription({ jobId, onSaved }: { jobId: string; onSaved: () => void }) {
+  const [text, setText] = useState(''), [busy, setBusy] = useState(false), [problem, setProblem] = useState('')
+  async function save(event: React.FormEvent) {
+    event.preventDefault(); setBusy(true); setProblem('')
+    try { await api(`/api/jobs/${jobId}/description`, { method: 'PUT', body: JSON.stringify({ text }) }); onSaved() } catch (error) { setProblem((error as Error).message) } finally { setBusy(false) }
+  }
+  return <form className="capture-panel" onSubmit={save}><p className="subtle">No description was saved with this job. Paste it here to keep a copy; postings disappear, and it is needed to check the fit.</p>
+    <label>Paste the description<textarea rows={6} maxLength={100000} value={text} onChange={(e) => setText(e.target.value)} /></label>
+    {problem && <p role="alert" className="notice error">{problem}</p>}<div className="button-row"><button className="button" disabled={busy || text.trim().length < 40}>{busy ? 'Saving…' : 'Save description'}</button></div></form>
+}
+
+export function JobOverview({ job, text, analysis, busy, onCheck, onViewFit, onDescription }: { job?: Detail['job']; text: string; analysis: Analysis | null; busy: boolean; onCheck: () => void; onViewFit: () => void; onDescription?: () => void }) {
+  const { active } = useAiFeatures(), requirements = analysis?.extraction?.requirements ?? []
   return <div className="job-overview">
-    <FitStrip analysis={analysis} busy={busy} onCheck={onCheck} onView={onViewFit} />
+    {active && <FitStrip analysis={analysis} busy={busy} onCheck={onCheck} onView={onViewFit} />}
     {job && <PostingNotice job={job} />}
     {job?.finder && <FinderPanel job={job} finder={job.finder} />}
     {analysis?.extraction?.partial && <p className="review-flag">Extraction covered only part of this posting or skipped an unmatched quote. Review the full description.</p>}
     <h3>Job description</h3>
-    <pre className="job-text">{highlighted(text, requirements)}</pre>
+    {!text.trim() && job && onDescription ? <AddDescription jobId={job.id} onSaved={onDescription} /> : <pre className="job-text">{highlighted(text, requirements)}</pre>}
   </div>
 }
 
