@@ -136,6 +136,19 @@ describe('tracker browser flows', () => {
     sqlite.close()
   })
 
+  it('confirms a status change with a toast and puts the old status back on Undo', async () => {
+    const { sqlite, user } = await setup()
+    render(<TrackerPage />)
+    const table = await screen.findByRole('table')
+    const select = within(table).getByRole('combobox', { name: 'Status for Initech Software Engineer' }) as HTMLSelectElement
+    const before = select.value
+    await user.selectOptions(select, 'offer')
+    expect((await screen.findByText('Status updated to offer.')).closest('.toast')).not.toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Undo' }))
+    await waitFor(() => expect((within(table).getByRole('combobox', { name: 'Status for Initech Software Engineer' }) as HTMLSelectElement).value).toBe(before))
+    sqlite.close()
+  })
+
   it('opens a job’s details beside the table, closes them with Escape, and shows long lists 50 at a time', async () => {
     const { sqlite, user } = await setup()
     const now = new Date().toISOString()

@@ -3,6 +3,7 @@ import { writeClipboard, isDesktop } from './desktop.js'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { AnswerEditor } from './answers.js'
 import { Icon, type IconName } from './icons.js'
+import { Toast } from './toast.js'
 import { wordDiff, type Part } from './review-diff.js'
 import type { ReviewLine, ReviewWorkspace } from '../../../packages/shared/src/index.js'
 
@@ -163,7 +164,7 @@ export function TailoringWorkspace({ jobId, company, title, onApplied, onExporte
   const sourceText = (outId: string) => { const line = review.lines.find((l) => l.outId === outId); const source = line && [...review.master.roles, ...review.master.projects].flatMap((s) => s.bullets).find((b) => line.sourceIds.includes(b.id)); return line && source && line.author === 'model' ? { line, source: source.text, diff: wordDiff(source.text, line.text) } : null }
   let lastSection: string | null = null
   return <section className="tailoring-workspace" aria-label="Résumé review workspace">
-    <p role="status" className={!notice || notice === saved ? 'sr-only' : 'notice neutral'}>{notice}</p>
+    {notice && notice !== saved ? <Toast autoClose={false} onClose={() => setNotice('')}>{notice}</Toast> : <p role="status" className="sr-only">{notice}</p>}
     <div className="rv-seg-m seg" role="group" aria-label="View"><button aria-pressed={tab === 'lines'} onClick={() => setTab('lines')}>Lines</button><button aria-pressed={tab === 'preview'} onClick={() => setTab('preview')}>Preview</button></div>
     <div className="rv-grid" data-tab={tab}>
       <div className="rv-lines">

@@ -478,3 +478,9 @@ kbd{font:600 11px ui-monospace,SFMono-Regular,Consolas,monospace;border:1px soli
 .editor-panel.block a{color:var(--green)}
 #feed-days,#followup-days{width:140px}
 .cost-panel .form-pair{margin-top:6px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;z-index:40;display:flex;align-items:center;gap:8px;max-width:min(560px,calc(100% - 24px));background:var(--ink);color:#fff;border-radius:12px;padding:6px 6px 6px 16px;box-shadow:0 12px 32px #24292040}
+.toast a{color:#fff;text-decoration:underline}
+.toast .button.quiet,.toast .text-button{color:#fff;min-height:40px}
+.toast .button.quiet:hover,.toast .text-button:hover:not(:disabled){background:#ffffff1c}
+.shell:has(.savebar) .toast{bottom:84px}
+@media(prefers-reduced-motion:no-preference){.toast{animation:toast-in .16s ease-out}@keyframes toast-in{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}}

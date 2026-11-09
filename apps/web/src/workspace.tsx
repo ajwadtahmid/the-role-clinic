@@ -4,6 +4,7 @@ import { AppHeader, PageHeader } from './layout.js'
 import { Icon } from './icons.js'
 import { api } from './api.js'
 import { AddJobDialog, Quickstart } from './add-job.js'
+import { Toast } from './toast.js'
 import { JobHeader, JobOverview, RunStrip, latestRun, JobResume, JobTabs, type Analysis, type Detail, type Estimate, type Job, type JobTab } from './job-detail.js'
 import { nextAction, splitChoice, stageLabels, statusText, type NextActionId } from './stages.js'
 
@@ -66,7 +67,7 @@ export function Workspace() {
   const start = jobFromHash()
   const [jobs, setJobs] = useState<Job[]>([]), [selected, setSelected] = useState<string | null>(start.id), [detail, setDetail] = useState<Detail | null>(null), [tab, setTab] = useState<JobTab>('overview')
   const [activeRow, setActiveRow] = useState('')
-  const [query, setQuery] = useState(''),[statusFilter, setStatusFilter] = useState<JobStage>('new'), [feedOnly, setFeedOnly] = useState(false), [limit, setLimit] = useState(pageSize), [notice, setNotice] = useState<ReactNode>(''), [busy, setBusy] = useState(false)
+  const [query, setQuery] = useState(''),[statusFilter, setStatusFilter] = useState<JobStage>('new'), [feedOnly, setFeedOnly] = useState(false), [limit, setLimit] = useState(pageSize), [notice, setNotice] = useState<ReactNode>(''), [toast, setToast] = useState<{ text: ReactNode; undo?: () => void } | null>(null), [busy, setBusy] = useState(false)
   const [sort, setSort] = useState<'newest' | 'company'>('newest'), [counts, setCounts] = useState<Counts | null>(null)
   const [feed, setFeed] = useState<FeedStatus | null>(null), [checking, setChecking] = useState(false), lastCheck = useRef(0), chainTailor = useRef<string | null>(null), [showSubmit, setShowSubmit] = useState(false), [showAdd, setShowAdd] = useState(false)
   const [analysis, setAnalysis] = useState<Analysis | null>(null), [estimate, setEstimate] = useState<Estimate | null>(null), [estimateError, setEstimateError] = useState(''), [hasExport, setHasExport] = useState(false)
@@ -95,7 +96,7 @@ export function Workspace() {
     try {
       const result = await api<{ imported: number; invalid: number; notice: string | null }>('/api/feed/refresh', { method: 'POST', body: '{}' })
       setFeed(await api<FeedStatus>('/api/feed/status'))
-      if (result.imported || manual) setNotice(`${result.imported ? `${result.imported} new job${result.imported === 1 ? '' : 's'} added to To review.` : 'No new jobs.'}${result.invalid ? ` ${result.invalid} row${result.invalid === 1 ? ' was' : 's were'} skipped for missing details.` : ''}${result.notice ? ` ${result.notice}` : ''}`)
+      if (result.imported || manual) flash(`${result.imported ? `${result.imported} new job${result.imported === 1 ? '' : 's'} added to To review.` : 'No new jobs.'}${result.invalid ? ` ${result.invalid} row${result.invalid === 1 ? ' was' : 's were'} skipped for missing details.` : ''}${result.notice ? ` ${result.notice}` : ''}`)
       if (result.imported) await loadJobs()
     } catch (error) { if (manual) setNotice((error as Error).message) } finally { setChecking(false) }
   }
@@ -137,18 +138,24 @@ export function Workspace() {
     if (analysis?.extraction) { await startRun('tailor'); return }
     chainTailor.current = selected; await startRun('extract')
   }
-  async function retryRun(id: string) { if (!selected) return; setBusy(true); try { await api(`/api/runs/${id}/retry`, { method: 'POST', body: '{}' }); setNotice('Retry queued from the last saved step.'); await loadAnalysis(selected) } catch (error) { setNotice((error as Error).message) } finally { setBusy(false) } }
+  async function retryRun(id: string) { if (!selected) return; setBusy(true); try { await api(`/api/runs/${id}/retry`, { method: 'POST', body: '{}' }); flash('Retry queued from the last saved step.'); await loadAnalysis(selected) } catch (error) { setNotice((error as Error).message) } finally { setBusy(false) } }
   // After a status change: a job that has left the list being shown is followed by the next one in it, so a run of decisions needs no extra clicks.
-  async function afterStatusChange(jobId: string, status: string, outcome?: string) {
+  // Confirmations are toasts, so the page does not move; mistakes and failures stay as a banner until they are dealt with.
+  function flash(text: ReactNode, undo?: () => void) { setToast({ text, undo }) }
+  // Puts a job back where it was; used by the Undo on a confirmation.
+  function undoTo(jobId: string, previous: string) {
+    return () => { void (async () => { try { await api(`/api/jobs/${jobId}/status`, { method: 'PUT', body: JSON.stringify({ status: previous, submittedText: '' }) }); await afterStatusChange(jobId, previous) } catch (error) { setNotice((error as Error).message) } })() }
+  }
+  async function afterStatusChange(jobId: string, status: string, outcome?: string, undo?: () => void) {
     const stage = stageOfStatus(status), index = sortedJobs.findIndex((job) => job.id === jobId), neighbour = sortedJobs[index + 1] ?? sortedJobs[index - 1]
     const leaving = !detailOnly && stage !== statusFilter && jobId === selected
     await loadReadiness()
-    setNotice(stage === null ? <>Status updated to {statusText(status, outcome).toLowerCase()}. <a href={`#tracker?job=${jobId}`}>View in Tracker</a></> : status === 'saved' ? 'Job saved.' : status === 'skipped' ? 'Job skipped.' : `Status updated to ${statusText(status, outcome).toLowerCase()}.`)
+    flash(stage === null ? <>Status updated to {statusText(status, outcome).toLowerCase()}. <a href={`#tracker?job=${jobId}`}>View in Tracker</a></> : status === 'saved' ? 'Job saved.' : status === 'skipped' ? 'Job skipped.' : status === 'new' ? 'Moved back to To review.' : `Status updated to ${statusText(status, outcome).toLowerCase()}.`, undo)
     if (leaving) { await loadJobs(); if (neighbour) selectJob(neighbour.id); else backToList() } else { if (jobId === selected) await loadDetail(jobId); await loadJobs() }
   }
   // Save, Skip and Restore on a row act on that job without opening it.
   async function changeStatus(job: Job, status: string) {
-    try { await api(`/api/jobs/${job.id}/status`, { method: 'PUT', body: JSON.stringify({ status, submittedText: '' }) }); await afterStatusChange(job.id, status) }
+    try { await api(`/api/jobs/${job.id}/status`, { method: 'PUT', body: JSON.stringify({ status, submittedText: '' }) }); await afterStatusChange(job.id, status, undefined, undoTo(job.id, job.status ?? 'new')) }
     catch (error) { setNotice((error as Error).message) }
   }
   // The list is one Tab stop: only the active row's buttons are tabbable, and the arrow keys move between rows.
@@ -163,7 +170,8 @@ export function Workspace() {
     if (!selected) return
     const { status, outcome } = splitChoice(choice)
     if (status === 'applied' && !detail?.job.appliedAt) { setShowSubmit(true); return }
-    try { await api(`/api/jobs/${selected}/status`, { method: 'PUT', body: JSON.stringify({ status, ...(outcome ? { outcome } : {}), submittedText: '' }) }); await afterStatusChange(selected, status, outcome) }
+    const before = detail?.job.status ?? 'new'
+    try { await api(`/api/jobs/${selected}/status`, { method: 'PUT', body: JSON.stringify({ status, ...(outcome ? { outcome } : {}), submittedText: '' }) }); await afterStatusChange(selected, status, outcome, stageOfStatus(before) && stageOfStatus(status) ? undoTo(selected, before) : undefined) }
     catch (error) { setNotice((error as Error).message) }
   }
   function runNextAction(id: NextActionId) {
@@ -193,6 +201,7 @@ export function Workspace() {
     <AppHeader current="jobs" />
     <PageHeader title="Jobs" actions={<>{feed?.configured && <>{feed.lastCheckedAt && <span className="subtle feed-checked">Last checked {new Date(feed.lastCheckedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>}<button className="button secondary" disabled={checking} onClick={() => void checkFeed(true)}>{checking ? 'Checking…' : 'Check for new jobs'}</button></>}<button className="button primary" onClick={() => setShowAdd(true)}><Icon name="plus" />Add job</button></>}>Jobs you have not applied to yet. Applied jobs are in the <a href="#tracker">Tracker</a>{counts && counts.applied > 0 ? ` (${counts.applied})` : ''}.</PageHeader>
     {notice && <div className="notice neutral" role="status">{notice}</div>}
+    {toast && <Toast onUndo={toast.undo} onClose={() => setToast(null)}>{toast.text}</Toast>}
     {listing && <>
       <div className="toolbar"><label className="search"><Icon name="search" /><input aria-label="Search jobs" value={query} placeholder="Search title or company" onChange={(e) => setQuery(e.target.value)} /></label><label className="select">Sort<select value={sort} onChange={(event) => setSort(event.target.value as 'newest' | 'company')}><option value="newest">Newest first</option><option value="company">Company A–Z</option></select></label></div>
       <div className="chips" role="group" aria-label="Show jobs">{stageOptions.map(([value, label]) => <button key={value} type="button" className="chip" aria-pressed={statusFilter === value} onClick={() => setStatusFilter(value)}><Icon name="check" />{label}{counts && <span className="n">{counts[value]}</span>}</button>)}<span className="spacer" />{(feed?.configured || (counts?.triage ?? 0) > 0) && <label className="toggle"><input type="checkbox" checked={feedOnly && statusFilter === 'new'} disabled={statusFilter !== 'new'} onChange={(event) => setFeedOnly(event.target.checked)} />Only from the job feed{counts ? ` (${counts.triage})` : ''}</label>}</div>
@@ -216,7 +225,7 @@ export function Workspace() {
         </div> : selected ? <p className="loading panel job-detail" role="status">Loading job…</p> : <div className="panel job-empty"><h2>Select a job</h2><p className="subtle">Pick a job from the list to see its requirements, résumé and history. Use Add job to save a new posting.</p></div>}
       </section>
     </div>}
-    {showAdd && <AddJobDialog onClose={() => setShowAdd(false)} onOpenExisting={(id) => { setShowAdd(false); selectJob(id) }} onSaved={async (id) => { setShowAdd(false); setStatusFilter('new'); setFeedOnly(false); await loadJobs('new', false); selectJob(id); await loadReadiness(); setNotice('Job saved.') }} />}
+    {showAdd && <AddJobDialog onClose={() => setShowAdd(false)} onOpenExisting={(id) => { setShowAdd(false); selectJob(id) }} onSaved={async (id) => { setShowAdd(false); setStatusFilter('new'); setFeedOnly(false); await loadJobs('new', false); selectJob(id); await loadReadiness(); flash('Job saved.') }} />}
     <footer><span>THE ROLE CLINIC</span><span>Saved on this device · job capture and tracking work without a model.</span></footer>
   </main>
 }

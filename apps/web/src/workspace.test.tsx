@@ -217,6 +217,20 @@ describe('job workspace flow', () => {
     sqlite.close()
   })
 
+  it('confirms Save with a toast that can be undone', async () => {
+    const { user, sqlite } = await setup()
+    for (const company of ['Acme', 'Beta']) sqlite.prepare('INSERT INTO jobs(id,company,title,captured_at,raw_snapshot,text) VALUES(?,?,?,?,?,?)').run(randomUUID(), company, 'Engineer', new Date().toISOString(), 'raw', 'A long enough job description for the list to show.')
+    cleanup(); render(<Workspace />)
+    await screen.findByRole('button', { name: 'To review 2' })
+    await user.click(screen.getAllByRole('button', { name: /^Save Engineer at/ })[0])
+    expect((await screen.findByText('Job saved.')).closest('.toast')).not.toBeNull()
+    expect(await screen.findByRole('button', { name: 'Saved 1' })).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Undo' }))
+    await screen.findByRole('button', { name: 'To review 2' })
+    expect(screen.getByText('Moved back to To review.')).toBeTruthy()
+    sqlite.close()
+  })
+
   it('opens the first job by itself on a wide screen and leaves the list alone on a phone', async () => {
     const { sqlite } = await setup()
     sqlite.prepare('INSERT INTO jobs(id,company,title,captured_at,raw_snapshot,text) VALUES(?,?,?,?,?,?)').run(randomUUID(), 'Acme', 'Engineer', new Date().toISOString(), 'raw', 'A long enough job description for the list to show.')
