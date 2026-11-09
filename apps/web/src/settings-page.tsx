@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { FeedSettings } from './feed-settings.js'
-import { MaintenancePanel } from './runtime.js'
+import { AboutPanel, BackupsPanel } from './runtime.js'
 import { taskNames, type PublicSettings, type TaskName } from '../../../packages/shared/src/index.js'
 import { AppHeader, PageHeader, SectionRail } from './layout.js'
 import { FollowUpSettings } from './followup-settings.js'
 import { Toast } from './toast.js'
+import { SaveRegistry, type SaveSection } from './settings-save.js'
 
 const labels: Record<TaskName, { title: string; description: string }> = {
   requirementExtraction: { title: 'Requirement extraction', description: 'Find required and preferred qualifications in a job posting.' },
@@ -38,6 +39,25 @@ export function SettingsPage() {
     setSettings(value); setStored(JSON.stringify(value))
   }
   const [ollamaModels, setOllamaModels] = useState<string[]>([])
+  // Whether Ollama answers at the saved address; checked quietly when the page opens and whenever the address is saved.
+  const [ollama, setOllama] = useState<{ state: 'checking' | 'ok' | 'down'; error?: string }>({ state: 'checking' })
+  const savedOllamaUrl = stored ? (JSON.parse(stored) as PublicSettings).ollamaBaseUrl : ''
+  useEffect(() => {
+    if (!savedOllamaUrl) return
+    setOllama({ state: 'checking' })
+    request<{ ok: boolean; models?: string[]; error?: string }>('/api/connections/ollama/test', { method: 'POST', body: '{}' })
+      .then((result) => { if (result.ok) { setOllama({ state: 'ok' }); if (result.models) setOllamaModels(result.models) } else setOllama({ state: 'down', error: result.error }) })
+      .catch((error: Error) => setOllama({ state: 'down', error: error.message }))
+  }, [savedOllamaUrl])
+  // Sections that save elsewhere (follow-up days, the feed path) register here, so one bar saves everything.
+  const [sections, setSections] = useState<Record<string, SaveSection>>({})
+  const register = useCallback((key: string, section: SaveSection | null) => setSections((current) => {
+    if (!section && !(key in current)) return current
+    const next = { ...current }
+    if (section) next[key] = section; else delete next[key]
+    return next
+  }), [])
+  const [editing, setEditing] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     request<PublicSettings>('/api/settings').then(adopt).catch((error: Error) => setNotice({ kind: 'error', text: error.message }))
@@ -76,17 +96,27 @@ export function SettingsPage() {
     setSettings((current) => current ? { ...current, modelPrices: { ...current.modelPrices, [model]: { inputPerMillion: current.modelPrices[model]?.inputPerMillion ?? 0, outputPerMillion: current.modelPrices[model]?.outputPerMillion ?? 0, [field]: Number(value) } } } : current)
   }
 
-  async function saveSettings() {
+  async function saveAll() {
     if (!settings) return
     setBusy('save')
     setNotice(null)
+    // A step with no model cannot run, and the server's message for that is unhelpful, so say what to do here.
+    const missing = (['anthropic', 'ollama'] as const).find((provider) => runsOn(provider).some((task) => !settings.taskModels[task].model.trim()))
+    if (missing) { setBusy(null); setNotice({ kind: 'error', text: missing === 'anthropic' ? 'Type a Claude model ID before saving.' : 'Choose an Ollama model before saving.' }); return }
     try {
-      const body = { ...settings, ...(settings.anthropicApiKey ? { anthropicApiKey: settings.anthropicApiKey } : {}) }
-      const saved = await request<PublicSettings>('/api/settings', { method: 'PUT', body: JSON.stringify(body) })
-      adopt(saved)
+      if (settingsChanged) {
+        const body = { ...settings, ...(settings.anthropicApiKey ? { anthropicApiKey: settings.anthropicApiKey } : {}) }
+        adopt(await request<PublicSettings>('/api/settings', { method: 'PUT', body: JSON.stringify(body) }))
+      }
+      for (const section of Object.values(sections)) await section.save()
       setNotice({ kind: 'success', text: 'Settings saved locally.' })
     } catch (error) { setNotice({ kind: 'error', text: (error as Error).message }) }
     finally { setBusy(null) }
+  }
+  function discardAll() {
+    if (settingsChanged) adopt(JSON.parse(stored) as PublicSettings)
+    for (const section of Object.values(sections)) section.discard()
+    setConfirmDiscard(false)
   }
 
   async function testConnection(provider: 'ollama' | 'anthropic') {
@@ -100,9 +130,9 @@ export function SettingsPage() {
         adopt(saved)
       }
       const result = await request<{ ok: boolean; detail?: string; error?: string; models?: string[] }>(`/api/connections/${provider}/test`, { method: 'POST', body: '{}' })
-      if (provider === 'ollama' && result.models) setOllamaModels(result.models)
+      if (provider === 'ollama') { if (result.models) setOllamaModels(result.models); setOllama(result.ok ? { state: 'ok' } : { state: 'down', error: result.error }) }
       setNotice({ kind: result.ok ? 'success' : 'error', text: result.detail ?? result.error ?? 'Connection test failed.' })
-    } catch (error) { setNotice({ kind: 'error', text: (error as Error).message }) }
+    } catch (error) { if (provider === 'ollama') setOllama({ state: 'down', error: (error as Error).message }); setNotice({ kind: 'error', text: (error as Error).message }) }
     finally { setBusy(null) }
   }
 
@@ -116,88 +146,108 @@ export function SettingsPage() {
     finally { setBusy(null) }
   }
 
-  const dirty = Boolean(settings) && (JSON.stringify({ ...settings, anthropicApiKey: undefined }) !== stored || Boolean(settings?.anthropicApiKey))
+  const settingsChanged = Boolean(settings) && (JSON.stringify({ ...settings, anthropicApiKey: undefined }) !== stored || Boolean(settings?.anthropicApiKey))
+  const pending = settingsChanged || Object.keys(sections).length > 0
   const [confirmDiscard, setConfirmDiscard] = useState(false)
-  const usesClaude = Boolean(settings && (pricedModels.length > 0 || settings.anthropicApiKeyConfigured || settings.anthropicApiKey))
+  const usesClaude = runsOn('anthropic').length > 0
   if (!settings) return <main className="shell"><p className="loading">Loading local settings…</p></main>
 
-  return <main className="shell" id="main" tabIndex={-1}>
+  const claudeReady = Boolean(settings.anthropicApiKeyConfigured || settings.anthropicApiKey)
+  const localModel = providerModel('ollama'), claudeModel = providerModel('anthropic')
+  const installed = ollamaModels.some((model) => model === localModel || model === `${localModel}:latest`)
+  // The first thing in the block says what state tailoring is really in, not just what is typed.
+  const status: { tone: 'ok' | 'warn' | 'off'; title: string; text: string } =
+    mode === 'mixed' ? { tone: 'off', title: 'Custom mix of both', text: 'Some steps run on this computer and some on Claude. See “Fine-tune each step” below.' }
+    : mode === 'anthropic' ? (!claudeReady ? { tone: 'warn', title: 'Claude needs an API key', text: 'Paste your key in the Claude card, then test it.' }
+      : !claudeModel ? { tone: 'warn', title: 'Claude needs a model', text: 'Type the Claude model ID to use, then test the key.' }
+      : { tone: 'ok', title: `Claude is set up: ${claudeModel}`, text: 'Your résumé bullets and the job text are sent to Anthropic. Your contact details and saved answers never are.' })
+    : !localModel ? { tone: 'warn', title: 'Ollama needs a model', text: 'Choose an installed model, then test the connection.' }
+    : ollama.state === 'checking' ? { tone: 'off', title: 'Checking for Ollama…', text: `Looking for it at ${savedOllamaUrl}.` }
+    : ollama.state === 'down' ? { tone: 'warn', title: `Ollama is not running at ${savedOllamaUrl}`, text: 'Saving and tracking jobs works without it. Start or install Ollama, or choose Claude to tailor résumés.' }
+    : ollamaModels.length > 0 && !installed ? { tone: 'warn', title: `${localModel} is not installed in Ollama`, text: `Installed: ${ollamaModels.slice(0, 5).join(', ')}${ollamaModels.length > 5 ? ` and ${ollamaModels.length - 5} more` : ''}. Choose one of those, or install it with “ollama pull ${localModel}”.` }
+    : { tone: 'ok', title: `Ollama is set up: ${localModel}`, text: 'Tailoring runs on this computer. Nothing leaves it.' }
+  const modelSummary = (task: TaskName) => `${settings.taskModels[task].provider === 'ollama' ? 'Ollama' : 'Claude'} · ${settings.taskModels[task].model || 'no model'}`
+
+  return <SaveRegistry.Provider value={register}><main className="shell" id="main" tabIndex={-1}>
     <AppHeader current="settings" />
     <PageHeader title="Settings">Everything here stays on this computer unless you choose Claude.</PageHeader>
 
     {notice && <Toast error={notice.kind === 'error'} onClose={() => setNotice(null)}>{notice.text}</Toast>}
 
-    <div className="rs-layout"><SectionRail items={[{ id: 'models', label: 'Résumé tailoring' }, { id: 'feed', label: 'Job feed' }, { id: 'followups', label: 'Follow-ups' }, { id: 'help', label: 'Help' }, { id: 'backups', label: 'Backups and data' }, ...(usesClaude ? [{ id: 'costs', label: 'Cost cap' }] : [])]} /><div className="content">
-    <section className="panel provider-panel block" id="models" tabIndex={-1}>
-      <div className="panel-heading">
-        <div><h2>Résumé tailoring</h2><p className="note">Choose where the model runs. You can still set each step on its own below.</p></div>
-      </div>
+    <div className="rs-layout"><SectionRail items={[{ id: 'models', label: 'Résumé tailoring' }, { id: 'feed', label: 'Job feed' }, { id: 'followups', label: 'Follow-ups' }, { id: 'backups', label: 'Backups' }, { id: 'about', label: 'About' }]} /><div className="content">
+    <section className="panel provider-panel block" id="models" tabIndex={-1} aria-labelledby="tailoring-heading">
+      <div className="block-head"><h2 id="tailoring-heading">Résumé tailoring</h2></div>
+      <div className={`status-line${status.tone === 'ok' ? '' : ` ${status.tone}`}`} role="status"><span className="dot" aria-hidden="true" /><div><b>{status.title}</b><span className="t">{status.text}</span></div></div>
       <div className="provider-grid" role="radiogroup" aria-label="Where tailoring runs">
         <article className={`provider-card${mode === 'ollama' ? ' chosen' : ''}`}>
-          <div className="provider-title"><span className="provider-icon ollama-icon">◉</span><div><h3>On this computer</h3><p>Ollama · runs locally, no charge</p></div><button className="button small provider-choose" role="radio" aria-checked={mode === 'ollama'} onClick={() => chooseProvider('ollama')}>{mode === 'ollama' ? 'In use' : 'Use this'}</button></div>
+          <div className="provider-title"><span className="provider-icon ollama-icon"><svg className="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="12" rx="2" /><path d="M8 21h8M12 17v4" /></svg></span><div><h3>On this computer</h3><p>Ollama · free and private</p></div><button className="button small provider-choose" role="radio" aria-checked={mode === 'ollama'} onClick={() => chooseProvider('ollama')}>{mode === 'ollama' ? 'In use' : 'Use this'}</button></div>
           <label className="field-label" htmlFor="ollama-url">Local server address</label>
           <input id="ollama-url" value={settings.ollamaBaseUrl} onChange={(event) => setSettings({ ...settings, ollamaBaseUrl: event.target.value })} />
-          {runsOn('ollama').length > 0 && <><label className="field-label" htmlFor="ollama-model">Model for these steps</label><input id="ollama-model" list="installed-models" placeholder="Model ID" value={providerModel('ollama')} onChange={(event) => setProviderModel('ollama', event.target.value)} /></>}
-          <button className="button secondary" disabled={busy === 'ollama'} onClick={() => testConnection('ollama')}>{busy === 'ollama' ? 'Checking…' : 'Test Ollama connection'}</button>
-          {ollamaModels.length > 0 && <p className="model-hint">Installed: {ollamaModels.slice(0, 5).join(', ')}{ollamaModels.length > 5 ? ` +${ollamaModels.length - 5} more` : ''}</p>}
+          {runsOn('ollama').length > 0 && <><label className="field-label" htmlFor="ollama-model">Model for these steps</label><input id="ollama-model" list="installed-models" placeholder="Model ID" value={localModel} onChange={(event) => setProviderModel('ollama', event.target.value)} /></>}
+          <div className="button-row"><button className="button small" disabled={busy === 'ollama'} onClick={() => testConnection('ollama')}>{busy === 'ollama' ? 'Checking…' : 'Test connection'}</button></div>
         </article>
         <article className={`provider-card${mode === 'anthropic' ? ' chosen' : ''}`}>
-          <div className="provider-title"><span className="provider-icon claude-icon">✳</span><div><h3>Claude</h3><p>Anthropic API · your account and billing</p></div><button className="button small provider-choose" role="radio" aria-checked={mode === 'anthropic'} onClick={() => chooseProvider('anthropic')}>{mode === 'anthropic' ? 'In use' : 'Use this'}</button></div>
-          <label className="field-label" htmlFor="anthropic-key">API key {settings.anthropicApiKeyConfigured && <span className="saved-label">· saved</span>}</label>
-          <input id="anthropic-key" type="password" autoComplete="new-password" placeholder={settings.anthropicApiKeyConfigured ? 'Saved in your private local data folder' : 'sk-ant-…'} value={settings.anthropicApiKey ?? ''} onChange={(event) => setSettings({ ...settings, anthropicApiKey: event.target.value })} />
-          {runsOn('anthropic').length > 0 && <><label className="field-label" htmlFor="anthropic-model">Model for these steps</label><input id="anthropic-model" placeholder="Claude model ID" value={providerModel('anthropic')} onChange={(event) => setProviderModel('anthropic', event.target.value)} /></>}
-          <div className="button-row"><button className="button secondary" disabled={busy === 'anthropic'} onClick={() => testConnection('anthropic')}>{busy === 'anthropic' ? 'Checking…' : 'Test API key'}</button>{settings.anthropicApiKeyConfigured && <button className="text-button danger" disabled={busy === 'clear-key'} onClick={clearKey}>Remove key</button>}</div>
+          <div className="provider-title"><span className="provider-icon claude-icon"><svg className="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6L5.6 18.4" /></svg></span><div><h3>Claude</h3><p>Anthropic API · your account, costs money</p></div><button className="button small provider-choose" role="radio" aria-checked={mode === 'anthropic'} onClick={() => chooseProvider('anthropic')}>{mode === 'anthropic' ? 'In use' : 'Use this'}</button></div>
+          <label className="field-label label-split" htmlFor="anthropic-key"><span>API key</span>{settings.anthropicApiKeyConfigured && <span className="saved-label">Saved on this computer</span>}</label>
+          <input id="anthropic-key" type="password" autoComplete="new-password" placeholder={settings.anthropicApiKeyConfigured ? 'Saved. Type a new key to replace it.' : 'sk-ant-…'} value={settings.anthropicApiKey ?? ''} onChange={(event) => setSettings({ ...settings, anthropicApiKey: event.target.value })} />
+          {runsOn('anthropic').length > 0 && <><label className="field-label" htmlFor="anthropic-model">Model for these steps</label><input id="anthropic-model" placeholder="Claude model ID" value={claudeModel} onChange={(event) => setProviderModel('anthropic', event.target.value)} /></>}
+          <div className="button-row"><button className="button small" disabled={busy === 'anthropic'} onClick={() => testConnection('anthropic')}>{busy === 'anthropic' ? 'Checking…' : 'Test key'}</button>{settings.anthropicApiKeyConfigured && <button className="button small quiet danger" disabled={busy === 'clear-key'} onClick={clearKey}>Remove saved key</button>}</div>
         </article>
       </div>
-      {mode === 'mixed' && <p className="note">Your steps use a custom mix of both. Choosing a card sets every step to it; see “Model for each step” below for the mix.</p>}
-    </section>
 
-    <details className="model-section adv">
-      <summary>Model for each step (advanced) <span className="muted">· {mode === 'mixed' ? 'custom mix · ' : ''}local model calls run one at a time</span></summary>
-      <div className="task-list">
-        {taskNames.map((task) => <article className="task-row" key={task}>
-          <div className="task-copy"><h3>{labels[task].title}</h3><p>{labels[task].description}</p></div>
-          {task === 'eligibilityAnalysis' ? <span className="local-rule-note">Local rules · private profile stays off-model</span> : <div className="choice-fields">
-            <label className="sr-only" htmlFor={`${task}-provider`}>Provider for {labels[task].title}</label>
-            <select id={`${task}-provider`} value={settings.taskModels[task].provider} onChange={(event) => updateTask(task, 'provider', event.target.value)}>
-              <option value="ollama">Ollama · local</option><option value="anthropic">Anthropic API</option>
-            </select>
-            <label className="sr-only" htmlFor={`${task}-model`}>Model for {labels[task].title}</label>
-            <input id={`${task}-model`} value={settings.taskModels[task].model} list="installed-models" onChange={(event) => updateTask(task, 'model', event.target.value)} placeholder="Model ID" />
-            {settings.taskModels[task].provider === 'ollama' && <label>Reasoning
-              <select value={settings.taskModels[task].reasoning ?? 'auto'} onChange={(event) => updateTask(task, 'reasoning', event.target.value)}>
-                <option value="auto">Automatic</option>
-                {/^gpt-oss(?::|$)/i.test(settings.taskModels[task].model) ? <><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></> : <><option value="off">Off</option><option value="on">On</option></>}
-              </select>
-            </label>}
-            <label>Temperature
-              <input type="number" min="0" max={settings.taskModels[task].provider === 'anthropic' ? 1 : 2} step="0.1" placeholder={settings.taskModels[task].provider === 'ollama' ? 'Auto (0.2)' : 'Provider default'} value={settings.taskModels[task].temperature ?? ''} onChange={(event) => updateTask(task, 'temperature', event.target.value === '' ? undefined : Number(event.target.value))} />
-            </label>
-          </div>}
-        </article>)}
-      </div>
-      <datalist id="installed-models">{ollamaModels.map((model) => <option value={model} key={model} />)}</datalist>
-      <p className="subtle">Suggested local starting model: Gemma 4 12B. Change it per task as your evaluations show a better fit.</p>
-    </details>
+      {usesClaude && <details className="more" open>
+        <summary>Spending limits <span className="muted">· ${settings.costCapUsd} a run · ${settings.monthlyCapUsd} a month</span></summary>
+        <div className="body">
+          <p className="note">A paid run will not start if it would go over either limit. Enter your provider’s current prices so the estimate is right. Local Ollama calls have no API charge.</p>
+          <div className="form-pair">
+            <label>Most to spend on one run (USD)<input type="number" min="0" max="100" step="0.01" value={settings.costCapUsd} onChange={(event) => setSettings({ ...settings, costCapUsd: Number(event.target.value) })} /></label>
+            <label>Most to spend in a calendar month (USD)<input type="number" min="0" max="10000" step="0.5" value={settings.monthlyCapUsd} onChange={(event) => setSettings({ ...settings, monthlyCapUsd: Number(event.target.value) })} /></label>
+          </div>
+          {pricedModels.map((model) => <div className="price-pair" key={model}><strong>{model}</strong><div className="form-pair"><label>Input USD / 1M tokens<input type="number" min="0" step="0.01" value={settings.modelPrices[model]?.inputPerMillion ?? ''} onChange={(event) => updatePrice(model, 'inputPerMillion', event.target.value)} /></label><label>Output USD / 1M tokens<input type="number" min="0" step="0.01" value={settings.modelPrices[model]?.outputPerMillion ?? ''} onChange={(event) => updatePrice(model, 'outputPerMillion', event.target.value)} /></label></div></div>)}
+          {pricedModels.length > 0 && <p className="note">Prices change; confirm them with your provider before using its API. Missing prices prevent a paid run from starting.</p>}
+        </div>
+      </details>}
+
+      <details className="more adv">
+        <summary>Fine-tune each step <span className="muted">· {mode === 'mixed' ? 'custom mix' : 'all steps use the choice above'}</span></summary>
+        <div className="body">
+          <p className="note">Most people never need this. Local model calls run one at a time. Suggested local starting model: Gemma 4 12B.</p>
+          <div className="step-list">
+            {taskNames.map((task) => <div className={`step${editing[task] ? ' open' : ''}`} key={task}>
+              <div><h4>{labels[task].title}</h4><p>{labels[task].description}</p></div>
+              {task === 'eligibilityAnalysis' ? <span className="where">Local rules · your private profile stays off-model</span> : <div className="actions"><span className="where">{modelSummary(task)}</span><button className="button small quiet" aria-expanded={Boolean(editing[task])} aria-label={`${editing[task] ? 'Close' : 'Edit'} ${labels[task].title}`} onClick={() => setEditing({ ...editing, [task]: !editing[task] })}>{editing[task] ? 'Done' : 'Edit'}</button></div>}
+              {task !== 'eligibilityAnalysis' && editing[task] && <div className="edit">
+                <label>Provider for {labels[task].title}
+                  <select id={`${task}-provider`} value={settings.taskModels[task].provider} onChange={(event) => updateTask(task, 'provider', event.target.value)}>
+                    <option value="ollama">Ollama · local</option><option value="anthropic">Anthropic API</option>
+                  </select>
+                </label>
+                <label>Model for {labels[task].title}
+                  <input id={`${task}-model`} value={settings.taskModels[task].model} list="installed-models" onChange={(event) => updateTask(task, 'model', event.target.value)} placeholder="Model ID" />
+                </label>
+                {settings.taskModels[task].provider === 'ollama' ? <label>Reasoning
+                  <select value={settings.taskModels[task].reasoning ?? 'auto'} onChange={(event) => updateTask(task, 'reasoning', event.target.value)}>
+                    <option value="auto">Automatic</option>
+                    {/^gpt-oss(?::|$)/i.test(settings.taskModels[task].model) ? <><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></> : <><option value="off">Off</option><option value="on">On</option></>}
+                  </select>
+                </label> : <span />}
+                <label>Temperature
+                  <input type="number" min="0" max={settings.taskModels[task].provider === 'anthropic' ? 1 : 2} step="0.1" placeholder={settings.taskModels[task].provider === 'ollama' ? 'Auto (0.2)' : 'Provider default'} value={settings.taskModels[task].temperature ?? ''} onChange={(event) => updateTask(task, 'temperature', event.target.value === '' ? undefined : Number(event.target.value))} />
+                </label>
+              </div>}
+            </div>)}
+          </div>
+          <datalist id="installed-models">{ollamaModels.map((model) => <option value={model} key={model} />)}</datalist>
+        </div>
+      </details>
+    </section>
 
     <div id="feed" tabIndex={-1}><FeedSettings /></div>
     <div id="followups" tabIndex={-1}><FollowUpSettings /></div>
-    <section className="panel block" id="help" tabIndex={-1}><h2>Help</h2><p className="subtle">Go through adding your résumé, choosing a model and saving your first job again, and bring back the quickstart on the Jobs page.</p><a className="button secondary" href="#welcome" onClick={() => { try { localStorage.removeItem('rc-quickstart-hidden') } catch { /* storage may be unavailable */ } }}>Show the welcome guide again</a></section>
-
-    <div id="backups" tabIndex={-1}><MaintenancePanel /></div>
-
-    {usesClaude && <section className="panel block editor-panel cost-panel" id="costs" tabIndex={-1}>
-      <h2>Cost estimate and cap</h2>
-      <p className="subtle">Local Ollama calls have no API charge. Enter your provider’s current per-million-token prices for each selected Anthropic model. Runs check estimates before starting and track reported usage after every call.</p>
-      <div className="form-pair">
-        <label>Most to spend on one run (USD)<input type="number" min="0" max="100" step="0.01" value={settings.costCapUsd} onChange={(event) => setSettings({ ...settings, costCapUsd: Number(event.target.value) })} /></label>
-        <label>Most to spend in a calendar month (USD)<input type="number" min="0" max="10000" step="0.5" value={settings.monthlyCapUsd} onChange={(event) => setSettings({ ...settings, monthlyCapUsd: Number(event.target.value) })} /></label>
-      </div>
-      {pricedModels.map((model) => <div className="editor-card" key={model}><strong>{model}</strong><div className="form-pair"><label>Input USD / 1M tokens<input type="number" min="0" step="0.01" value={settings.modelPrices[model]?.inputPerMillion ?? ''} onChange={(event) => updatePrice(model, 'inputPerMillion', event.target.value)} /></label><label>Output USD / 1M tokens<input type="number" min="0" step="0.01" value={settings.modelPrices[model]?.outputPerMillion ?? ''} onChange={(event) => updatePrice(model, 'outputPerMillion', event.target.value)} /></label></div></div>)}
-      {pricedModels.length > 0 && <p className="subtle">Prices change; confirm them with your provider before using its API. Missing prices prevent a paid run from starting.</p>}
-    </section>}
+    <div id="backups" tabIndex={-1}><BackupsPanel /></div>
+    <div id="about" tabIndex={-1}><AboutPanel /></div>
 
     </div></div>
-    {dirty && <div className="savebar" role="group" aria-label="Unsaved settings">{confirmDiscard ? <><span>Discard every unsaved change?</span><button className="button danger small" onClick={() => { adopt(JSON.parse(stored) as PublicSettings); setConfirmDiscard(false) }}>Yes, discard</button><button className="button quiet small" onClick={() => setConfirmDiscard(false)}>Keep editing</button></> : <><span>You have unsaved settings.</span><button className="button primary small" disabled={busy === 'save'} onClick={saveSettings}>{busy === 'save' ? 'Saving…' : 'Save settings'}</button><button className="button quiet small" disabled={busy === 'save'} onClick={() => setConfirmDiscard(true)}>Discard</button></>}</div>}
-  </main>
+    {pending && <div className="savebar" role="group" aria-label="Unsaved settings">{confirmDiscard ? <><span>Discard every unsaved change?</span><button className="button danger small" onClick={discardAll}>Yes, discard</button><button className="button quiet small" onClick={() => setConfirmDiscard(false)}>Keep editing</button></> : <><span>You have unsaved settings.</span><button className="button primary small" disabled={busy === 'save'} onClick={saveAll}>{busy === 'save' ? 'Saving…' : 'Save settings'}</button><button className="button quiet small" disabled={busy === 'save'} onClick={() => setConfirmDiscard(true)}>Discard</button></>}</div>}
+  </main></SaveRegistry.Provider>
 }

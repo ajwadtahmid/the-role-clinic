@@ -2,13 +2,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Request as NodeRequest, Response as NodeResponse, Headers as NodeHeaders } from 'undici'
 import { createDatabase } from '../../server/src/db.js'
 import { createApp } from '../../server/src/app.js'
-import { FirstRun, MaintenancePanel } from './runtime.js'
+import { AboutPanel, BackupsPanel, FirstRun } from './runtime.js'
 
 const resources: Array<{ directory: string; sqlite: ReturnType<typeof createDatabase>['sqlite'] }> = []
 afterEach(async () => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); for (const r of resources.splice(0)) { r.sqlite.close(); await rm(r.directory, { recursive: true, force: true }) } })
@@ -18,7 +18,7 @@ async function setup() {
   vi.stubGlobal('Request', NodeRequest); vi.stubGlobal('Response', NodeResponse); vi.stubGlobal('Headers', NodeHeaders)
   const app = createApp({ dataDirectory: directory, sqlite, db, port: 3000, runtime: { version: '0.1.0-preview.1', instanceId: 'test-instance', managed: true, shutdown } })
   vi.stubGlobal('fetch', (input: string, init: RequestInit = {}) => app.request(`http://127.0.0.1:3000${input}`, { ...init, headers: { host: '127.0.0.1:3000', origin: 'http://127.0.0.1:3000', ...init.headers } }))
-  return { sqlite, shutdown, user: userEvent.setup() }
+  return { sqlite, shutdown, directory, user: userEvent.setup() }
 }
 describe('first run and maintenance UI', () => {
   it('walks through résumé, model and first job, lets every step be skipped, persists completion, and can be shown again', async () => {
@@ -46,19 +46,43 @@ describe('first run and maintenance UI', () => {
     await screen.findByText('Workspace reopened')
     window.location.hash = ''
   })
-  it('creates a downloadable database backup and requires explicit confirmation before stopping', async () => {
-    const { user, shutdown } = await setup()
-    render(<MaintenancePanel />)
-    await screen.findByText(/0.1.0-preview.1/)
-    await user.click(screen.getByRole('button', { name: 'Create database backup' }))
-    await screen.findByText(/Database backup created:/)
-    await user.click(screen.getByText(/Database backup history/))
-    const link = screen.getByRole('link', { name: /clinic-.*\.sqlite/ })
+  it('makes a backup, shows the newest three and the rest on request, and labels how each was made', async () => {
+    const { user, directory } = await setup()
+    await mkdir(join(directory, 'backups'), { recursive: true })
+    for (const name of ['auto-20261101T000000Z', 'auto-20261102T000000Z', 'auto-20261103T000000Z', 'auto-20261104T000000Z', 'pre-migration-v8-20261031T000000Z']) await writeFile(join(directory, 'backups', `${name}.sqlite`), 'x')
+    render(<BackupsPanel />)
+    await screen.findByText(/Your data folder/)
+    await waitFor(() => expect(document.querySelectorAll('.backup-list .row')).toHaveLength(3))
+    await user.click(screen.getByRole('button', { name: 'Back up now' }))
+    await screen.findByText(/Backup made: clinic-/)
+    // Four more exist now (three automatic, one before an update), behind one button.
+    await user.click(await screen.findByRole('button', { name: 'Show 3 more' }))
+    expect(document.querySelectorAll('.backup-list .row')).toHaveLength(6)
+    expect(screen.getAllByText('Automatic backup').length).toBe(4)
+    expect(screen.getByText('Before an update backup')).toBeTruthy()
+    const link = screen.getByRole('link', { name: /Download clinic-.*\.sqlite/ })
     expect(link.getAttribute('href')).toMatch(/^\/api\/backups\//)
-    const stop = screen.getByRole('button', { name: 'Stop local app' }) as HTMLButtonElement
-    expect(stop.disabled).toBe(true)
-    await user.click(screen.getByRole('checkbox', { name: 'I’m ready to stop the local app.' }))
-    await user.click(stop)
+    await user.click(screen.getByRole('button', { name: 'Show fewer' }))
+    expect(document.querySelectorAll('.backup-list .row')).toHaveLength(3)
+  })
+  it('says so when there are no backups yet', async () => {
+    await setup()
+    render(<BackupsPanel />)
+    expect(await screen.findByText(/No backups yet/)).toBeTruthy()
+  })
+  it('shows what the app is and asks once, inline, before stopping it', async () => {
+    const { user, shutdown } = await setup()
+    render(<AboutPanel />)
+    await screen.findByText(/0.1.0-preview.1/)
+    expect(screen.getByText(/never sent to a model/)).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Show the welcome guide again' }).getAttribute('href')).toBe('#welcome')
+    await user.click(screen.getByRole('button', { name: 'Stop local app…' }))
+    expect(screen.getByRole('alertdialog', { name: 'Stop Role Clinic' })).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Keep running' }))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(shutdown).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: 'Stop local app…' }))
+    await user.click(screen.getByRole('button', { name: 'Yes, stop it' }))
     await screen.findByText('The local app is stopping. You can close this tab.')
     await waitFor(() => expect(shutdown).toHaveBeenCalledWith(false))
   })

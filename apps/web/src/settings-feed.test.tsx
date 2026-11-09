@@ -10,7 +10,7 @@ import { serve } from '@hono/node-server'
 import { fetch as nodeFetch, Request as NodeRequest, Response as NodeResponse, Headers as NodeHeaders } from 'undici'
 import { createApp } from '../../server/src/app.js'
 import { createDatabase } from '../../server/src/db.js'
-import { FeedSettings } from './feed-settings.js'
+import { SettingsPage } from './settings-page.js'
 
 const directories: string[] = []
 const servers: Array<ReturnType<typeof serve>> = []
@@ -39,23 +39,23 @@ async function setup() {
   await new Promise<void>((resolve) => server.on('listening', () => resolve()))
   ;(window as unknown as { happyDOM: { setURL: (url: string) => void } }).happyDOM.setURL(`http://127.0.0.1:${port}/`)
   vi.stubGlobal('fetch', (input: string, init: RequestInit = {}) => nodeFetch(`http://127.0.0.1:${port}${input}`, { ...init, headers: { ...(init.method && init.method !== 'GET' ? { origin: `http://127.0.0.1:${port}` } : {}), ...init.headers } } as Parameters<typeof nodeFetch>[1]))
-  render(<FeedSettings />)
+  render(<SettingsPage />)
   return { user: userEvent.setup(), sqlite, path }
 }
 
 describe('Job feed settings', () => {
   it('saves a path, tests the file without changing it, imports, then previews and applies a clean up', async () => {
     const { user, sqlite, path } = await setup()
-    const input = await screen.findByLabelText('Path to a different CSV file (optional)')
+    const input = await screen.findByLabelText('Path to a different CSV file')
     await user.type(input, 'relative.csv')
-    await user.click(screen.getByRole('button', { name: 'Save path' }))
+    await user.click(screen.getByRole('button', { name: 'Save settings' }))
     expect(await screen.findByText(/full path of a \.csv file/)).toBeTruthy()
     await user.clear(input); await user.type(input, path)
     await user.click(screen.getByRole('button', { name: 'Test file' }))
     expect(await screen.findByText(/2 rows: 2 usable, 0 skipped.*2 new\. Nothing was changed\./)).toBeTruthy()
     expect(await readFile(path, 'utf8')).toBe(csv)
-    await user.click(screen.getByRole('button', { name: 'Save path' }))
-    await screen.findByText(/Job feed saved/)
+    await user.click(screen.getByRole('button', { name: 'Save settings' }))
+    await screen.findByText('Settings saved locally.')
     await user.click(screen.getByRole('button', { name: 'Check now' }))
     await screen.findByText(/2 new jobs added to To review/)
     await user.clear(screen.getByLabelText('Older than (days)')); await user.type(screen.getByLabelText('Older than (days)'), '60')

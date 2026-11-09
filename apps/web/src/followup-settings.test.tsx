@@ -10,7 +10,7 @@ import { serve } from '@hono/node-server'
 import { fetch as nodeFetch, Request as NodeRequest, Response as NodeResponse, Headers as NodeHeaders } from 'undici'
 import { createApp } from '../../server/src/app.js'
 import { createDatabase } from '../../server/src/db.js'
-import { FollowUpSettings } from './followup-settings.js'
+import { SettingsPage } from './settings-page.js'
 
 const directories: string[] = []
 const servers: Array<ReturnType<typeof serve>> = []
@@ -34,7 +34,7 @@ async function setup() {
   await new Promise<void>((resolve) => server.on('listening', () => resolve()))
   ;(window as unknown as { happyDOM: { setURL: (url: string) => void } }).happyDOM.setURL(`http://127.0.0.1:${port}/`)
   vi.stubGlobal('fetch', (input: string, init: RequestInit = {}) => nodeFetch(`http://127.0.0.1:${port}${input}`, { ...init, headers: { ...(init.method && init.method !== 'GET' ? { origin: `http://127.0.0.1:${port}` } : {}), ...init.headers } } as Parameters<typeof nodeFetch>[1]))
-  render(<FollowUpSettings />)
+  render(<SettingsPage />)
   return { user: userEvent.setup(), sqlite }
 }
 
@@ -45,8 +45,8 @@ describe('Follow-up settings', () => {
     await waitFor(() => expect(input.disabled).toBe(false))
     expect(input.value).toBe('14')
     await user.clear(input); await user.type(input, '30')
-    await user.click(screen.getByRole('button', { name: 'Save follow-up setting' }))
-    await screen.findByText('Follow-up setting saved.')
+    await user.click(screen.getByRole('button', { name: 'Save settings' }))
+    await screen.findByText('Settings saved locally.')
     expect(sqlite.prepare('SELECT ghosted_days AS days FROM tracker_preferences').get()).toEqual({ days: 30 })
     sqlite.close()
   })

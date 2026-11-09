@@ -43,20 +43,52 @@ export function FirstRun({ children }: { children: React.ReactNode }) {
   if (status.welcomeComplete && hash !== '#welcome') return <>{children}</>
   return <Welcome busy={busy} error={error} onFinish={(target) => void finish(target)} />
 }
-export function MaintenancePanel() {
-  const [status, setStatus] = useState<Status | null>(null), [backups, setBackups] = useState<Array<{ filename: string; bytes: number; createdAt: string }>>([]), { say: setNotice, fail, node: toastNode } = useToast(), [confirmed, setConfirmed] = useState(false), [busy, setBusy] = useState(false)
-  async function reload() { const [info, result] = await Promise.all([localApi<Status>('/api/app/status'), localApi<{ backups: Array<{ filename: string; bytes: number; createdAt: string }> }>('/api/backups')]); setStatus(info); setBackups(result.backups) }
+type Backup = { filename: string; bytes: number; createdAt: string }
+// Automatic daily copies, copies made by hand, and the one kept before an update all share the folder.
+const backupKind = (filename: string) => filename.startsWith('auto-') ? 'Automatic' : filename.startsWith('pre-migration-') ? 'Before an update' : 'Manual'
+const shownBackups = 3
+const sizeText = (bytes: number) => bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.ceil(bytes / 1024))} KB`
+
+export function BackupsPanel() {
+  const [status, setStatus] = useState<Status | null>(null), [backups, setBackups] = useState<Backup[]>([]), [all, setAll] = useState(false), [busy, setBusy] = useState(false), { say: setNotice, fail, node: toastNode } = useToast()
+  async function reload() { const [info, result] = await Promise.all([localApi<Status>('/api/app/status'), localApi<{ backups: Backup[] }>('/api/backups')]); setStatus(info); setBackups(result.backups) }
   useEffect(() => { void reload().catch((e) => fail(e)) }, [])
+  async function backup() { setBusy(true); try { const result = await localApi<{ filename: string }>('/api/backups', { method: 'POST', body: '{}' }); await reload(); setNotice(`Backup made: ${result.filename}`) } catch (e) { fail(e) } finally { setBusy(false) } }
+  async function copyFolder() { try { await navigator.clipboard.writeText(status?.dataDirectory ?? ''); setNotice('Path copied.') } catch { setNotice('Select the path and copy it.') } }
+  const visible = all ? backups : backups.slice(0, shownBackups)
+  return <section className="panel block editor-panel" aria-labelledby="backups-heading">
+    <div className="block-head"><h2 id="backups-heading">Backups</h2><button className="button small" disabled={busy} onClick={() => void backup()}>Back up now</button></div>
+    <p className="note">A backup keeps your tracker, résumé and answers. A copy is also made automatically once a day. A full backup, with exported files, attachments and settings, is made from the launcher while the app is stopped.</p>
+    {status && <div className="row first"><div className="grow"><b>Your data folder</b><br /><code>{status.dataDirectory}</code></div><button className="button small" onClick={() => void copyFolder()}>Copy path</button></div>}
+    <div className="backup-list">{visible.map((b) => <div className="row" key={b.filename}><div className="grow"><b>{backupKind(b.filename)} backup</b> <span className="muted">· {new Date(b.createdAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })} · {sizeText(b.bytes)}</span></div><a className="button small quiet" href={`/api/backups/${encodeURIComponent(b.filename)}`} download aria-label={`Download ${b.filename}`}>Download</a></div>)}</div>
+    {backups.length > shownBackups && <div className="actions"><button className="button small quiet" aria-expanded={all} onClick={() => setAll(!all)}>{all ? 'Show fewer' : `Show ${backups.length - shownBackups} more`}</button></div>}
+    {!backups.length && <p className="note">No backups yet. Back up now makes the first one.</p>}
+    <div className="actions"><a className="button small quiet" href="/guide.html#backups" target="_blank" rel="noreferrer">Backup, restore and update guide ↗</a></div>
+    {toastNode}
+  </section>
+}
+
+// Facts about the app, the guide, and the control that stops it. Last on the Settings page.
+export function AboutPanel() {
+  const [status, setStatus] = useState<Status | null>(null), [asking, setAsking] = useState(false), [busy, setBusy] = useState(false), { say: setNotice, fail, node: toastNode } = useToast()
+  useEffect(() => { void localApi<Status>('/api/app/status').then(setStatus).catch((e) => fail(e)) }, [])
   useEffect(() => {
     if (!status?.activeRuns) return
     const timer = window.setInterval(() => { void localApi<Status>('/api/app/status').then(setStatus).catch((e) => fail(e)) }, 1500)
     return () => window.clearInterval(timer)
   }, [status?.activeRuns])
-  async function backup() { setBusy(true); try { const result = await localApi<{ filename: string }>('/api/backups', { method: 'POST', body: '{}' }); await reload(); setNotice(`Database backup created: ${result.filename}`) } catch (e) { fail(e) } finally { setBusy(false) } }
   async function quit() {
-    if (!status || !confirmed) return
+    if (!status) return
     setBusy(true)
-    try { if (isDesktop()) { await quitDesktop(); return }; await localApi('/api/app/quit', { method: 'POST', body: JSON.stringify({ confirm: true, instanceId: status.instanceId }) }); setNotice('The local app is stopping. You can close this tab.'); setStatus({ ...status, canShutdown: false }) } catch (e) { fail(e) } finally { setBusy(false) }
+    try { if (isDesktop()) { await quitDesktop(); return }; await localApi('/api/app/quit', { method: 'POST', body: JSON.stringify({ confirm: true, instanceId: status.instanceId }) }); setNotice('The local app is stopping. You can close this tab.'); setAsking(false); setStatus({ ...status, canShutdown: false }) } catch (e) { fail(e) } finally { setBusy(false) }
   }
-  return <section className="panel block maintenance-panel"><h2>Backups and app status</h2>{status && <><p className="subtle">{status.version} · {status.platform} {status.arch} · database version {status.schemaVersion}</p><label>Data folder<input readOnly value={status.dataDirectory} onFocus={(e) => e.target.select()} /></label></>}<p className="subtle">Database backups preserve tracker and résumé records. A full backup also includes exported files, attachments and settings. Stop the app, then use the launcher’s backup command for a full backup or restore.</p><div className="button-row"><button className="button secondary" disabled={busy} onClick={() => void backup()}>Create database backup</button><a href="/guide.html#backups" target="_blank" rel="noreferrer">Backup, restore & update guide ↗</a></div><details><summary>Database backup history · {backups.length}</summary>{backups.map((b) => <div className="backup-row" key={b.filename}><a href={`/api/backups/${encodeURIComponent(b.filename)}`} download>{b.filename}</a><small>{new Date(b.createdAt).toLocaleString()} · {Math.ceil(b.bytes / 1024)} KB</small></div>)}{!backups.length && <p className="subtle">No database backups yet.</p>}</details>{status?.canShutdown && <div className="quit-app"><p>{isDesktop() ? 'Closing this window or choosing Quit stops the desktop app and its local backend. An active run requires confirmation before it is interrupted.' : <>Closing a browser tab leaves the local server running. Stop it here when you’re finished, or use <code>./role-clinic stop</code>.</>}</p>{status.activeRuns > 0 && <p className="review-flag">A model run is active. Wait for it to finish before stopping.</p>}<label className="confirm-submission"><input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />I’m ready to stop the local app.</label><button className="button secondary" disabled={busy || !confirmed || status.activeRuns > 0} onClick={() => void quit()}>{isDesktop() ? 'Quit app' : 'Stop local app'}</button></div>}{toastNode}</section>
+  return <section className="panel block editor-panel" aria-labelledby="about-heading">
+    <div className="block-head"><h2 id="about-heading">About</h2></div>
+    {status && <dl className="facts"><dt>Version</dt><dd>{status.version} · {status.platform} {status.arch}</dd><dt>Database</dt><dd>Version {status.schemaVersion}</dd><dt>Privacy</dt><dd>Saved on this computer. Your contact details and saved answers are never sent to a model.</dd></dl>}
+    <div className="actions"><a className="button small" href="/guide.html" target="_blank" rel="noreferrer">User guide ↗</a><a className="button small" href="#welcome" onClick={() => { try { localStorage.removeItem('rc-quickstart-hidden') } catch { /* storage may be unavailable */ } }}>Show the welcome guide again</a></div>
+    {status?.canShutdown && <div className="row stop-row"><div className="grow"><b>{isDesktop() ? 'Quit the app' : 'Stop the app'}</b><br /><span className="muted">{isDesktop() ? 'Closing this window or choosing Quit stops the desktop app and its local backend.' : <>Closing a browser tab leaves the local server running. Stop it here when you’re finished, or use <code>./role-clinic stop</code>.</>}</span></div><button className="button small" disabled={busy || status.activeRuns > 0} onClick={() => setAsking(true)}>{isDesktop() ? 'Quit app…' : 'Stop local app…'}</button></div>}
+    {status && status.activeRuns > 0 && <p className="review-flag">A model run is active. Wait for it to finish before stopping.</p>}
+    {asking && <div className="confirm on" role="alertdialog" aria-label="Stop Role Clinic"><span>Stop the local app now? Anything open will stop updating.</span><button className="button small primary" disabled={busy || (status?.activeRuns ?? 0) > 0} onClick={() => void quit()}>Yes, stop it</button><button className="button small quiet" onClick={() => setAsking(false)}>Keep running</button></div>}
+    {toastNode}
+  </section>
 }

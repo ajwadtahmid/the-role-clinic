@@ -60,6 +60,14 @@ describe('settings page', () => {
     sqlite.close()
   })
 
+  it('says plainly when Ollama is not running, and that saving and tracking jobs still works', async () => {
+    const { sqlite } = await setup()
+    expect(await screen.findByText(/Ollama is not running at http:\/\/127\.0\.0\.1:11434/)).toBeTruthy()
+    expect(screen.getByText(/Saving and tracking jobs works without it/)).toBeTruthy()
+    expect(screen.queryByText(/Ollama is set up/)).toBeNull()
+    sqlite.close()
+  })
+
   it('chooses where tailoring runs with two cards and remembers each provider’s model', async () => {
     const { user, sqlite } = await setup()
     const ollama = await screen.findByRole('radio', { name: 'In use' })
@@ -79,9 +87,10 @@ describe('settings page', () => {
     await user.click(screen.getByRole('radio', { name: 'Use this' }))
     expect((screen.getByLabelText('Model for these steps') as HTMLInputElement).value).toBe('claude-example-model')
     // One step set differently makes a custom mix, which is said out loud.
-    await user.click(screen.getByText(/Model for each step/))
+    await user.click(screen.getByText(/Fine-tune each step/))
+    await user.click(screen.getByRole('button', { name: 'Edit Résumé drafting' }))
     await user.selectOptions(screen.getByLabelText('Provider for Résumé drafting'), 'ollama')
-    expect(screen.getByText(/custom mix of both/)).toBeTruthy()
+    expect(screen.getByText('Custom mix of both')).toBeTruthy()
     sqlite.close()
   })
 })
