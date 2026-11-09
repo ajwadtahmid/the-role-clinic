@@ -240,6 +240,10 @@ describe('job workspace flow', () => {
     expect(document.querySelector('.job-card[aria-current="true"]')).toBeNull()
     matches(true); cleanup(); render(<Workspace />)
     await waitFor(() => expect(document.querySelector('.job-card[aria-current="true"]')).not.toBeNull())
+    // Choosing another tab must leave the address alone, even though the Jobs page is still mounted for a moment.
+    location.hash = '#tracker'; window.dispatchEvent(new HashChangeEvent('hashchange'))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(location.hash).toBe('#tracker')
     location.hash = ''
     sqlite.close()
   })
