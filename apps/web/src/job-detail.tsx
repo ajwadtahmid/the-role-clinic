@@ -119,9 +119,9 @@ export function JobTabs({ tab, onTab, analysis = null }: { tab: JobTab; onTab: (
 export function JobOverview({ job, text, analysis, busy, onCheck, onViewFit }: { job?: Detail['job']; text: string; analysis: Analysis | null; busy: boolean; onCheck: () => void; onViewFit: () => void }) {
   const requirements = analysis?.extraction?.requirements ?? []
   return <div className="job-overview">
+    <FitStrip analysis={analysis} busy={busy} onCheck={onCheck} onView={onViewFit} />
     {job && <PostingNotice job={job} />}
     {job?.finder && <FinderPanel job={job} finder={job.finder} />}
-    <FitStrip analysis={analysis} busy={busy} onCheck={onCheck} onView={onViewFit} />
     {analysis?.extraction?.partial && <p className="review-flag">Extraction covered only part of this posting or skipped an unmatched quote. Review the full description.</p>}
     <h3>Job description</h3>
     <pre className="job-text">{highlighted(text, requirements)}</pre>

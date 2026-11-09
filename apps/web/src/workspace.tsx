@@ -133,7 +133,7 @@ export function Workspace() {
     events.addEventListener('run', () => { window.clearTimeout(timer); timer = window.setTimeout(() => { if (selected) void loadAnalysis(selected).catch((error) => setNotice(error.message)); void loadJobs().catch((error) => setNotice(error.message)) }, 150) })
     return () => { window.clearTimeout(timer); events.close() } }, [selected, statusFilter, feedOnly, query])
 
-  async function startRun(kind: 'extract' | 'tailor') { if (!selected) return; setBusy(true); try { const result = await api<{ run: { id: string } }>(`/api/jobs/${selected}/${kind}`, { method: 'POST', body: '{}' }); setNotice(`${kind === 'extract' ? 'Fit check' : 'Tailoring'} queued. Run ${result.run.id.slice(0, 8)}.`); await loadAnalysis(selected) } catch (error) { setNotice((error as Error).message) } finally { setBusy(false) } }
+  async function startRun(kind: 'extract' | 'tailor') { if (!selected) return; setBusy(true); try { await api<{ run: { id: string } }>(`/api/jobs/${selected}/${kind}`, { method: 'POST', body: '{}' }); flash(`${kind === 'extract' ? 'Fit check' : 'Tailoring'} queued.`); await loadAnalysis(selected) } catch (error) { setNotice((error as Error).message) } finally { setBusy(false) } }
   // Tailor résumé needs the posting's requirements, so a job with no fit check yet gets one first and then goes straight on to tailoring.
   async function tailorFirst() {
     if (!selected) return

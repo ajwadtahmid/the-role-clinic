@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { RunNotices } from './run-notices.js'
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); window.location.hash = '' })
@@ -46,6 +46,23 @@ describe('run notices', () => {
     setup()
     await act(async () => { FakeEventSource.last.emit(event({ id: 9, quiet: true })) })
     expect(screen.queryByRole('status')).toBeNull()
+  })
+
+
+  it('closes a notice by itself after ten seconds, unless it is being pointed at', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      setup()
+      await act(async () => { FakeEventSource.last.emit(event({})) })
+      await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+      const notice = screen.getByText(/Fit check finished/).closest('.run-notice')!
+      fireEvent.mouseEnter(notice)
+      await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
+      expect(screen.queryByText(/Fit check finished/)).not.toBeNull()
+      fireEvent.mouseLeave(notice)
+      await act(async () => { await vi.advanceTimersByTimeAsync(10_000) })
+      expect(screen.queryByText(/Fit check finished/)).toBeNull()
+    } finally { vi.useRealTimers() }
   })
 
 })

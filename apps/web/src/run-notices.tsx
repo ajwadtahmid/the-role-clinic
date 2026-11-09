@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from './api.js'
+import { toastSeconds } from './toast.js'
 
 type Notice = { key: string; jobId: string; failed: boolean; text: string }
 type RunEventData = { id: number; jobId?: string; kind?: string; status: string; message?: string; quiet?: boolean; timestamp: string }
@@ -32,5 +33,17 @@ export function RunNotices() {
   }, [])
   const dismiss = (key: string) => setNotices((current) => current.filter((item) => item.key !== key))
   if (!notices.length) return null
-  return <div className="run-notices" role="status" aria-live="polite">{notices.map((notice) => <div className={`run-notice ${notice.failed ? 'run-notice-failed' : ''}`} key={notice.key}><span>{notice.text}</span><a href={`#jobs/${notice.jobId}`} onClick={() => dismiss(notice.key)}>Open job</a><button className="text-button" onClick={() => dismiss(notice.key)}>Dismiss</button></div>)}</div>
+  return <div className="run-notices" role="status" aria-live="polite">{notices.map((notice) => <RunNotice key={notice.key} notice={notice} onClose={() => dismiss(notice.key)} />)}</div>
+}
+
+// Looks and behaves like the other toasts: dark, closes after ten seconds, held open while pointed at or focused, Escape closes it.
+function RunNotice({ notice, onClose }: { notice: Notice; onClose: () => void }) {
+  const [held, setHeld] = useState(false)
+  useEffect(() => {
+    if (held) return
+    const timer = window.setTimeout(onClose, toastSeconds * 1000)
+    return () => window.clearTimeout(timer)
+  }, [held])
+  return <div className={`run-notice${notice.failed ? ' run-notice-failed' : ''}`} onMouseEnter={() => setHeld(true)} onMouseLeave={() => setHeld(false)} onFocus={() => setHeld(true)} onBlur={() => setHeld(false)} onKeyDown={(event) => { if (event.key === 'Escape') onClose() }}>
+    <span>{notice.text}</span><a href={`#jobs/${notice.jobId}`} onClick={onClose}>Open job</a><button className="text-button small toast-close" aria-label="Dismiss message" onClick={onClose}>×</button></div>
 }
