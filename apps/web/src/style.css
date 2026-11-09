@@ -493,3 +493,12 @@ kbd{font:600 11px ui-monospace,SFMono-Regular,Consolas,monospace;border:1px soli
 .toast-error .toast-text{font-weight:600}
 /* The open job has Save and Skip in its own header, so its row does not repeat them on wide screens. */
 @media(min-width:881px){.job-row.sel .jr-actions{display:none}}
+.provider-card.chosen{border-color:var(--green);box-shadow:0 0 0 1px var(--green)}
+.provider-title .provider-choose{margin-left:auto;flex:none}
+.provider-card .field-label{margin-top:12px}
+@media(max-width:760px){
+.savebar,.toast{width:calc(100% - 24px);max-width:none}
+.savebar>span,.toast-text{flex:1 1 auto}
+.savebar>span{flex-basis:100%}
+.savebar{justify-content:flex-end;padding:10px 10px 10px 16px}
+}

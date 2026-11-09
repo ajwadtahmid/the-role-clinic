@@ -59,4 +59,29 @@ describe('settings page', () => {
     expect(screen.queryByRole('group', { name: 'Unsaved settings' })).toBeNull()
     sqlite.close()
   })
+
+  it('chooses where tailoring runs with two cards and remembers each provider’s model', async () => {
+    const { user, sqlite } = await setup()
+    const ollama = await screen.findByRole('radio', { name: 'In use' })
+    const claude = screen.getByRole('radio', { name: 'Use this' })
+    expect(ollama.closest('.provider-card')?.textContent).toContain('On this computer')
+    const local = (screen.getByLabelText('Model for these steps') as HTMLInputElement).value
+    expect(local).not.toBe('')
+    await user.click(claude)
+    expect(claude.getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByRole('group', { name: 'Unsaved settings' })).toBeTruthy()
+    const claudeModel = screen.getByLabelText('Model for these steps') as HTMLInputElement
+    expect(claudeModel.value).toBe('')
+    await user.type(claudeModel, 'claude-example-model')
+    // Going back to the local card brings back the local model, and Claude's is kept for later.
+    await user.click(screen.getByRole('radio', { name: 'Use this' }))
+    expect((screen.getByLabelText('Model for these steps') as HTMLInputElement).value).toBe(local)
+    await user.click(screen.getByRole('radio', { name: 'Use this' }))
+    expect((screen.getByLabelText('Model for these steps') as HTMLInputElement).value).toBe('claude-example-model')
+    // One step set differently makes a custom mix, which is said out loud.
+    await user.click(screen.getByText(/Model for each step/))
+    await user.selectOptions(screen.getByLabelText('Provider for Résumé drafting'), 'ollama')
+    expect(screen.getByText(/custom mix of both/)).toBeTruthy()
+    sqlite.close()
+  })
 })

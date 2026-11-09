@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { FeedSettings } from './feed-settings.js'
 import { MaintenancePanel } from './runtime.js'
 import { taskNames, type PublicSettings, type TaskName } from '../../../packages/shared/src/index.js'
@@ -31,7 +31,12 @@ export function SettingsPage() {
   const [busy, setBusy] = useState<string | null>(null)
   // What is stored, as text, so the page can tell when something has changed and offer one Save for all of it.
   const [stored, setStored] = useState('')
-  const adopt = (value: PublicSettings) => { setSettings(value); setStored(JSON.stringify(value)) }
+  // The model last used with each provider for each step, so switching providers does not lose what was typed.
+  const remembered = useRef<Record<string, string>>({})
+  const adopt = (value: PublicSettings) => {
+    for (const task of taskNames) { const choice = value.taskModels[task]; remembered.current[`${task}:${choice.provider}`] = choice.model }
+    setSettings(value); setStored(JSON.stringify(value))
+  }
   const [ollamaModels, setOllamaModels] = useState<string[]>([])
 
   useEffect(() => {
@@ -39,6 +44,7 @@ export function SettingsPage() {
   }, [])
 
   function updateTask(task: TaskName, key: 'provider' | 'model' | 'reasoning' | 'temperature', value: string | number | undefined) {
+    if (key === 'model' && settings) remembered.current[`${task}:${settings.taskModels[task].provider}`] = String(value ?? '')
     setSettings((current) => current ? {
       ...current,
       taskModels: {
@@ -47,6 +53,24 @@ export function SettingsPage() {
       },
     } : current)
   }
+  // Every step except the local eligibility check is run by a model, so these are the ones a provider choice applies to.
+  const modelSteps = taskNames.filter((task) => task !== 'eligibilityAnalysis')
+  const runsOn = (provider: 'ollama' | 'anthropic') => settings ? modelSteps.filter((task) => settings.taskModels[task].provider === provider) : []
+  const mode = !settings ? 'ollama' : runsOn('ollama').length === modelSteps.length ? 'ollama' : runsOn('anthropic').length === modelSteps.length ? 'anthropic' : 'mixed'
+  const providerModel = (provider: 'ollama' | 'anthropic') => { const models = [...new Set(runsOn(provider).map((task) => settings!.taskModels[task].model))]; return models.length === 1 ? models[0] : '' }
+  function chooseProvider(provider: 'ollama' | 'anthropic') {
+    setSettings((current) => {
+      if (!current) return current
+      const taskModels = { ...current.taskModels }
+      for (const task of modelSteps) {
+        const now = taskModels[task]
+        remembered.current[`${task}:${now.provider}`] = now.model
+        taskModels[task] = now.provider === provider ? now : { ...now, provider, model: remembered.current[`${task}:${provider}`] ?? '', reasoning: 'auto' }
+      }
+      return { ...current, taskModels }
+    })
+  }
+  function setProviderModel(provider: 'ollama' | 'anthropic', model: string) { for (const task of runsOn(provider)) updateTask(task, 'model', model) }
   const pricedModels = settings ? [...new Set(taskNames.filter((task) => task !== 'eligibilityAnalysis' && settings.taskModels[task].provider === 'anthropic').map((task) => settings.taskModels[task].model).filter(Boolean))] : []
   function updatePrice(model: string, field: 'inputPerMillion' | 'outputPerMillion', value: string) {
     setSettings((current) => current ? { ...current, modelPrices: { ...current.modelPrices, [model]: { inputPerMillion: current.modelPrices[model]?.inputPerMillion ?? 0, outputPerMillion: current.modelPrices[model]?.outputPerMillion ?? 0, [field]: Number(value) } } } : current)
@@ -106,27 +130,30 @@ export function SettingsPage() {
     <div className="rs-layout"><SectionRail items={[{ id: 'models', label: 'Résumé tailoring' }, { id: 'feed', label: 'Job feed' }, { id: 'followups', label: 'Follow-ups' }, { id: 'help', label: 'Help' }, { id: 'backups', label: 'Backups and data' }, ...(usesClaude ? [{ id: 'costs', label: 'Cost cap' }] : [])]} /><div className="content">
     <section className="panel provider-panel block" id="models" tabIndex={-1}>
       <div className="panel-heading">
-        <div><h2>Résumé tailoring</h2><p className="note">Set up where the model runs. Then choose which model does each step.</p></div>
+        <div><h2>Résumé tailoring</h2><p className="note">Choose where the model runs. You can still set each step on its own below.</p></div>
       </div>
-      <div className="provider-grid">
-        <article className="provider-card">
-          <div className="provider-title"><span className="provider-icon ollama-icon">◉</span><div><h3>Ollama</h3><p>Runs locally on your machine</p></div></div>
+      <div className="provider-grid" role="radiogroup" aria-label="Where tailoring runs">
+        <article className={`provider-card${mode === 'ollama' ? ' chosen' : ''}`}>
+          <div className="provider-title"><span className="provider-icon ollama-icon">◉</span><div><h3>On this computer</h3><p>Ollama · runs locally, no charge</p></div><button className="button small provider-choose" role="radio" aria-checked={mode === 'ollama'} onClick={() => chooseProvider('ollama')}>{mode === 'ollama' ? 'In use' : 'Use this'}</button></div>
           <label className="field-label" htmlFor="ollama-url">Local server address</label>
           <input id="ollama-url" value={settings.ollamaBaseUrl} onChange={(event) => setSettings({ ...settings, ollamaBaseUrl: event.target.value })} />
+          {runsOn('ollama').length > 0 && <><label className="field-label" htmlFor="ollama-model">Model for these steps</label><input id="ollama-model" list="installed-models" placeholder="Model ID" value={providerModel('ollama')} onChange={(event) => setProviderModel('ollama', event.target.value)} /></>}
           <button className="button secondary" disabled={busy === 'ollama'} onClick={() => testConnection('ollama')}>{busy === 'ollama' ? 'Checking…' : 'Test Ollama connection'}</button>
           {ollamaModels.length > 0 && <p className="model-hint">Installed: {ollamaModels.slice(0, 5).join(', ')}{ollamaModels.length > 5 ? ` +${ollamaModels.length - 5} more` : ''}</p>}
         </article>
-        <article className="provider-card">
-          <div className="provider-title"><span className="provider-icon claude-icon">✳</span><div><h3>Anthropic API</h3><p>Uses your API account and billing</p></div></div>
+        <article className={`provider-card${mode === 'anthropic' ? ' chosen' : ''}`}>
+          <div className="provider-title"><span className="provider-icon claude-icon">✳</span><div><h3>Claude</h3><p>Anthropic API · your account and billing</p></div><button className="button small provider-choose" role="radio" aria-checked={mode === 'anthropic'} onClick={() => chooseProvider('anthropic')}>{mode === 'anthropic' ? 'In use' : 'Use this'}</button></div>
           <label className="field-label" htmlFor="anthropic-key">API key {settings.anthropicApiKeyConfigured && <span className="saved-label">· saved</span>}</label>
           <input id="anthropic-key" type="password" autoComplete="new-password" placeholder={settings.anthropicApiKeyConfigured ? 'Saved in your private local data folder' : 'sk-ant-…'} value={settings.anthropicApiKey ?? ''} onChange={(event) => setSettings({ ...settings, anthropicApiKey: event.target.value })} />
+          {runsOn('anthropic').length > 0 && <><label className="field-label" htmlFor="anthropic-model">Model for these steps</label><input id="anthropic-model" placeholder="Claude model ID" value={providerModel('anthropic')} onChange={(event) => setProviderModel('anthropic', event.target.value)} /></>}
           <div className="button-row"><button className="button secondary" disabled={busy === 'anthropic'} onClick={() => testConnection('anthropic')}>{busy === 'anthropic' ? 'Checking…' : 'Test API key'}</button>{settings.anthropicApiKeyConfigured && <button className="text-button danger" disabled={busy === 'clear-key'} onClick={clearKey}>Remove key</button>}</div>
         </article>
       </div>
+      {mode === 'mixed' && <p className="note">Your steps use a custom mix of both. Choosing a card sets every step to it; see “Model for each step” below for the mix.</p>}
     </section>
 
     <details className="model-section adv">
-      <summary>Model for each step (advanced) <span className="muted">· local model calls run one at a time</span></summary>
+      <summary>Model for each step (advanced) <span className="muted">· {mode === 'mixed' ? 'custom mix · ' : ''}local model calls run one at a time</span></summary>
       <div className="task-list">
         {taskNames.map((task) => <article className="task-row" key={task}>
           <div className="task-copy"><h3>{labels[task].title}</h3><p>{labels[task].description}</p></div>
