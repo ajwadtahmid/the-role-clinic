@@ -22,6 +22,7 @@ export class FitBatch {
   waiting(): string[] {
     return (this.sqlite.prepare(`SELECT j.id FROM jobs j LEFT JOIN applications a ON a.job_id=j.id
       WHERE COALESCE(a.status,'new') IN ('new','saved')
+        AND LENGTH(TRIM(j.text))>=40
         AND NOT EXISTS (SELECT 1 FROM requirements r WHERE r.job_id=j.id)
         AND NOT EXISTS (SELECT 1 FROM runs u WHERE u.job_id=j.id AND u.kind='extract' AND u.status IN ('queued','running'))
       ORDER BY j.captured_at DESC`).all() as Array<{ id: string }>).map((row) => row.id)
@@ -34,6 +35,7 @@ export class FitBatch {
     if (settings.taskModels.requirementExtraction.provider !== 'ollama' || settings.taskModels.bulletScoring.provider !== 'ollama') return []
     return (this.sqlite.prepare(`SELECT j.id FROM jobs j LEFT JOIN applications a ON a.job_id=j.id
       WHERE COALESCE(a.status,'new') IN ('new','saved')
+        AND LENGTH(TRIM(j.text))>=40
         AND (SELECT r.document FROM requirements r WHERE r.job_id=j.id ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1) NOT LIKE '%"suggestions"%'
         AND NOT EXISTS (SELECT 1 FROM runs u WHERE u.job_id=j.id AND u.kind='extract' AND u.status IN ('queued','running'))
       ORDER BY j.captured_at DESC`).all() as Array<{ id: string }>).map((row) => row.id)

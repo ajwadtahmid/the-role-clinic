@@ -282,7 +282,8 @@ export function createApp(options: AppOptions) {
     const payload = await context.req.json().catch(() => null) as Record<string, unknown> | null
     if (!payload || typeof payload !== 'object') return context.json({ error: 'Provide a job posting.' }, 400)
     const company = cleanText(payload.company, 200), title = cleanText(payload.title, 300), text = cleanText(payload.text, 100_000)
-    if (!company || !title || text.length < 40) return context.json({ error: 'Company, title, and at least 40 characters of job description are required.' }, 400)
+    // The description is optional: a job can be saved to track, and its description added later.
+    if (!company || !title) return context.json({ error: 'Company and role title are required.' }, 400)
     const rawSnapshot = typeof payload.rawSnapshot === 'string' && payload.rawSnapshot ? payload.rawSnapshot : text
     if (Buffer.byteLength(rawSnapshot) > 3_000_000) return context.json({ error: 'The captured page exceeds the 3 MB snapshot limit.' }, 413)
     const sourceUrl = cleanText(payload.url, 2000)
@@ -340,6 +341,18 @@ export function createApp(options: AppOptions) {
     catch (error) { return context.json({ error: error instanceof Error ? error.message : 'Could not capture this job page.' }, 422) }
   })
 
+  // Adds the description to a job saved without one. A description that is already saved is never replaced: stored postings stay verbatim.
+  app.put('/api/jobs/:id/description', async (context) => {
+    const jobId = context.req.param('id'), payload = await context.req.json().catch(() => null) as { text?: unknown } | null
+    const row = options.sqlite.prepare('SELECT text FROM jobs WHERE id=?').get(jobId) as { text: string } | undefined
+    if (!row) return context.json({ error: 'Job not found.' }, 404)
+    if (row.text.trim()) return context.json({ error: 'This job already has a description.' }, 409)
+    const text = cleanText(payload?.text, 100_000)
+    if (text.length < 40) return context.json({ error: 'Paste at least a few sentences of the job description.' }, 400)
+    options.sqlite.prepare('UPDATE jobs SET text=?,raw_snapshot=? WHERE id=?').run(text, text, jobId)
+    return context.json({ ok: true })
+  })
+
   app.get('/api/jobs/:id/snapshot', (context) => {
     const row = options.sqlite.prepare('SELECT raw_snapshot FROM jobs WHERE id=?').get(context.req.param('id')) as { raw_snapshot: string } | undefined
     if (!row) return context.json({ error: 'Job not found.' }, 404)
@@ -362,9 +375,25 @@ export function createApp(options: AppOptions) {
     const payload = await context.req.json().catch(() => null) as { status?: unknown; submittedText?: unknown; notes?: unknown; submittedArtifactId?: unknown; outcome?: unknown } | null
     if (!payload || !applicationStatuses.includes(payload.status as typeof applicationStatuses[number])) return context.json({ error: 'Choose a valid application status.' }, 400)
     const status = payload.status as string, now = new Date().toISOString()
+    // A job applied to before it was added can carry the day it was sent (not in the future).
+    const sentOn = typeof (payload as { appliedAt?: unknown }).appliedAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test((payload as { appliedAt: string }).appliedAt) ? new Date(`${(payload as { appliedAt: string }).appliedAt}T12:00:00`) : null
+    if (sentOn && (Number.isNaN(sentOn.getTime()) || sentOn.getTime() > Date.now())) return context.json({ error: 'The date applied cannot be in the future.' }, 400)
     if (status === 'closed' && !closedOutcomes.includes(payload.outcome as typeof closedOutcomes[number])) return context.json({ error: 'Say how this application ended: rejected, no reply, withdrawn or accepted.' }, 400)
     if (status !== 'closed' && payload.outcome != null) return context.json({ error: 'Only a closed application has an outcome.' }, 400)
     const outcome = status === 'closed' ? payload.outcome as string : null
+    // Undo for a job just marked applied without a file: put it back as if it had not been, including the frozen copies of the
+    // description and answers. Once a résumé file is recorded as sent, the record is final and this refuses.
+    if ((payload as { undoApplied?: unknown }).undoApplied === true) {
+      if (!['new', 'saved', 'skipped'].includes(status)) return context.json({ error: 'An application can only be undone back to To review, Saved or Skipped.' }, 400)
+      const row = options.sqlite.prepare('SELECT id,status,submitted_artifact_id AS artifactId,submitted_text AS text FROM applications WHERE job_id=?').get(jobId) as { id: string; status: string; artifactId: string | null; text: string | null } | undefined
+      if (!row || row.status !== 'applied' || row.artifactId || row.text) return context.json({ error: 'Only a job just marked applied, with no résumé recorded, can be undone.' }, 409)
+      options.sqlite.transaction(() => {
+        options.sqlite.prepare('UPDATE applications SET status=?,outcome=NULL,applied_at=NULL,submitted_job_text=NULL,submitted_text=NULL WHERE id=?').run(status, row.id)
+        options.sqlite.prepare('UPDATE job_answers SET submitted_question=NULL,submitted_category=NULL,submitted_answer=NULL,submitted_at=NULL WHERE job_id=?').run(jobId)
+        options.sqlite.prepare("DELETE FROM status_events WHERE id=(SELECT id FROM status_events WHERE application_id=? AND status='applied' ORDER BY created_at DESC,rowid DESC LIMIT 1)").run(row.id)
+      })()
+      return context.json({ ok: true, status, outcome: null, changedAt: new Date().toISOString() })
+    }
     let submittedArtifactId: string | null = null, artifactText: string | null = null
     if (payload.submittedArtifactId != null) {
       if (payload.status !== 'applied' || typeof payload.submittedArtifactId !== 'string') return context.json({ error: 'Select an exported artifact when marking applied.' }, 400)
@@ -381,7 +410,7 @@ export function createApp(options: AppOptions) {
     }
     const appId = application?.id ?? id()
     const tx = options.sqlite.transaction(() => {
-      options.sqlite.prepare(`INSERT INTO applications(id,job_id,status,outcome,applied_at,notes,submitted_text) VALUES(?,?,?,?,?,?,?) ON CONFLICT(job_id) DO UPDATE SET status=excluded.status,outcome=excluded.outcome,applied_at=COALESCE(applications.applied_at,excluded.applied_at),notes=excluded.notes,submitted_text=COALESCE(applications.submitted_text,excluded.submitted_text)`).run(appId, jobId, status, outcome, status === 'applied' ? now : null, payload.notes === undefined ? application?.notes ?? '' : cleanText(payload.notes, 5000), status === 'applied' ? artifactText || cleanText(payload.submittedText, 100_000) || null : null)
+      options.sqlite.prepare(`INSERT INTO applications(id,job_id,status,outcome,applied_at,notes,submitted_text) VALUES(?,?,?,?,?,?,?) ON CONFLICT(job_id) DO UPDATE SET status=excluded.status,outcome=excluded.outcome,applied_at=COALESCE(applications.applied_at,excluded.applied_at),notes=excluded.notes,submitted_text=COALESCE(applications.submitted_text,excluded.submitted_text)`).run(appId, jobId, status, outcome, status === 'applied' ? (sentOn?.toISOString() ?? now) : null, payload.notes === undefined ? application?.notes ?? '' : cleanText(payload.notes, 5000), status === 'applied' ? artifactText || cleanText(payload.submittedText, 100_000) || null : null)
       if (submittedArtifactId) options.sqlite.prepare('UPDATE applications SET submitted_artifact_id=COALESCE(submitted_artifact_id,?) WHERE id=?').run(submittedArtifactId, appId)
       options.sqlite.prepare('INSERT INTO status_events(id,application_id,status,outcome,created_at) VALUES(?,?,?,?,?)').run(id(), appId, status, outcome, now)
       if (status === 'applied') options.sqlite.prepare('UPDATE applications SET submitted_job_text=COALESCE(submitted_job_text,(SELECT text FROM jobs WHERE id=?)) WHERE id=?').run(jobId, appId)
@@ -474,6 +503,8 @@ export function createApp(options: AppOptions) {
     }
     const current = await readSettings(options.dataDirectory)
     if (!Object.hasOwn(payload, 'anthropicApiKey')) value = { ...value, anthropicApiKey: current.anthropicApiKey }
+    // The AI-features choice is changed only through /api/ai-features, never by saving model settings.
+    value = { ...value, aiFeatures: current.aiFeatures }
     try { localOllamaUrl(value.ollamaBaseUrl) } catch (error) { return context.json({ error: error instanceof Error ? error.message : 'Invalid Ollama URL.' }, 400) }
     await writeSettings(options.dataDirectory, value)
     return context.json(publicSettings(value))
@@ -503,8 +534,6 @@ export function createApp(options: AppOptions) {
     }
   })
 
-    // The AI-features choice is changed only through /api/ai-features, never by saving model settings.
-    value = { ...value, aiFeatures: current.aiFeatures }
   app.post('/api/backups', async (context) => {
     return context.json({ ok: true, ...databaseBackup(options.sqlite, options.dataDirectory) }, 201)
   })

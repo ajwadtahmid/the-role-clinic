@@ -129,6 +129,7 @@ export class PipelineService {
     try { return await this.enqueueExtract(jobId) } catch { return null }
   }
   async enqueueExtract(jobId: string, quiet = false) {
+    if ((jobRow(this.sqlite, jobId)?.text ?? '').trim().length < 40) throw new Error('Add the job description first, then check the fit.')
     const estimate = await this.estimate(jobId, 'extract')
     if (!estimate.allowed) throw capError('extraction', await readSettings(this.dataDirectory), estimate.estimatedUsd, estimate.spentThisMonthUsd)
     const run = this.queue.enqueueWork('extract', jobId, (record, context) => this.extract(record, context), quiet)
