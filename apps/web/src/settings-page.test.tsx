@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { forgetDrafts } from './unsaved.js'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -15,7 +16,7 @@ import { SettingsPage } from './settings-page.js'
 const directories: string[] = []
 const servers: Array<ReturnType<typeof serve>> = []
 afterEach(async () => {
-  cleanup()
+  cleanup(); forgetDrafts()
   await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve()))))
   vi.restoreAllMocks(); vi.unstubAllGlobals()
   await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })))
@@ -124,6 +125,15 @@ describe('settings page', () => {
     await user.click(screen.getByRole('button', { name: 'Edit Résumé drafting' }))
     await user.selectOptions(screen.getByLabelText('Provider for Résumé drafting'), 'ollama')
     expect(screen.getByText('Custom mix of both')).toBeTruthy()
+    sqlite.close()
+  })
+
+  it('does not repeat "no model" on every step after choosing Claude', async () => {
+    const { user, sqlite } = await setup()
+    await user.click(await screen.findByRole('radio', { name: 'Use this' }))
+    await user.click(screen.getByText(/Fine-tune each step/))
+    expect(screen.getByText('Claude needs an API key')).toBeTruthy()
+    expect(screen.queryAllByText('Claude · no model')).toHaveLength(0)
     sqlite.close()
   })
 })

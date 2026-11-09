@@ -1,13 +1,16 @@
 import { useEffect, useState, type ReactNode } from 'react'
 
 // A short message at the bottom of the screen. It does not move the page, can offer Undo, and closes by itself after ten seconds.
+// Pointing at it or tabbing into it holds it open (so Undo can be reached), and Escape closes it.
 export const toastSeconds = 10
 export function Toast({ children, onUndo, onClose, error = false }: { children: ReactNode; onUndo?: () => void; onClose: () => void; error?: boolean }) {
+  const [held, setHeld] = useState(false)
   useEffect(() => {
+    if (held) return
     const timer = window.setTimeout(onClose, toastSeconds * 1000)
     return () => window.clearTimeout(timer)
-  }, [children])
-  return <div className={`toast${error ? ' toast-error' : ''}`} role={error ? 'alert' : 'status'}>
+  }, [children, held])
+  return <div className={`toast${error ? ' toast-error' : ''}`} role={error ? 'alert' : 'status'} onMouseEnter={() => setHeld(true)} onMouseLeave={() => setHeld(false)} onFocus={() => setHeld(true)} onBlur={() => setHeld(false)} onKeyDown={(event) => { if (event.key === 'Escape') onClose() }}>
     <span className="toast-text">{children}</span>
     {onUndo && <button className="button quiet small" onClick={() => { onUndo(); onClose() }}>Undo</button>}
     <button className="text-button small toast-close" aria-label="Dismiss message" onClick={onClose}>×</button>

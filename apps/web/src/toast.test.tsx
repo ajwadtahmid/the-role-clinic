@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { Toast, toastSeconds } from './toast.js'
 
 afterEach(() => { cleanup(); vi.useRealTimers() })
@@ -18,5 +18,25 @@ describe('toast', () => {
       expect(onClose).toHaveBeenCalledOnce()
       view.unmount()
     }
+  })
+
+  it('stays open while it is pointed at or focused, then closes ten seconds after', () => {
+    vi.useFakeTimers()
+    const onClose = vi.fn()
+    render(<Toast onUndo={() => {}} onClose={onClose}>Job skipped</Toast>)
+    const toast = screen.getByRole('status')
+    fireEvent.mouseEnter(toast)
+    act(() => { vi.advanceTimersByTime(60000) })
+    expect(onClose).not.toHaveBeenCalled()
+    fireEvent.mouseLeave(toast)
+    act(() => { vi.advanceTimersByTime(10000) })
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('closes on Escape from inside the message', () => {
+    const onClose = vi.fn()
+    render(<Toast onClose={onClose}>Saved</Toast>)
+    fireEvent.keyDown(screen.getByRole('status'), { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledOnce()
   })
 })

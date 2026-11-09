@@ -175,7 +175,8 @@ export function SettingsPage() {
     : ollama.state === 'down' ? { tone: 'warn', title: `Ollama is not running at ${savedOllamaUrl}`, text: 'Saving and tracking jobs works without it. Start or install Ollama, or choose Claude to tailor résumés.' }
     : ollamaModels.length > 0 && !installed ? { tone: 'warn', title: `${localModel} is not installed in Ollama`, text: `Installed: ${ollamaModels.slice(0, 5).join(', ')}${ollamaModels.length > 5 ? ` and ${ollamaModels.length - 5} more` : ''}. Choose one of those, or install it with “ollama pull ${localModel}”.` }
     : { tone: 'ok', title: `Ollama is set up: ${localModel}`, text: 'Tailoring runs on this computer. Nothing leaves it.' }
-  const modelSummary = (task: TaskName) => `${settings.taskModels[task].provider === 'ollama' ? 'Ollama' : 'Claude'} · ${settings.taskModels[task].model || 'no model'}`
+  // A step that simply follows the chosen provider and has no model yet says nothing; the status line above already does.
+  const modelSummary = (task: TaskName) => { const { provider, model } = settings.taskModels[task]; return model || provider !== mode ? `${provider === 'ollama' ? 'Ollama' : 'Claude'} · ${model || 'no model'}` : '' }
 
   return <SaveRegistry.Provider value={register}><RestoreAnnouncer.Provider value={announceRestored}><main className="shell" id="main" tabIndex={-1}>
     <AppHeader current="settings" />
@@ -224,7 +225,7 @@ export function SettingsPage() {
           <div className="step-list">
             {taskNames.map((task) => <div className={`step${editing[task] ? ' open' : ''}`} key={task}>
               <div><h4>{labels[task].title}</h4><p>{labels[task].description}</p></div>
-              {task === 'eligibilityAnalysis' ? <span className="where">Local rules · your private profile stays off-model</span> : <div className="actions"><span className="where">{modelSummary(task)}</span><button className="button small quiet" aria-expanded={Boolean(editing[task])} aria-label={`${editing[task] ? 'Close' : 'Edit'} ${labels[task].title}`} onClick={() => setEditing({ ...editing, [task]: !editing[task] })}>{editing[task] ? 'Done' : 'Edit'}</button></div>}
+              {task === 'eligibilityAnalysis' ? <span className="where">Local rules · your private profile stays off-model</span> : <div className="actions">{modelSummary(task) && <span className="where">{modelSummary(task)}</span>}<button className="button small quiet" aria-expanded={Boolean(editing[task])} aria-label={`${editing[task] ? 'Close' : 'Edit'} ${labels[task].title}`} onClick={() => setEditing({ ...editing, [task]: !editing[task] })}>{editing[task] ? 'Done' : 'Edit'}</button></div>}
               {task !== 'eligibilityAnalysis' && editing[task] && <div className="edit">
                 <label>Provider for {labels[task].title}
                   <select id={`${task}-provider`} value={settings.taskModels[task].provider} onChange={(event) => updateTask(task, 'provider', event.target.value)}>
@@ -239,7 +240,7 @@ export function SettingsPage() {
                     <option value="auto">Automatic</option>
                     {/^gpt-oss(?::|$)/i.test(settings.taskModels[task].model) ? <><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></> : <><option value="off">Off</option><option value="on">On</option></>}
                   </select>
-                </label> : <span />}
+                </label> : null}
                 <label>Temperature
                   <input type="number" min="0" max={settings.taskModels[task].provider === 'anthropic' ? 1 : 2} step="0.1" placeholder={settings.taskModels[task].provider === 'ollama' ? 'Auto (0.2)' : 'Provider default'} value={settings.taskModels[task].temperature ?? ''} onChange={(event) => updateTask(task, 'temperature', event.target.value === '' ? undefined : Number(event.target.value))} />
                 </label>

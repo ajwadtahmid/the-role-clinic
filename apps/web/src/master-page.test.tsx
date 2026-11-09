@@ -57,7 +57,7 @@ describe('master editor flow', () => {
     await user.type(await screen.findByRole('textbox', { name: 'Name' }), 'Jane Example')
     await user.type(screen.getByRole('textbox', { name: 'Email' }), 'jane@example.test')
     await user.type(screen.getByRole('textbox', { name: 'Links (one per line)' }), 'https://example.test\nhttps://github.com/example')
-    await user.click(screen.getByRole('button', { name: 'Save profile' }))
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
     await screen.findByText('Profile saved locally.')
     const profile = JSON.parse((sqlite.prepare('SELECT document FROM profile').get() as { document: string }).document)
     expect(profile.links).toHaveLength(2)

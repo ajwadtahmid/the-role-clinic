@@ -4,6 +4,9 @@ import { useEffect } from 'react'
 // does not lose them. A draft only applies to the saved version it was started from.
 const drafts = new Map<string, { base: string | null; value: unknown }>()
 
+// Tests start every page fresh.
+export const forgetDrafts = () => drafts.clear()
+
 export function readDraft<T>(key: string, base: string | null): T | null {
   const draft = drafts.get(key)
   if (!draft) return null
