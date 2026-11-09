@@ -12,7 +12,7 @@ const welcomeSteps: Array<{ title: string; body: string[]; action: string; targe
 export function Welcome({ busy, error, onFinish }: { busy: boolean; error: string; onFinish: (target: string) => void }) {
   const [step, setStep] = useState(0), current = welcomeSteps[step], last = step === welcomeSteps.length - 1
   return <main className="shell welcome-shell" id="main" tabIndex={-1}>
-    <header className="topbar"><span className="wordmark">The Role Clinic</span><span className="local-chip">On this device</span></header>
+    <header className="topbar"><span className="wordmark"><span className="mark">RC</span><span>The Role Clinic</span></span><span className="local-chip"><svg className="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>Private · on this device</span></header>
     <section className="page-header"><h1>Welcome</h1><p className="page-note">Save jobs, tailor a résumé for each one, and keep what you sent together. Everything stays on this device unless you choose Claude.</p></section>
     <section className="panel welcome-panel" aria-labelledby="welcome-step-title">
       <p className="subtle" aria-live="polite">Step {step + 1} of {welcomeSteps.length}</p>

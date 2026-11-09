@@ -226,6 +226,5 @@ export function Workspace() {
       </section>
     </div>}
     {showAdd && <AddJobDialog onClose={() => setShowAdd(false)} onOpenExisting={(id) => { setShowAdd(false); selectJob(id) }} onSaved={async (id) => { setShowAdd(false); setStatusFilter('new'); setFeedOnly(false); await loadJobs('new', false); selectJob(id); await loadReadiness(); flash('Job saved.') }} />}
-    <footer><span>THE ROLE CLINIC</span><span>Saved on this device · job capture and tracking work without a model.</span></footer>
   </main>
 }

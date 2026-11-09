@@ -484,3 +484,19 @@ kbd{font:600 11px ui-monospace,SFMono-Regular,Consolas,monospace;border:1px soli
 .toast .button.quiet:hover,.toast .text-button:hover:not(:disabled){background:#ffffff1c}
 .shell:has(.savebar) .toast{bottom:84px}
 @media(prefers-reduced-motion:no-preference){.toast{animation:toast-in .16s ease-out}@keyframes toast-in{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}}
+
+/* Polish: actions are always visible, small controls look like controls, wide review headings clear the sticky bar. */
+.jr-actions{display:flex}
+.more-filters summary{border:1px solid var(--line);border-radius:8px;background:#fff;padding:0 12px}
+.sk td:nth-child(3) input{min-width:96px}
+.welcome-shell{max-width:none}
+.welcome-shell .welcome-panel,.welcome-shell .page-header{max-width:780px}
+.rv-sec,.rv-list>li{scroll-margin-top:110px}
+.rv-doc .pv-orig{font:12px system-ui,sans-serif}
+.download-artifact,.submission-panel a,.rv-export a{color:var(--green)}
+@media(forced-colors:active){
+.button.primary,.chip[aria-pressed=true]{border:2px solid ButtonText;forced-color-adjust:none;background:Highlight;color:HighlightText}
+.tag,.stagepill{border:1px solid CanvasText}
+.savebar,.toast{border:2px solid CanvasText}
+}
+.welcome-shell .topbar .local-chip{margin-left:auto}

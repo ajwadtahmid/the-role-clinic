@@ -42,7 +42,7 @@ export function AddJobDialog({ onClose, onSaved, onOpenExisting }: { onClose: ()
     catch (error) { setNotice((error as Error).message) } finally { setBusy(false) }
   }
   return <div className="dialog-backdrop"><div className="dialog panel" role="dialog" aria-modal="true" aria-labelledby="add-job-title" ref={dialog} onKeyDown={keys}>
-    <div className="panel-heading"><h2 id="add-job-title">Add a job</h2><button type="button" className="text-button" onClick={onClose}>Close</button></div>
+    <div className="panel-heading"><h2 id="add-job-title">Add a job</h2><button type="button" className="text-button" aria-label="Close" onClick={onClose}><Icon name="x" /></button></div>
     <div className="view-chips" role="group" aria-label="How to add the job">
       <button type="button" className={`chip ${path === 'paste' ? 'active' : ''}`} aria-pressed={path === 'paste'} onClick={() => setPath('paste')}>Paste the description</button>
       <button type="button" className={`chip ${path === 'link' ? 'active' : ''}`} aria-pressed={path === 'link'} onClick={() => setPath('link')}>From a link</button>

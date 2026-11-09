@@ -118,11 +118,14 @@ export function JobOverview({ job, text, analysis, busy, canExtract, onExtract }
   </div>
 }
 
+// Plain words for what a run was and how it ended.
+const runKindWords: Record<string, string> = { extract: 'Fit check', tailor: 'Tailoring' }
+const runStatusWords: Record<string, string> = { done: 'finished', failed: 'failed', running: 'running', queued: 'waiting', canceled: 'canceled' }
 export function JobResume({ jobId, analysis, busy, onRetry }: { jobId: string; analysis: Analysis | null; busy: boolean; onRetry: (id: string) => void }) {
   const active = analysis?.runs.some((run) => run.status === 'queued' || run.status === 'running') ?? false, lines = analysis?.tailored?.lines.length ?? 0
   return <div className="job-resume">
     {analysis?.tailored ? <section className="review-entry"><h3>Tailor a résumé for this job</h3><p className="subtle">{lines} suggested line{lines === 1 ? ' is' : 's are'} ready. Review each one next to a live preview, then export a DOCX or PDF.</p><a className="button primary" href={`#jobs/${jobId}/review`}>Open the review</a></section>
       : <p className="subtle">{analysis?.extraction ? 'No draft yet. Use Tailor résumé above to write one from your master résumé.' : 'Check the fit first; the draft is written from the requirements it finds.'}</p>}
-    {!!analysis?.runs.length && <div className="run-list"><h4>Runs</h4>{analysis.runs.slice(0, 5).map((run) => { const usage = run.usage ? JSON.parse(run.usage) as { totalUsd?: number } : null; return <div className="run-row" key={run.id}><span>{run.kind} · {run.status} · {run.step}{usage?.totalUsd ? ` · $${usage.totalUsd.toFixed(4)}` : ''}</span>{run.error && <span className="review-flag">{run.error}</span>}{run.status === 'failed' && run.kind !== 'reverify' && <button className="text-button" disabled={busy || active} onClick={() => onRetry(run.id)}>Retry</button>}</div> })}</div>}
+    {!!analysis?.runs.length && <div className="run-list"><h4>Runs</h4>{analysis.runs.slice(0, 5).map((run) => { const usage = run.usage ? JSON.parse(run.usage) as { totalUsd?: number } : null; return <div className="run-row" key={run.id}><span>{runKindWords[run.kind] ?? run.kind} · {runStatusWords[run.status] ?? run.status}{run.status === 'done' ? '' : ` · ${run.step}`}{usage?.totalUsd ? ` · $${usage.totalUsd.toFixed(4)}` : ''}</span>{run.error && <span className="review-flag">{run.error}</span>}{run.status === 'failed' && run.kind !== 'reverify' && <button className="text-button" disabled={busy || active} onClick={() => onRetry(run.id)}>Retry</button>}</div> })}</div>}
   </div>
 }
