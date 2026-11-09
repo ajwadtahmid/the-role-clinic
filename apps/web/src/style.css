@@ -535,3 +535,17 @@ details.more .form-pair label{display:grid;gap:6px;font:600 12px system-ui;color
 details.more input[type=number]{width:100%;min-height:42px;border:1px solid var(--field-line);border-radius:8px;background:var(--paper);color:var(--ink);padding:0 11px;font:14px system-ui}
 details.more input[type=number]:focus{border-color:var(--focus);box-shadow:0 0 0 3px #66836c22}
 details.more .actions label{font:600 12px system-ui;color:var(--text-soft)}
+
+/* The stage tag is the menu for deciding about a job. */
+.pill-menu{position:relative}
+.pill-menu>summary{list-style:none;cursor:pointer;display:inline-flex;gap:6px;align-items:center;min-height:36px;padding:0 12px;font-size:13px}
+.pill-menu>summary::-webkit-details-marker{display:none}
+.pill-menu>summary::after{content:"";width:6px;height:6px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg) translateY(-2px)}
+.decision-pop{position:absolute;right:0;top:calc(100% + 6px);z-index:4;display:grid;gap:2px;min-width:320px;max-width:calc(100vw - 32px);padding:8px;background:var(--paper);border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 32px #34402b22}
+.decision-pop button{display:grid;text-align:left;border:0;background:transparent;border-radius:8px;padding:10px 12px;min-height:44px;font-size:14px;color:var(--ink)}
+.decision-pop button:hover:not(:disabled){background:var(--hover)}
+.decision-pop b{font-weight:600}
+.decision-pop span{font-size:13px;color:var(--muted)}
+.button.ext{gap:6px;text-decoration:none}
+.button.ext .i{width:15px;height:15px}
+@media(max-width:760px),(pointer:coarse){.pill-menu>summary{min-height:44px}}

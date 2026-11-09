@@ -20,14 +20,17 @@ function Pages() {
   useEffect(() => {
     const close = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
-      const open = document.querySelector<HTMLDetailsElement>('details.menu[open], details.more-menu[open], details.more-filters[open]')
+      const open = document.querySelector<HTMLDetailsElement>('details.menu[open], details.more-menu[open], details.more-filters[open], details.pill-menu[open]')
       if (!open) return
       open.open = false
       open.querySelector<HTMLElement>('summary')?.focus()
       event.stopPropagation()
     }
+    // A click anywhere else closes the decision menu on a job.
+    const outside = (event: MouseEvent) => document.querySelectorAll<HTMLDetailsElement>('details.pill-menu[open]').forEach((menu) => { if (!menu.contains(event.target as Node)) menu.open = false })
     window.addEventListener('keydown', close, true)
-    return () => window.removeEventListener('keydown', close, true)
+    document.addEventListener('click', outside)
+    return () => { window.removeEventListener('keydown', close, true); document.removeEventListener('click', outside) }
   }, [])
   // Moving to another page puts focus on its heading, so screen readers announce where you are. Choosing a job within Jobs does not count.
   const page = route.split(/[/?]/)[0].replace(/^#job$/, '#jobs').replace('#answers', '#tracker').replace('#master', '#resume').replace('#profile', '#resume'), previousPage = useRef(page)

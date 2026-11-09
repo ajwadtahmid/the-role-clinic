@@ -69,7 +69,7 @@ describe('Jobs from a job feed', () => {
     sqlite.close()
   })
 
-  it('shows the finder notes as unverified and offers Save and Skip, with Already applied under More, then moves on to the next job', async () => {
+  it('shows the finder notes as unverified and offers its decisions from the stage tag, then moves on to the next job', async () => {
     const { user, sqlite } = await setup()
     await user.click((await screen.findByText('Platform Engineer', { selector: '.job-card strong' })).closest('button')!)
     const panel = await screen.findByRole('region', { name: 'From your job finder' })
@@ -77,8 +77,11 @@ describe('Jobs from a job feed', () => {
     expect(within(panel).getByText('Citizenship')).toBeTruthy()
     expect(within(panel).getByText(/has not checked it/)).toBeTruthy()
     const group = screen.getByRole('group', { name: 'Decide about this job' })
-    expect(within(group).getByRole('button', { name: 'Save job' })).toBeTruthy()
-    await user.click(within(group).getByRole('button', { name: 'Skip' }))
+    // The stage tag is the menu: it offers the decisions, each with a line saying what it does.
+    await user.click(screen.getByText('To review', { selector: '.pill-menu summary' }))
+    expect(within(group).getByRole('button', { name: /^Save for later/ })).toBeTruthy()
+    expect(within(group).getByRole('button', { name: /^I applied/ })).toBeTruthy()
+    await user.click(within(group).getByRole('button', { name: /^Skip/ }))
     await waitFor(() => expect(screen.getByRole('button', { name: /^Skipped/ }).textContent).toContain('1'))
     expect(screen.getByRole('button', { name: /^To review/ }).textContent).toContain('1')
     // The skipped job leaves the list and the other one opens, so the next decision is one click away.
@@ -87,11 +90,30 @@ describe('Jobs from a job feed', () => {
     sqlite.close()
   })
 
+  it('shows the posting as a button on the job and changes the stage menu to fit where the job is', async () => {
+    const { user, sqlite } = await setup()
+    await user.click((await screen.findByText('Platform Engineer', { selector: '.job-card strong' })).closest('button')!)
+    const posting = await screen.findByRole('link', { name: /^Open (posting|application)/ })
+    expect(posting.getAttribute('href')).toMatch(/^https?:\/\//)
+    expect(posting.getAttribute('target')).toBe('_blank')
+    await user.click(screen.getByText('To review', { selector: '.pill-menu summary' }))
+    expect(screen.queryByRole('button', { name: /^Back to To review/ })).toBeNull()
+    await user.click(screen.getByRole('button', { name: /^Save for later/ }))
+    await screen.findByText('Job saved.')
+    // The saved job leaves To review, so open it from the Saved list.
+    await user.click(await screen.findByRole('button', { name: /^Saved \d/ }))
+    await user.click((await screen.findByText('Platform Engineer', { selector: '.job-card strong' })).closest('button')!)
+    await user.click(await screen.findByText('Saved', { selector: '.pill-menu summary' }))
+    expect(screen.getByRole('button', { name: /^Back to To review/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^Save for later/ })).toBeNull()
+    sqlite.close()
+  })
+
   it('records an application with no résumé file, as the master résumé', async () => {
     const { user, sqlite } = await setup()
     await user.click((await screen.findByText('Data Analyst', { selector: '.job-card strong' })).closest('button')!)
-    await user.click(await screen.findByText('More', { selector: '.more-menu summary' }))
-    await user.click(await screen.findByRole('button', { name: 'Already applied' }))
+    await user.click(await screen.findByText('To review', { selector: '.pill-menu summary' }))
+    await user.click(await screen.findByRole('button', { name: /^I applied/ }))
     expect(await screen.findByRole('option', { name: 'No file: I used my master résumé' })).toBeTruthy()
     await user.click(screen.getByLabelText(/I confirm this résumé/))
     await user.click(screen.getByRole('button', { name: 'Confirm application submitted' }))

@@ -4,6 +4,7 @@ const paths = {
   back: <path d="M15 5l-7 7 7 7" />,
   check: <path d="M5 12.5l4.5 4.5L19 7.5" />,
   plus: <path d="M12 5v14M5 12h14" />,
+  external: <path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />,
   x: <path d="M6 6l12 12M18 6L6 18" />,
   up: <path d="M12 19V6M6.5 11.5L12 6l5.5 5.5" />,
   down: <path d="M12 5v13M6.5 12.5L12 18l5.5-5.5" />,

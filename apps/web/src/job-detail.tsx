@@ -1,3 +1,4 @@
+import { Icon } from './icons.js'
 import { choiceOf, stageClass, statusChoices, statusText, type NextAction } from './stages.js'
 
 export type LatestRun = { kind: string; status: string; step: string }
@@ -26,27 +27,38 @@ function highlighted(text: string, requirements: Requirement[]) {
   return parts
 }
 
+// The stage tag doubles as the decision: while a job is still being considered it opens a menu of what to do with it.
+function StageMenu({ job, busy, onStatus }: { job: Job; busy: boolean; onStatus: (status: string) => void }) {
+  const stage = job.status ?? 'new'
+  const items = [
+    stage !== 'new' && { status: 'new', title: 'Back to To review', text: 'Put it back in the list to decide later.' },
+    stage !== 'saved' && { status: 'saved', title: 'Save for later', text: 'Keep it in Saved. It does not go to the Tracker.' },
+    stage !== 'skipped' && { status: 'skipped', title: 'Skip', text: 'Move it to Skipped. You can bring it back.' },
+    { status: 'applied', title: 'I applied', text: 'Record what you sent and move it to the Tracker.' },
+  ].filter((item): item is { status: string; title: string; text: string } => Boolean(item))
+  return <details className="pill-menu"><summary className={`${stageClass(stage)} pill-button`} title="Decide about this job">{statusText(job.status, job.outcome)}</summary>
+    <div className="decision-pop" role="group" aria-label="Decide about this job">{items.map((item) => <button key={item.status} disabled={busy} onClick={(event) => { (event.currentTarget.closest('details') as HTMLDetailsElement).open = false; onStatus(item.status) }}><b>{item.title}</b><span>{item.text}</span></button>)}</div>
+  </details>
+}
+
 export function JobHeader({ detail, action, estimate, estimateError, busy, activeLabel, onAction, onTailor, onStatus, onBack, inTracker = false }: { detail: Detail; onTailor: () => void; action: NextAction; estimate: Estimate | null; estimateError: string; busy: boolean; activeLabel?: string; onAction: () => void; onStatus: (status: string) => void; onBack: () => void; inTracker?: boolean }) {
   const { job } = detail
   const costNote = estimate ? `Estimated API cost: $${estimate.estimatedUsd.toFixed(4)} · per-run cap: $${estimate.capUsd.toFixed(2)} · this month: $${estimate.spentThisMonthUsd.toFixed(2)} of $${estimate.monthlyCapUsd.toFixed(2)}. ${estimate.note}` : estimateError || 'Checking the cost estimate…'
   const blocked = action.id === 'tailor' && !estimate?.allowed
+  const deciding = ['new', 'saved', 'skipped'].includes(job.status ?? 'new'), postingUrl = job.sourceUrl ?? job.applyUrl
   return <header className="job-header">
     {inTracker ? <a className="back-link" href={`#tracker?job=${detail.job.id}`}>← Back to Tracker</a> : <button className="text-button back-button" onClick={onBack}>← All jobs</button>}
     <div className="job-header-row">
       <div className="job-title-block"><h2>{job.title || '(Untitled role)'}</h2><p>{job.company || 'Company not set'}{job.location ? ` · ${job.location}` : ''}</p></div>
-      <span className={stageClass(job.status ?? 'new')}>{statusText(job.status, job.outcome)}</span>
+      {deciding ? <StageMenu job={job} busy={busy} onStatus={onStatus} /> : <span className={stageClass(job.status ?? 'new')}>{statusText(job.status, job.outcome)}</span>}
     </div>
     <div className="job-actions">
       {action.id === 'extract' ? <><button className="button primary" disabled={busy || Boolean(activeLabel)} onClick={onTailor}>{activeLabel ?? 'Tailor résumé'}</button><button className="button" disabled={busy || Boolean(activeLabel)} onClick={onAction}>Check fit</button></> : action.id === 'tracker' ? <a className="button primary" href={`#tracker?job=${job.id}`}>{action.label}</a> : action.id !== 'none' && <button className="button primary" disabled={busy || blocked || Boolean(activeLabel)} onClick={onAction}>{activeLabel ?? action.label}</button>}
-      {(job.status ?? 'new') === 'new' && <div className="triage-actions" role="group" aria-label="Decide about this job">{action.id !== 'tracker' && <button className="button" disabled={busy} onClick={() => onStatus('saved')}>Save job</button>}<button className="text-button" disabled={busy} onClick={() => onStatus('skipped')}>Skip</button></div>}
-      {job.status === 'saved' && <button className="text-button" disabled={busy} onClick={() => onStatus('skipped')}>Skip</button>}
-      {job.status === 'skipped' && <button className="button" disabled={busy} onClick={() => onStatus('new')}>Restore to To review</button>}
+      {postingUrl && <a className="button ext" href={postingUrl} target="_blank" rel="noreferrer">{job.sourceUrl ? 'Open posting' : 'Open application'}<Icon name="external" /></a>}
       <details className="more-menu"><summary>More</summary><div className="more-panel">
         <label className="status-select">Exact status<select value={choiceOf(job.status ?? 'new', job.outcome)} onChange={(e) => onStatus(e.target.value)}>{statusChoices.map((choice) => <option key={choice.value} value={choice.value}>{choice.label}</option>)}</select></label>
-        {['new', 'saved'].includes(job.status ?? 'new') && <button className="text-button" disabled={busy} onClick={() => onStatus('applied')}>Already applied</button>}
-        {!['new', 'saved', 'skipped'].includes(job.status ?? 'new') && <button className="text-button" onClick={() => onStatus('skipped')}>Skip this job</button>}
-        {job.sourceUrl && <a className="external-link" href={job.sourceUrl} target="_blank" rel="noreferrer">Open original posting ↗</a>}
-        {job.applyUrl && <a className="external-link" href={job.applyUrl} target="_blank" rel="noreferrer">Continue to application ↗</a>}
+        {!deciding && <button className="text-button" onClick={() => onStatus('skipped')}>Skip this job</button>}
+        {job.sourceUrl && job.applyUrl && <a className="external-link" href={job.applyUrl} target="_blank" rel="noreferrer">Continue to application ↗</a>}
         <a className="external-link" href={`/api/jobs/${job.id}/snapshot`} download="job-capture.txt">Download original capture</a>
       </div></details>
     </div>
