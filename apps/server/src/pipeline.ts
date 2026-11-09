@@ -298,8 +298,12 @@ export class PipelineService {
     try {
       const parsed = await this.callParsed(run, 'bulletScoring', { tier: 'fast', system: prompts.fitMatch.system, user: JSON.stringify({ requirements: asked.map((item) => ({ id: item.id, quote: item.quote.slice(0, 400) })), bullets: shown.map((row) => ({ id: row.bullet.id, text: row.bullet.text.slice(0, 500), context: row.context.slice(0, 160) })) }), schema: modelFormats.fitMatch, temperature: 0, seed: 7 }, taskOutputLimits.bulletScoring, (text) => fitMatchResponseSchema.parse(parseModelJson(text)))
       const askedIds = new Set(asked.map((item) => item.id))
+      // Only clear, direct evidence counts, and each requirement gets its first pick only.
+      const done = new Set<string>()
       suggestions = parsed.matches.flatMap((match) => {
         const requirementId = match.requirementIds[0], row = match.bulletId ? byId.get(match.bulletId) : undefined
+        if (match.strength !== 'direct' || done.has(requirementId)) return []
+        done.add(requirementId)
         return row && askedIds.has(requirementId) ? [{ requirementId, bulletId: row.bullet.id, evidence: match.evidence.trim(), reason: match.reason.trim() }] : []
       })
     } catch { /* the fit check still finishes with the keyword result */ }

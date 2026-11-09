@@ -13,7 +13,7 @@ import { prompts } from './prompts.js'
 
 const dirs: string[] = []
 const jd = 'TypeScript experience is required. Rust experience is preferred. Candidates need 5+ years of software engineering experience. Must be authorized to work in the US.'
-async function setup(auto = false, failSlop = false, draftText = 'Reduced API latency by 20% using TypeScript and Rust', semanticVerdict: 'grounded' | 'stretch' | 'unsupported' = 'grounded', countedTokens: number | null = null, unusableExtractionReplies = 0, truncatedExtractionReplies = 0, suggestFor: ((text: string) => string) | null = null) {
+async function setup(auto = false, failSlop = false, draftText = 'Reduced API latency by 20% using TypeScript and Rust', semanticVerdict: 'grounded' | 'stretch' | 'unsupported' = 'grounded', countedTokens: number | null = null, unusableExtractionReplies = 0, truncatedExtractionReplies = 0, suggestFor: ((text: string) => string) | null = null, pickStrength: 'direct' | 'indirect' = 'direct') {
   const dir = await mkdtemp(join(tmpdir(), 'clinic-pipeline-')); dirs.push(dir)
   const { sqlite, db } = createDatabase(dir)
   const master = emptyMaster(), bulletId = randomUUID()
@@ -40,7 +40,9 @@ async function setup(auto = false, failSlop = false, draftText = 'Reduced API la
     ], seniority: 'mid-level', vocabulary: ['TypeScript'] }
     else if (matching) {
       const input = JSON.parse(request.user) as { bullets: Array<{ id: string; text: string }>; requirements: Array<{ id: string }> }
-      value = { matches: input.requirements.map((item) => suggestFor ? { requirementIds: [item.id], reason: 'Shows the same work.', bulletId: input.bullets[0].id, evidence: suggestFor(input.bullets[0].text) } : { requirementIds: [item.id], reason: 'No bullet shows it.', bulletId: null, evidence: '' }) }
+      // With a suggestion hook the fake answers every requirement twice (to prove only one pick is kept); without one it finds nothing.
+      const pick = (item: { id: string }): { requirementIds: string[]; reason: string; bulletId: string | null; evidence: string; strength: string } => ({ requirementIds: [item.id], reason: 'Shows the same work.', bulletId: input.bullets[0].id, evidence: suggestFor!(input.bullets[0].text), strength: pickStrength })
+      value = { matches: input.requirements.flatMap((item) => suggestFor ? [pick(item), pick(item)] : [{ requirementIds: [item.id], reason: 'No bullet shows it.', bulletId: null, evidence: '', strength: 'indirect' }]) }
     } else if (task === 'bulletScoring') {
       const input = JSON.parse(request.user) as { bullets: Array<{ id: string }>; requirements: Array<{ id: string }> }
       value = { scores: input.bullets.map((b) => ({ bulletId: b.id, score: 90, requirementIds: [input.requirements[0].id], rationale: 'Direct TypeScript experience.' })) }
@@ -98,6 +100,17 @@ describe('extraction and tailoring pipeline', () => {
     const estimate = await (await request(`/api/jobs/${job.id}/estimate?kind=extract`)).json() as { lines: Array<{ maxOutputTokens: number }> }
     expect(estimate.lines[0].maxOutputTokens).toBeGreaterThan(4096)
     sqlite.close()
+  })
+
+  it('keeps only direct picks from the match step, and one per requirement', async () => {
+    // The fake model answers every requirement twice. Asked about no technology it would be kept once; here the only requirement names one, so check the stored picks directly.
+    for (const strength of ['direct', 'indirect'] as const) {
+      const { sqlite, post, job } = await setup(false, false, undefined, undefined, null, 0, 0, (text) => text.slice(0, 30), strength)
+      await post(`/api/jobs/${job.id}/extract`); await waitFor(sqlite, 'extract', 'done')
+      const stored = JSON.parse((sqlite.prepare('SELECT document FROM requirements WHERE job_id=?').get(job.id) as { document: string }).document) as { suggestions: unknown[] }
+      expect(stored.suggestions).toHaveLength(strength === 'direct' ? 1 : 0)
+      sqlite.close()
+    }
   })
 
   it('never lets the match step cover a requirement that names a technology', async () => {
@@ -297,6 +310,18 @@ describe('extraction and tailoring pipeline', () => {
     sqlite.close()
   })
 
+  it('checks a job again when its stored check predates the local match step, and not once it has been redone', async () => {
+    const { sqlite, post, request, job } = await setup()
+    sqlite.prepare('INSERT INTO requirements(id,job_id,document,created_at) VALUES(?,?,?,?)').run(randomUUID(), job.id, JSON.stringify({ requirements: [], seniority: '', vocabulary: [], partial: false }), new Date().toISOString())
+    const preview = async () => ((await (await request('/api/fit-batch')).json()) as { preview: { count: number; refresh: number } }).preview
+    expect(await preview()).toMatchObject({ count: 1, refresh: 1 })
+    expect((await post('/api/fit-batch')).status).toBe(202)
+    let running = true
+    for (let attempt = 0; attempt < 300 && running; attempt++) { await new Promise((resolve) => setTimeout(resolve, 20)); running = ((await (await request('/api/fit-batch')).json()) as { state: { running: boolean } }).state.running }
+    expect(await preview()).toMatchObject({ count: 0, refresh: 0 })
+    sqlite.close()
+  })
+
   it('checks every job that has no fit check yet, one after another, without notices of their own', async () => {
     const { sqlite, post, request, job } = await setup()
     await post('/api/jobs', { company: 'Second', title: 'Developer', text: `${jd} Second posting.` })
@@ -310,18 +335,6 @@ describe('extraction and tailoring pipeline', () => {
     expect(sqlite.prepare('SELECT COUNT(DISTINCT job_id) AS n FROM requirements').get()).toEqual({ n: 2 })
     expect(((await (await request('/api/fit-batch')).json()) as { preview: { count: number } }).preview.count).toBe(0)
     expect(job.id).toBeTruthy()
-  it('checks a job again when its stored check predates the local match step, and not once it has been redone', async () => {
-    const { sqlite, post, request, job } = await setup()
-    sqlite.prepare('INSERT INTO requirements(id,job_id,document,created_at) VALUES(?,?,?,?)').run(randomUUID(), job.id, JSON.stringify({ requirements: [], seniority: '', vocabulary: [], partial: false }), new Date().toISOString())
-    const preview = async () => ((await (await request('/api/fit-batch')).json()) as { preview: { count: number; refresh: number } }).preview
-    expect(await preview()).toMatchObject({ count: 1, refresh: 1 })
-    expect((await post('/api/fit-batch')).status).toBe(202)
-    let running = true
-    for (let attempt = 0; attempt < 300 && running; attempt++) { await new Promise((resolve) => setTimeout(resolve, 20)); running = ((await (await request('/api/fit-batch')).json()) as { state: { running: boolean } }).state.running }
-    expect(await preview()).toMatchObject({ count: 0, refresh: 0 })
-    sqlite.close()
-  })
-
     sqlite.close()
   })
 

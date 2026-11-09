@@ -8,8 +8,8 @@ export const extractionCandidatesSchema = z.object({ requirements: z.array(z.obj
 }).strict()).max(100), seniority: z.string().max(100).optional(), vocabulary: z.array(z.string().max(100)).max(100).optional() }).strict()
 export const candidatesSchema = z.object({ lines: z.array(z.object({ text: z.string().trim().min(1).max(4000), sourceIds: z.array(z.string().uuid()).min(1).max(10) }).strict()).min(1).max(12) }).strict()
 export const scoreResponseSchema = z.object({ scores: z.array(bulletScoreSchema.extend({ requirementIds: z.array(z.string().uuid()).max(8), rationale: z.string().max(240) })).max(4) }).strict()
-// One entry per requirement asked about; bulletId is null when no bullet clearly shows it. reason comes first so the model commits to an argument before it picks.
-export const fitMatchResponseSchema = z.object({ matches: z.array(z.object({ requirementIds: z.array(z.string().uuid()).min(1).max(1), reason: z.string().max(240), bulletId: z.string().uuid().nullable(), evidence: z.string().max(300) }).strict()).max(40) }).strict()
+// One entry per requirement asked about; bulletId is null when no bullet clearly shows it. reason comes first so the model commits to an argument before it picks; strength says whether the bullet alone is clear evidence.
+export const fitMatchResponseSchema = z.object({ matches: z.array(z.object({ requirementIds: z.array(z.string().uuid()).min(1).max(1), reason: z.string().max(240), bulletId: z.string().uuid().nullable(), evidence: z.string().max(300), strength: z.enum(['direct', 'indirect']) }).strict()).max(40) }).strict()
 export const verdictResponseSchema = z.object({ verdicts: z.array(z.object({ outId: z.string().uuid(), verdict: z.enum(['grounded', 'stretch', 'unsupported']), reason: z.string().max(1000) }).strict()).max(20) }).strict()
 export const slopResponseSchema = z.object({ flags: z.array(z.object({ outId: z.string().uuid(), flags: z.array(z.string().max(300)).max(10) }).strict()).max(20) }).strict()
 export const modelFormats = {
