@@ -95,12 +95,6 @@ summary{padding:13px 0}
 .run-badge{justify-self:start;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:600}
 .run-badge-active{background:var(--green-tint);color:var(--green-dark)}
 .run-badge-failed{background:var(--red-tint);color:#7a3328}
-.run-notices{position:fixed;left:50%;transform:translateX(-50%);bottom:72px;z-index:39;display:grid;gap:8px;width:min(560px,calc(100% - 24px))}
-.run-notice{display:flex;align-items:center;gap:8px 14px;padding:6px 6px 6px 16px;background:var(--ink);color:#fff;border-radius:12px;box-shadow:0 12px 32px #24292040;font-size:14px}
-.run-notice-failed{background:#7a2e22}
-.run-notice span{flex:1 1 auto}
-.run-notice a{display:inline-flex;align-items:center;min-height:44px;color:#fff;text-decoration:underline;white-space:nowrap}
-.run-notice .text-button{color:#fff;min-height:40px}
 
 .pdf-canvas-proof{overflow:auto;height:670px;background:var(--field-line);padding:8px}.pdf-canvas-proof canvas{display:block;width:100%;height:auto;margin-bottom:12px;background:white}.desktop-notice{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:100;display:flex;align-items:center;gap:20px;max-width:90vw;box-shadow:0 2px 12px #0002}
 .panel-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
@@ -460,12 +454,8 @@ kbd{font:600 11px ui-monospace,SFMono-Regular,Consolas,monospace;border:1px soli
 .editor-panel.block>h2{margin-bottom:6px}
 .editor-panel.block a{color:var(--green)}
 #feed-days,#followup-days{width:140px}
-.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;z-index:40;display:flex;align-items:center;gap:8px;max-width:min(560px,calc(100% - 24px));background:var(--ink);color:#fff;border-radius:12px;padding:6px 6px 6px 16px;box-shadow:0 12px 32px #24292040}
-.toast a{color:#fff;text-decoration:underline}
-.toast .button.quiet,.toast .text-button{color:#fff;min-height:40px}
-.toast .button.quiet:hover,.toast .text-button:hover:not(:disabled){background:#ffffff1c}
 .shell:has(.savebar) .toast{bottom:84px}
-@media(prefers-reduced-motion:no-preference){.toast{animation:toast-in .16s ease-out}@keyframes toast-in{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}}
+.shell:has(.savebar)~.run-notices{bottom:140px}
 
 /* Polish: actions are always visible, small controls look like controls, wide review headings clear the sticky bar. */
 .jr-actions{display:flex}
@@ -479,18 +469,16 @@ kbd{font:600 11px ui-monospace,SFMono-Regular,Consolas,monospace;border:1px soli
 @media(forced-colors:active){
 .button.primary,.chip[aria-pressed=true]{border:2px solid ButtonText;forced-color-adjust:none;background:Highlight;color:HighlightText}
 .tag,.stagepill{border:1px solid CanvasText}
-.savebar,.toast{border:2px solid CanvasText}
+.savebar,.toast,.run-notice{border:2px solid CanvasText}
 }
 .welcome-shell .topbar .local-chip{margin-left:auto}
-.toast-error{background:#7a2e22}
-.toast-error .toast-text{font-weight:600}
 /* The open job has Save and Skip in its own header, so its row does not repeat them on wide screens. */
 @media(min-width:881px){.job-row.sel .jr-actions{display:none}}
 .provider-card.chosen{border-color:var(--green);box-shadow:0 0 0 1px var(--green)}
 .provider-title .provider-choose{margin-left:auto;flex:none}
 .provider-card .field-label{margin-top:12px}
 @media(max-width:760px){
-.savebar,.toast{width:calc(100% - 24px);max-width:none}
+.savebar,.toast,.run-notice{width:calc(100% - 24px);max-width:none}
 .savebar>span,.toast-text{flex:1 1 auto}
 .savebar>span{flex-basis:100%}
 .savebar{justify-content:flex-end;padding:10px 10px 10px 16px}
@@ -607,3 +595,26 @@ details.more .actions label{font:600 12px system-ui;color:var(--text-soft)}
 .fit .pc{font-weight:600;margin-left:4px}
 .job-overview h3{margin:4px 0 8px}
 @media(max-width:700px){.fit-cols{grid-template-columns:1fr}.ko-row{grid-template-columns:1fr;gap:0}}
+
+/* toasts: one look for confirmations, errors and finished runs */
+.toast,.run-notice{position:relative;display:flex;align-items:center;gap:12px;min-width:min(340px,calc(100% - 24px));max-width:min(540px,calc(100% - 24px));padding:12px 8px 13px 14px;overflow:hidden;background:linear-gradient(180deg,#2c352d,#222a23);color:#f4f6f0;border:1px solid #ffffff1f;border-radius:14px;font-size:14px;line-height:1.4;box-shadow:0 14px 34px -8px #1a211b88,0 2px 6px #1a211b44}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:20px;z-index:40}
+.run-notices{position:fixed;left:50%;transform:translateX(-50%);bottom:84px;z-index:39;display:grid;justify-items:center;gap:8px;width:calc(100% - 24px)}
+.toast-icon{flex:none;display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:#7fb48c;color:#16301f}
+.toast-error .toast-icon,.run-notice-failed .toast-icon{background:#f0a496;color:#4a1a12}
+.toast-error,.run-notice-failed{background:linear-gradient(180deg,#5e2a21,#4d221b);border-color:#ffffff24}
+.toast-text{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
+.toast-text a{color:#fff;text-decoration:underline;text-underline-offset:3px}
+.toast-action{flex:none;display:inline-flex;align-items:center;min-height:34px;padding:0 12px;border:0;border-radius:8px;background:#ffffff1f;color:#fff;font:600 13px system-ui;text-decoration:none;white-space:nowrap;cursor:pointer}
+.toast-action:hover{background:#ffffff33}
+.toast-close{flex:none;display:grid;place-items:center;width:34px;height:34px;border:0;border-radius:8px;background:transparent;color:#ffffffb8;cursor:pointer}
+.toast-close:hover{background:#ffffff1f;color:#fff}
+.toast :focus-visible,.run-notice :focus-visible{outline:2px solid #fff;outline-offset:1px}
+.toast-timer{position:absolute;left:0;right:0;bottom:0;height:3px;background:#ffffff55;transform-origin:left;animation:toast-timer linear forwards}
+.toast-error .toast-timer,.run-notice-failed .toast-timer{background:#f0a49688}
+@keyframes toast-timer{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+@media(prefers-reduced-motion:no-preference){.toast{animation:toast-in .22s cubic-bezier(.2,.8,.2,1)}.run-notice{animation:toast-rise .22s cubic-bezier(.2,.8,.2,1)}
+@keyframes toast-in{from{opacity:0;transform:translate(-50%,10px) scale(.98)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
+@keyframes toast-rise{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}}
+@media(prefers-reduced-motion:reduce){.toast-timer{animation:none;transform:none;opacity:.5}}
+@media(max-width:760px),(pointer:coarse){.toast-action,.toast-close{min-height:44px;min-width:44px}.toast-close{width:44px}}
