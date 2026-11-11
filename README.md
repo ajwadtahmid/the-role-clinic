@@ -1,235 +1,188 @@
 # The Role Clinic
 
-A local-first job search workspace. Save a job, check it against your profile, tailor a
-résumé from a master résumé you control, export it, and keep a record of exactly what you
-sent. Everything runs on your own computer: no accounts, no hosted service, no shared data.
+A local-first job search workspace. Keep track of the jobs you apply to, and, if you want
+to, check how well you fit each one and tailor a résumé from facts you control.
+Everything runs on your own computer: no accounts, no hosted service, no shared data.
 
-## Status
+## Features
 
-**Pre-release.** The current desktop preview is `0.5.0`; the first public release is
-planned as `1.0.0`.
+- **Job tracker.** Save a job with just a company and a title, or paste its description or
+  fetch a public posting. Mark it applied in one click, set follow-up dates, keep contacts
+  and notes, and see a funnel of where your applications stand. Export to XLSX or CSV.
+- **Answer library.** Record the questions an application asked and the answers you gave,
+  then search and reuse them later.
+- **Fit check** (optional). Reads a job's requirements, compares them with your master
+  résumé and shows what is covered, what is a gap and what needs a look from you.
+  Location, work authorization and similar conditions are flagged, never used to block.
+- **Résumé tailoring** (optional). Writes a draft from your master résumé in which every
+  line cites the bullets it came from. You accept, edit, reject or copy each line, then
+  export DOCX or PDF. The exact file you send is kept with the application.
+- **Job feed** (optional). Reads a CSV file that a separate search tool fills, and holds
+  new rows for you to decide on. See [Finding jobs](#finding-jobs-optional).
 
-| Area | State |
+You can use the app only as a tracker and never set up AI. The fit check and tailoring are
+turned on separately, and can be hidden again at any time without deleting anything.
+
+## Install
+
+**Desktop app.** Download the package for your system from the Releases page. There is no macOS build yet.
+
+| System | Package |
 | --- | --- |
-| Job capture, Jobs list, tracker (with answers and answer library) | Working |
-| Optional job feed with a Triage view; search instructions for Claude Code or Codex in `job-search/` | Working; live posting fetch and screen review pending |
-| Master résumé, profile, tailoring pipeline, review workspace, DOCX/PDF export | Working |
-| Linux x86_64 package (bundled Node runtime, launcher, backup/restore) | Working preview |
-| Linux Tauri desktop window, native downloads/clipboard, PDF proof | Implemented; owner acceptance pending |
-| macOS Apple Silicon and Windows x64 desktop packages | Native packaging and CI implemented; native builds/acceptance pending |
-| AI output quality | Initial local-model validation recorded; quality fixes and release qualification deferred to Phase 10 |
-| Desktop workflow checks | Automated Linux webview checks; owner visual/scaling review remains open |
+| Linux x86_64 | `.AppImage` |
+| Windows x64 | setup `.exe` |
 
-Job tracking and application answers work with no AI provider at all. Résumé tailoring
-needs either your own Anthropic API key or a local Ollama installation.
+The builds are not code-signed, so your operating system may show a warning the first
+time you open the app. On Linux, allow the AppImage to run (file Properties → Permissions)
+and double-click it; it needs WebKitGTK 4.1 and FUSE 2, which some systems do not install
+by default. If it will not start, use the browser package below. More detail is in
+[packaging/DESKTOP.md](packaging/DESKTOP.md).
 
-## What it does
+**Linux browser package.** A `.tar.gz` that bundles its own Node runtime and opens in your
+browser, so it also works where the AppImage will not. Extract it, then run
+`./role-clinic`. `./role-clinic stop` stops it. It needs a 64-bit Linux with glibc 2.34 or
+newer (Ubuntu 22.04, Fedora 36 and later) and nothing else installed.
 
-1. **Capture** a job by pasting its description or fetching a public posting
-   (Greenhouse, Lever, Ashby, SmartRecruiters, Workday, JSON-LD pages, other readable
-   pages). LinkedIn, Indeed and Glassdoor are not fetched; paste those. The original page
-   is kept next to the cleaned text. Duplicates are caught by URL and by similar
-   company and title in the last 60 days. Jobs can also arrive from an optional job
-   feed (see below) and wait in a **Triage** view until you decide.
-2. **Triage** on the Jobs screen, with one main button for each job's next step and a status
-   strip for fit checks and tailoring runs. When a model is configured, requirements are extracted, each
-   tied to an exact span of the posting, and knockouts (years, work authorization,
-   education, location) are compared with your private profile and master résumé. They
-   are warnings with their basis shown, never blocks.
-3. **Tailor** from your master résumé: bullets are ranked, gaps reported, and a draft
-   written in which every line cites the source bullets it came from.
-4. **Review** each line (accept, reject, edit, copy), see an interactive preview and the
-   real PDF with a page meter, and export DOCX or PDF.
-5. **Track** the job from the moment you commit to it: the application, the exact file you
-   sent, and the questions and answers for it (opened from the tracker), and reuse those
-   answers later. A short welcome walkthrough covers first-time setup and can be shown
-   again from Settings.
-
-## Privacy
-
-- The server listens on `127.0.0.1` only, rejects requests for any other host, and checks
-  the origin of every change.
-- Your profile (contact details, work authorization) and your application answers are used
-  in local checks and inserted into documents. They are never sent to a model.
-- With Claude, the relevant master-résumé evidence and job text are sent to Anthropic and
-  billed to your key. With Ollama, model processing stays on your computer.
-- Your API key uses owner-only POSIX permissions or a current-account Windows DACL, is never returned to the
-  browser, and is left out of full backups unless you ask for it.
-- A job feed's priority, flags and why-it-fits notes are shown to you and are never sent
-  to a model.
-- Merely launching the app makes no model or API call.
-
-Desktop builds target Linux x86_64 (AppImage/DEB/RPM), macOS Apple Silicon (DMG/app)
-and Windows x64 (per-user setup EXE with WebView2 provisioning). macOS and Windows
-still need native CI results and clean-machine workflow checks. See
-[installation and build guidance](packaging/DESKTOP.md) and the
-[acceptance checklist](packaging/DESKTOP-ACCEPTANCE.md). No public release or automatic updater is configured.
-
-## Run from source
-
-Requires Node.js 22.12 or newer (the package build pins 24.18.1, see `.node-version`) and npm.
+**From source.** Requires Node.js 22.12 or newer and npm.
 
 ```sh
+git clone https://github.com/ajwadtahmid/the-role-clinic.git
+cd the-role-clinic
 npm install
-npm run dev
+npm run build
+npm start
 ```
 
-Open `http://127.0.0.1:5173`; the API listens on `127.0.0.1:3000`. `PORT`, `WEB_PORT` and
-`ROLE_CLINIC_DATA_DIR` change the ports and the data folder (use a temporary folder for
-experiments). By default data lives in your OS's per-user data folder, apart from the app.
+Open `http://127.0.0.1:3000`. For development, `npm run dev` serves the UI on
+`http://127.0.0.1:5173` and the API on `127.0.0.1:3000`.
 
-```sh
-npm run typecheck   # types
-npm test            # all tests, no network, no real models
-npm run build       # typecheck, build the guide and the UI
-npm start           # serve the built UI and API on one port, http://127.0.0.1:3000
-```
+## Getting started
 
-## AI providers and spending
+The first time you open the app it asks how you want to use it:
 
-**Settings** chooses a provider and model separately for each task: requirement
-extraction, evidence selection (bullet scoring), résumé drafting, claim verification and
-writing review. Eligibility checks are local rules, not a model. A local Ollama model and
-Claude can be mixed. Local calls run one at a time, and the previous model is unloaded
-before a different one starts.
+- **Just track my applications.** Nothing else to set up. The fit check and résumé pages
+  are hidden, so the app stays small.
+- **Also tailor résumés with AI.** Opens a short guided setup (below).
 
-- Model output is treated as untrusted: it is parsed and validated, and if it is unusable
-  the model gets one repair attempt that shows it what was wrong.
-- For Ollama, the context window is sized from each prompt (up to 32,768 tokens). A prompt
-  that would not fit is refused instead of being silently truncated.
-- Claude steps need you to enter current prices. Before queuing, the app shows an
-  estimate and refuses a run above the **per-run cap** (default $1) or one that would pass
-  the **monthly cap** (default $20, summed from recorded runs). Anthropic input is
-  token-counted before each paid call. Local models are never blocked by a cap.
-- Every prompt has a version label recorded with each run; a test fails if a prompt's
-  wording changes without a new version.
+You can change your mind later in **Settings → AI features**.
 
-## Review and export
+### Tracking jobs
 
-Open a job with a draft to review it. On a focused card, **A / R / E / C** accept, reject,
-edit or copy. Only accepted lines enter the document; rejecting a line offers unused
-bullets from the same role or project.
+1. On **Jobs**, choose **Add job**. A company and a title are enough. Add the description
+   now, or later when you open the job.
+2. Choose **Save and add another** to enter several in a row, or tick **I already applied
+   to this job** if you are catching up on past applications.
+3. Press **Mark as applied** on a job when you apply. It is one click, and **Undo** puts it
+   back. The job description is kept with the application, so you still have it after the
+   posting disappears.
+4. Open **Tracker** to filter by company, status or date, add follow-up dates, contacts
+   and notes, and export a spreadsheet. Quiet applications can be marked as ghosted after
+   a number of days you choose.
 
-- **Checks.** Edits are saved locally and checked immediately for changed numbers and
-  dates, tools or companies with no cited evidence, and project work presented as
-  employment. A semantic check by the configured verifier is queued and shows its
-  estimated cost. A failed model call leaves your edits intact.
-- **What blocks export.** Model-written text marked unsupported. Your own edits keep their
-  warnings visible and can be exported after your review; a genuinely new claim can be
-  added to the master as a new evidence bullet.
-- **Preview and files.** The interactive preview follows accepted content; **View rendered
-  PDF** shows the real output and drives the page meter. DOCX embeds Roboto; pagination
-  can differ between editors. Every export is read back to confirm every heading and line
-  is present and in order, then saved with its exact review snapshot.
-- **Mark as applied.** Choose the file you actually sent and confirm it. The app freezes
-  that file's text, the job description and the current answers. Later edits change the
-  working copy only.
-  If you applied with your master résumé and kept no file, record that choice; the
-  application shows "No résumé file recorded".
-- **Job feed (optional).** Point Settings at a CSV that a separate search tool fills. New
-  rows appear in a **Triage** chip; nothing is tracked, skipped or checked until you decide.
-  The app reads the file, marks what it imported and removes old rows only when you run
-  Clean up. It never searches and sends no finder note to a model.
+LinkedIn, Indeed and Glassdoor pages are not fetched. Paste their text instead. Other
+postings can be fetched from a link.
 
-## Finding jobs with Claude Code or Codex (optional)
+### Turning on AI features
 
-The app never searches. `job-search/` holds the instructions for an AI coding agent that
-does. Start Claude Code or Codex inside that folder and say `run initial scan` or
-`run update`. The agent appends verified jobs to `jobs.csv` in the app's data folder
-(`<data folder>/job-search/data/jobs.csv`, where the data folder is the one shown in Settings), which
-is where Role Clinic looks by default, so the rows arrive in Triage with no setup. **Settings → Job
-feed** can point at a different file.
+Fit checks and tailoring run on a model on your own computer, through
+[Ollama](https://ollama.com). **Settings → AI features → Set up AI features** walks you
+through three steps and tells you what is wrong at each one:
+
+1. Install Ollama and open it.
+2. Download the model: `ollama pull gemma4:12b`.
+3. Run a quick test. AI features turn on only after it passes.
+
+Then import your résumé in **Résumé → Master résumé**, review what was read, and keep only
+what is true. Add the private details used for knockout checks and for filling documents in
+**Résumé → Profile**.
+
+As an advanced alternative, **Settings → AI features → Advanced** lets you use your own
+Anthropic API key instead. Claude runs on Anthropic's servers, costs money and sends the
+job text and your résumé bullets to Anthropic. You set per-run and monthly spending limits,
+and the app shows an estimate before every paid run.
+
+### Checking fit and tailoring
+
+On a job with a description, **Check fit** lists the requirements found in the posting,
+each tied to an exact passage, and shows which your résumé covers. Fit is scored from the
+required skills and responsibilities, with preferred ones counting for less. Checks run one
+at a time on your computer, and **Check fits** on the Jobs page checks several jobs in a
+row.
+
+**Tailor résumé** writes a draft. On each line, press **A** to accept, **R** to reject,
+**E** to edit or **C** to copy it. Only accepted lines enter the document. Edits are checked
+at once for changed numbers and dates, and for tools or companies the cited bullets do not
+support. Export to DOCX or PDF; each export is read back to confirm every line is present
+and in order. When you apply, choose the file you actually sent, or record that you used
+your master résumé.
+
+### Finding jobs (optional)
+
+The app never searches for jobs. `job-search/` holds instructions for an AI coding agent
+that does. Start Claude Code or Codex inside that folder and say `run initial scan` or
+`run update`:
 
 1. Copy `job-search/profile.example.md` to `job-search/profile.md` and fill it in.
 2. Put your résumé in `job-search/` as `resume.pdf` (or any `resume.*`).
 3. `cd job-search`, start `claude` or `codex`, and say `run initial scan`.
 
-Your profile and résumé stay in `job-search/` and are ignored by git, along with every PDF
-and DOCX file; the jobs file and reports live in your data folder, outside the repository. The agent runs under your own Claude or Codex
-subscription; Role Clinic does not call it.
+The agent saves its results to `job-search/data/jobs.csv` inside the app's data folder
+(shown in Settings), which the app reads on its own. The new rows wait in **Jobs** behind an
+**Only from the job feed** filter until you track, skip or tailor them. Your profile and
+résumé stay in `job-search/` and are ignored by git.
 
-## Tracker and answer library
+## Privacy
 
-- **Tracker:** filters by company, status and date; follow-up dates, contacts and notes;
-  **Needs follow-up** reminders (one click records today as the last contact); quiet
-  applications suggest `ghosted` after a configurable number of days and change only when
-  you confirm; a funnel across recorded status history; and a view of the exact version
-  sent. Spreadsheet export: XLSX (Applications and Q&A sheets) or separate CSV files,
-  following the current filters.
-- **Gap trends:** skills that keep showing up as evidence gaps, from the latest draft of
-  each tracked job. It runs no model.
-- **Answers:** each tracked job's questions and answers open from the Q&A column of the
-  tracker. An answer library on the same page searches every saved answer by text or
-  category, with similar past answers and their outcomes, explicit reuse links, a warning
-  when a reused answer names a different company, and enforced character limits.
+- The server listens on `127.0.0.1` only, refuses requests for any other host, and checks
+  the origin of every change.
+- Your profile (contact details, work authorization) and your application answers are never
+  sent to a model. They are used in local checks and inserted into documents.
+- With Ollama, model work stays on your computer. With Claude, the job text and the relevant
+  résumé bullets are sent to Anthropic and billed to your key.
+- Your API key is stored with owner-only permissions, is never returned to the browser, and
+  is left out of full backups unless you ask for it.
+- Merely launching the app makes no model or API call. The only outgoing requests are the
+  ones you ask for, such as fetching a posting from a link.
 
-## Desktop preview
+## Your data and backups
 
-The Tauri preview wraps the existing UI and bundled Node backend. Linux `.deb` and `.rpm`
-packages register an application-menu entry; an `.AppImage` provides a portable
-alternative. Ordinary users do not need Node, Rust, npm or a developer setup.
-Closing the desktop window stops its backend, active runs require confirmation, exports
-use native Save dialogs, and the exact PDF proof renders inside the app.
+Data lives in your system's per-user data folder, apart from the app, so replacing or
+removing the app keeps it. **Settings** shows the folder. Set `ROLE_CLINIC_DATA_DIR` to use
+another.
 
-See [desktop installation, building and validation](packaging/DESKTOP.md). The Linux
-owner acceptance gate is still open; the browser launcher remains the default fallback.
-The preview is unsigned and has no automatic updater. macOS/Windows qualification is
-Phase 9; AI quality work remains deferred to Phase 10.
+A copy of the database is made automatically once a day (the last 14 are kept) and before
+any upgrade. **Settings** downloads one on demand. For a complete backup (database, exported
+files, attachments and settings), stop the app and run
+`./role-clinic backup /path/data.tar.gz`; `./role-clinic restore` brings it back after
+checking it. See the [user guide](packaging/USER-GUIDE.md) for backup, restore, update and
+removal. **Settings → Clear data** erases everything in the data folder after two
+confirmations and cannot be undone.
 
-## Linux x86_64 browser package
-
-A self-contained preview: bundled Node runtime and production dependencies, an executable
-launcher, a first-run introduction, a local user guide, an optional application-menu
-shortcut, and full-data backup and restore. macOS, Windows, ARM and musl are not
-included.
+## Development
 
 ```sh
-npm ci --ignore-scripts
-npm test
-npm run build
-npm run package:linux
-npm run test:package -- dist/the-role-clinic-0.5.0-linux-x64.tar.gz
+npm install
+npm run dev         # server and UI with reload
+npm run typecheck   # types
+npm test            # all tests, no network and no real models
+npm run build       # typecheck, build the guide and the UI
+npm start           # serve the built app on one port
 ```
 
-Needs Node 24.18.1, `tar` and `readelf` on Linux x86_64. The archive and its checksum
-appear in the ignored `dist/`. Only the locked production dependencies, compiled code, the
-built UI, the runtime and the guide are packaged; the manifest lists every file with its
-checksum.
-
-Extract the archive and run `./role-clinic`. It reopens a running instance or starts a
-loopback server on a free port and opens your browser. `./role-clinic stop` stops it;
-closing the tab leaves it running. Your data stays in the per-user data folder, so
-replacing the app folder keeps it.
-
-**Compatibility:** Linux x86_64 with glibc 2.34+ and GLIBCXX 3.4.29+. When the preview was
-built it was smoke-tested on Fedora 44 and in a clean Ubuntu 22.04 container with no
-network, no system Node and no developer tools.
-
-**Backups.** The server saves a database snapshot before any migration, at startup and
-daily (14 automatic snapshots are kept), and refuses a database from a newer version.
-`./role-clinic backup /path/data.tar.gz` makes a full backup (database, exported files,
-attachments, settings, first-run state) with the app stopped; the Anthropic key is left
-out unless you add `--include-api-key`. `./role-clinic restore` validates paths,
-checksums, settings and database integrity before replacing anything, and keeps the
-previous folder for recovery. See [the user guide](packaging/USER-GUIDE.md) for launch,
-update, backup, restore and removal.
-
-## Layout
+Use a temporary `ROLE_CLINIC_DATA_DIR` for experiments so your real data is not touched. The
+`npm run package:linux`, `npm run test:package` and `npm run desktop:build` scripts build and
+check the Linux package and the desktop app (the desktop build also needs the Rust
+toolchain).
 
 | Path | Purpose |
 | --- | --- |
 | `apps/server/` | Local Node API (Hono), SQLite storage, capture, pipeline, exports |
 | `apps/web/` | Browser UI (Vite and React) |
-| `packages/shared/` | Schemas and types shared by server and UI |
-| `packaging/`, `scripts/` | Linux launcher, user guide, package build and smoke test |
-| `job-search/` | Job search agent instructions and profile template; your profile and résumé are git-ignored; results go to the data folder |
-| `src-tauri/` | Desktop shell, platform package configs, owned backend lifecycle and restricted native commands |
+| `packages/shared/` | Schemas and types shared by the server and the UI |
+| `packaging/`, `scripts/` | Launcher, user guide, package and desktop builds |
+| `src-tauri/` | Tauri desktop shell |
+| `job-search/` | Instructions and profile template for the optional job search agent |
 
-## Roadmap
+## License
 
-1. **Tauri on Linux x86_64:** complete owner acceptance of the desktop preview and
-   its lifecycle, PDF preview, import/export, clipboard and data compatibility.
-2. **Tauri on Linux, macOS and Windows:** installers, signing, updates, recovery, and
-   clean-machine checks on all three.
-3. **AI quality evaluation and release:** score real models and per-task defaults in the
-   finished app, then the platform release checks, ending in version `1.0.0`.
+[GNU General Public License v3.0](LICENSE).

@@ -1,63 +1,149 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>The Role Clinic — User guide</title><style>body{font-family:system-ui,sans-serif;max-width:820px;margin:40px auto;padding:0 22px;color:#242920;background:#fffefa;line-height:1.7}p{white-space:pre-wrap;overflow-wrap:anywhere}h1,h2{color:#315b45}h2{margin-top:2em}code{background:#edf0e7;padding:2px 4px;border-radius:3px;font-size:.9em}</style><main><h1>The Role Clinic — preview</h1><p>A local job tracker and résumé workspace. Linux x86_64 has automated package and
-native webview checks on Ubuntu 22.04/Fedora 44. macOS Apple Silicon and Windows x64
-packages are being implemented; native and clean-machine qualification remain open.
-AI quality fixes and public-release qualification remain pending; review generated claims.</p><h2 id="desktop">Desktop preview</h2><p>The 0.5.0 Tauri preview opens the workspace in its own window. On Ubuntu, open the
-<code>.deb</code> with the software installer; on Fedora, use the <code>.rpm</code>. Launch <strong>The Role Clinic</strong>
-from your application menu. The installer resolves GTK3, WebKitGTK 4.1 and <code>xdg-utils</code>.
-An <code>.AppImage</code> is also available: allow execution in file Properties → Permissions,
-then double-click it. It needs FUSE 2 compatibility support and a desktop session.
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>The Role Clinic — User guide</title><style>body{font-family:system-ui,sans-serif;max-width:820px;margin:40px auto;padding:0 22px;color:#242920;background:#fffefa;line-height:1.7}p{white-space:pre-wrap;overflow-wrap:anywhere}h1,h2,h3{color:#315b45}h2{margin-top:2em}h3{margin-top:1.6em}a{color:#315b45}code{background:#edf0e7;padding:2px 4px;border-radius:3px;font-size:.9em}</style><main><h1>The Role Clinic — user guide</h1><p>The Role Clinic keeps track of the jobs you apply to. If you want, it can also check how
+well you fit a job and help you tailor a résumé for it. Everything stays on your own
+computer. Nothing is uploaded, and you need no account.</p><p>This part of the guide is about using the app. Installation details, backups, command-line
+options and other technical topics are in the <a href="#advanced">Advanced</a> section at the end.</p><h2 id="getting">Getting started</h2><p>Install the app for your system and open <strong>The Role Clinic</strong>. On Linux, use the <code>.AppImage</code>
+(or the <code>.tar.gz</code> browser version if it will not start). On a Mac, drag the app
+into Applications. On Windows, run the setup file. If your system warns you the first time
+you open it, that is because the app is not code-signed; follow the system's prompts. The
+<a href="#desktop">Advanced</a> section has every detail, including the browser version for Linux.</p><p>The first screen asks how you want to use the app:</p><p>- <strong>Just track my applications.</strong> Nothing else to set up. This is all you need if you only
+  want to keep a list of your applications. The fit check and résumé pages stay out of
+  the way.
+- <strong>Also tailor résumés with AI.</strong> Takes you to a short setup, explained in
+  <a href="#using">Using AI features</a>.</p><p>You can change your mind at any time in <strong>Settings → AI features</strong>.</p><h2 id="adding">Adding jobs</h2><p>On <strong>Jobs</strong>, choose <strong>Add job</strong>.</p><p>- A company and a title are enough. Add the description now, or later when you open the
+  job.
+- To keep the description, paste it, or fetch it from a link to a public posting.
+  LinkedIn, Indeed and Glassdoor pages cannot be fetched, so paste their text instead.
+- <strong>Save and add another</strong> keeps the form open so you can enter several jobs in a row.
+- Tick <strong>I already applied to this job</strong> to record a job you applied to earlier.</p><p>The app warns you if a job looks like one you already saved.</p><h2 id="tracking">Tracking your applications</h2><p>When you apply, open the job and press <strong>Mark as applied</strong>. It takes one click, and
+<strong>Undo</strong> puts the job back if you pressed it by mistake. The job description is saved with
+the application, so you still have it after the posting is taken down.</p><p>Open <strong>Tracker</strong> to see everything you have applied to. There you can:</p><p>- Filter by company, status or date.
+- Set a follow-up date, and add contacts and notes. <strong>Needs follow-up</strong> reminds you of the
+  ones that are due, and one click records that you followed up today.
+- Move an application along as it progresses, for example to interviewing or rejected.
+  Applications that have been quiet for a while are suggested as ghosted; nothing changes
+  until you confirm.
+- Keep the questions an application asked and your answers. Open them from the Q&amp;A column.
+  The answer library on the same page lets you search every answer you have written and
+  reuse one later.
+- Download a spreadsheet (XLSX or CSV) of what you see.</p><h2 id="using">Using AI features</h2><p>These are optional. Without them the app works fully as a tracker.</p><p><strong>Turn them on.</strong> Go to <strong>Settings → AI features → Set up AI features</strong>. The app runs the
+AI on your own computer using a free program called Ollama, so your résumé and the jobs
+never leave it. The setup has three short steps and tells you what is wrong if one fails:</p><p>1. Install Ollama from ollama.com and open it.
+2. Download the model by running <code>ollama pull gemma4:12b</code> in a terminal. It is downloaded
+   once and can take a while.
+3. Run a quick test. AI features turn on only after the test passes.</p><p>You can stop at any step and come back later. If you would rather use Anthropic's Claude,
+see <a href="#claude">Claude as an alternative</a>.</p><p><strong>Add your résumé.</strong> Open <strong>Résumé</strong> and import your résumé as a PDF or Word file. Check
+what the app read, and keep only what is true: it only ever writes from what you keep here.
+Your private details (contact information, work authorization) go in <strong>Profile</strong>. They
+are filled into documents but never given to the AI.</p><p><strong>Check fit.</strong> Open a job that has a description and choose <strong>Check fit</strong>. The app lists
+what the job asks for, shows what your résumé covers and what it does not, and gives a
+fit percentage. The required skills and duties count most; &quot;nice to have&quot; items count for
+less. Things it cannot judge, such as location or work authorization, are flagged for
+you to look at but never block you. <strong>Check fits</strong> on the Jobs page checks several jobs one
+after another.</p><p><strong>Tailor a résumé.</strong> Choose <strong>Tailor résumé</strong> on a job. The app writes a draft in which
+every line points to the part of your résumé it came from. Go through the lines in the
+review page: <strong>A</strong> accepts, <strong>R</strong> rejects, <strong>E</strong> edits and <strong>C</strong> copies a line. Only
+accepted lines go into the résumé. You can also click a line in the preview to copy it.
+Choose <strong>View rendered PDF</strong> to see the real page, then export a Word or PDF file.</p><p><strong>When you apply,</strong> choose the file you actually sent so the app keeps an exact copy. If
+you used your master résumé without saving a file, choose <strong>No file: I used my master
+résumé</strong>.</p><p><strong>Hide it again.</strong> <strong>Settings → AI features → Hide AI features</strong> takes the AI parts off
+the screen without deleting anything. <strong>Show AI features</strong> brings them back.</p><h2 id="claude">Claude as an alternative</h2><p>Claude is a paid service run by Anthropic, and it is separate from the free local setup.
+In <strong>Settings → AI features</strong>, open <strong>Advanced: use your own Claude key</strong>, then save your
+key. Be aware that:</p><p>- The job text and the résumé bullets you keep are sent to Anthropic. Your contact details
+  and answers never are.
+- It costs money. You set a limit per run and a monthly limit, and the app shows an
+  estimate before each paid run.</p><p>Saving a key does not turn AI features on by itself. Use <strong>Turn on AI features with
+Claude</strong> when you are ready. More details are in <a href="#privacy">Advanced</a>.</p><h2 id="finding">Finding jobs automatically</h2><p>The app does not search for jobs. If you use an AI coding tool such as Claude Code or
+Codex to find them, the repository's <code>job-search</code> folder has instructions for it. The
+jobs it finds appear in <strong>Jobs</strong> behind an <strong>Only from the job feed</strong> filter, and nothing
+is tracked until you decide: <strong>Track this job</strong>, <strong>Skip</strong>, <strong>Already applied</strong>, or start
+tailoring. Details are in <a href="#job-feed">Advanced</a>.</p><h2 id="keeping">Keeping your data safe</h2><p>Your data is stored on your computer, outside the app, so updating or removing the app
+does not delete it. <strong>Settings</strong> shows where. The app saves a copy of your database every
+day, and <strong>Settings</strong> can download one for you. To move to a new computer or keep a
+complete backup, see <a href="#backups">Backups</a> in the Advanced section.</p><p>To start over, <strong>Settings → Clear data</strong> deletes everything in the data folder: your jobs,
+tracker, résumé, answers, exported files, settings and the backups kept there. It asks twice
+(you type DELETE the second time), and it cannot be undone, so download a backup first if you
+might want anything back. Files from the job search tool are left alone.</p><h2 id="common">Common questions</h2><p><strong>The Fit check and Résumé pages are missing.</strong> AI features are off or hidden. Turn them
+on or show them in <strong>Settings → AI features</strong>.</p><p><strong>The setup says Ollama was not found.</strong> Install it from ollama.com and open it, then
+choose <strong>Check again</strong>. Tracking keeps working in the meantime.</p><p><strong>A job is not fetched from its link.</strong> Some sites cannot be fetched. Open the posting,
+copy its text and paste it into the job.</p><p><strong>I pressed Mark as applied by mistake.</strong> Press <strong>Undo</strong> right away. Later, change the
+status on the Tracker.</p><p><strong>Can I use it on two computers?</strong> The data lives on each computer separately. Make a
+full backup on one and restore it on the other; see <a href="#backups">Backups</a>.</p><p>For anything else, look in <a href="#troubleshooting">Troubleshooting</a>.</p><h2 id="advanced">Advanced</h2><p>Everything below is technical detail: installing and launching, the command line, the
+data folder, backups and restoring, updates, the job feed file format and how models are
+used. You do not need any of it to use the app day to day.</p><h3 id="desktop">Desktop app</h3><p>The desktop app opens the workspace in its own window. On Linux, use the
+<code>.AppImage</code>: allow execution in file Properties → Permissions, then double-click it.
+It needs WebKitGTK 4.1, FUSE 2 compatibility support and a desktop session.
 Without FUSE, run the file with <code>--appimage-extract</code>, then open <code>squashfs-root/AppRun</code>.
-Keep that extracted folder together. macOS builds use a DMG: drag the app into
-Applications, then open it there. Windows builds use a per-user setup EXE and a Start
-menu shortcut, with WebView2 installation handled by the installer. These new platforms
-are not yet qualified. The Mac runtime requires macOS 13.5+ on Apple Silicon;
-Windows qualification targets Windows 11 x64. Intel Mac and Windows ARM are outside
-this preview. Public Mac downloads still need Developer ID signing/notarization;
-Windows previews are unsigned. Follow OS security checks; do not disable protection.</p><p>Closing the desktop window or pressing <strong>Ctrl+Q</strong> (<strong>Command+Q</strong> on Mac) stops its local backend. An active
+Keep that extracted folder together. Windows builds use a per-user setup EXE and a Start
+menu shortcut, with WebView2 installation handled by the installer. Windows targets Windows 11 x64. There is no macOS
+build yet, and Windows ARM is not supported. The builds are not code-signed, so your system may warn
+you the first time you open the app. Follow the system's prompts; do not disable its protection.</p><p>Closing the desktop window or pressing <strong>Ctrl+Q</strong> (<strong>Command+Q</strong> on Mac) stops its local backend. An active
 run prompts before interruption; choose <strong>Keep working</strong> to continue it. A second
-launch focuses the existing window. Stop an existing browser preview before opening
-the desktop version with the same data folder.</p><p>Exports open a native Save dialog; canceling it leaves the recorded export intact.
+launch focuses the existing window. Stop an existing browser instance before opening
+the desktop app with the same data folder.</p><p>Exports open a native Save dialog; canceling it leaves the recorded export intact.
 PDF proof renders inside the app. Posting and guide links open in your default browser.
-Data and backups use the same locations and formats as the browser preview.</p><p>For full-backup/restore commands below, the Linux desktop maintenance launcher is
+Data and backups use the same locations and formats as the browser package.</p><p>For full-backup/restore commands below, the Linux desktop maintenance launcher is
 <code>/usr/libexec/the-role-clinic/backend/role-clinic</code>. For an extracted AppImage it is
 <code>squashfs-root/usr/libexec/the-role-clinic/backend/role-clinic</code>. Quote these paths with spaces
 and close the app before running maintenance. On Mac the launcher is inside
 <code>The Role Clinic.app/Contents/Resources/backend/role-clinic</code>; on Windows it is
 <code>backend\role-clinic.cmd</code> inside the installation folder. Use those launchers for
 all maintenance commands below. In PowerShell, prefix a quoted launcher path with <code>&amp;</code>.
-Normal desktop use needs no terminal.</p><h2 id="browser">Browser fallback: download and launch</h2><p>1. Check the archive with <code>sha256sum -c &lt;archive&gt;.sha256</code> in its download folder.
+Normal desktop use needs no terminal.</p><h3 id="browser">Browser package: download and launch</h3><p>1. Check the archive with <code>sha256sum -c &lt;archive&gt;.sha256</code> in its download folder.
 2. Extract the <code>.tar.gz</code> into a folder you own. Keep the extracted files together.
 3. Open a terminal in that folder and run <code>./role-clinic</code>.
 4. The launcher starts a loopback server and opens your default browser. If opening
    the browser fails, copy the printed <code>http://127.0.0.1:&lt;port&gt;</code> URL into it.</p><p>Node, npm, SQLite, Docker and a developer toolchain are <strong>not needed to run the
 package</strong>. Node and required libraries are bundled. Your desktop's <code>xdg-open</code>
-command opens the browser when available. A current Firefox or Chromium-family
-browser is the initial browser target; browser visual qualification is pending.
+command opens the browser when available. Use a current Firefox or Chromium-family browser.
 Ollama and model downloads are optional and are not bundled or installed.</p><p><code>./role-clinic start --no-browser</code> prints the URL without opening a browser.
 Launching again reopens the existing instance. The default chooses an available
 port; an explicit <code>PORT</code> environment variable requests a particular port and
 fails visibly if occupied. The app listens only on <code>127.0.0.1</code>.</p><p>For an optional application-menu shortcut, run <code>./role-clinic install-desktop</code>.
 Run <code>./role-clinic uninstall-desktop</code> to remove it. Reinstall the shortcut after
-moving the extracted app folder. No autostart or system-wide installation is added.</p><h2 id="first">First use</h2><p>The first screen is a three-step welcome: add your résumé, choose a model, add
-your first job. Each step can be skipped, and you can show it again from
-<strong>Settings → Welcome guide</strong>. On <strong>Jobs</strong>, choose <strong>Add job</strong>, then paste a posting or
-fetch a supported public URL. Saving jobs, tracking them and recording answers work
-without a model or API key. The first-run state is saved locally.</p><p>For optional tailoring: import a PDF/DOCX in <strong>Résumé → Master résumé</strong>, review the draft,
-and save only true evidence. Fill in your private profile separately. Configure
-an installed local Ollama model or your own Anthropic API key in <strong>Settings</strong>.
-Claude sends relevant résumé evidence and job text to its API and charges you;
-Ollama processes model requests locally. Private profile and application answers
-stay outside model inputs. Capturing a URL contacts the public job site.</p><p>On <strong>Jobs</strong>, each posting has one main button for its next step: <strong>Check fit</strong>,
-<strong>Tailor résumé</strong> (which also adds the job to the Tracker), <strong>Review and export</strong>,
-<strong>Mark as applied</strong>, then <strong>Open in Tracker</strong>. <strong>Track this job</strong>, <strong>Already applied</strong> and
-<strong>Skip</strong> are always available for a job you have not decided about. A strip under the job header shows whether a fit check or tailoring
-run is waiting, running, finished or failed, and a notice appears on any page when one
-ends. Review generated lines, accept/edit/reject them, and export DOCX or PDF. Record
-what you actually submitted using the explicit application confirmation; if you applied
-with your master résumé, choose <strong>No file: I used my master résumé</strong> and the application
-is recorded as <strong>No résumé file recorded</strong>. The <strong>Tracker</strong>
-keeps follow-ups, each job's questions and answers (open them from the Q&amp;A column), the
-answer library, Gap trends and spreadsheet exports.</p><h2 id="job-feed">Job-feed file</h2><p>A job feed is optional. If a search tool such as Claude Code or Codex saves the jobs it
+moving the extracted app folder. No autostart or system-wide installation is added.</p><h3 id="stop">Stop and reopen</h3><p>For the desktop app, close its window, press <strong>Ctrl+Q</strong>, or choose <strong>Settings →
+Quit app</strong>. Reopen it from the application menu or AppImage. The following commands
+apply to the browser package and the desktop maintenance launcher.</p><p>Closing the browser tab leaves the local server running. Use <strong>Settings → Stop
+local app</strong>, or run <code>./role-clinic stop</code>. Active model runs block an ordinary stop;
+wait for completion, or explicitly use <code>./role-clinic stop --force</code>. An interrupted
+run is recorded as failed on restart and can be retried where supported.</p><p><code>./role-clinic status</code> reports the running version and port. Reopen with the launcher.</p><h3 id="data">Data location</h3><p>On Linux, data is in <code>$XDG_DATA_HOME/the-role-clinic</code> or
+<code>~/.local/share/the-role-clinic</code>. On Mac it is in
+<code>~/Library/Application Support/The Role Clinic</code>; on Windows it is in
+<code>%APPDATA%\The Role Clinic</code>. <code>ROLE_CLINIC_DATA_DIR=/absolute/path</code> overrides
+it. Use the same override for every launch, backup and restore command. Settings
+shows the actual folder, and the launcher's <code>data-dir</code> command prints it on any system.
+Data is outside the replaceable package.</p><p><code>role-clinic.sqlite</code> stores jobs, answers and résumé records; <code>artifacts/</code> holds exported
+and attached files; <code>settings.json</code> may contain your API key with owner-only POSIX
+permissions or a current-account Windows DACL; <code>backups/</code> holds database snapshots. <code>app.log</code> records server errors.
+Do not sync or copy a live SQLite/WAL file as your backup.</p><h3 id="backups">Backups</h3><p><strong>Full backup (recommended for recovery and moving computers):</strong> stop the app first,
+then run <code>./role-clinic backup /absolute/path/role-clinic-data.tar.gz</code>. The archive
+includes a consistent database snapshot, recorded artifacts, settings and first-run
+state. Your Anthropic API key is <strong>left out</strong> by default, so enter it again in
+Settings after a restore; add <code>--include-api-key</code> only if you want it in the archive,
+and then keep the archive private. Archives are not encrypted.
+The command refuses to overwrite an existing archive or omit missing artifacts.
+It has a 2 GiB expanded-data limit. Existing backup history and logs are not included.</p><p><strong>Database snapshots:</strong> the server creates a snapshot at startup and daily, keeping
+14 automatic snapshots. Manual and pre-migration snapshots are retained. Settings
+can create/download a database snapshot, but it is not a full backup: it excludes
+artifact files and settings. Full restore uses the full backup archive format.</p><h3 id="restore">Restore</h3><p>1. Stop the app. Place the full backup archive <strong>outside</strong> the data folder.
+2. Run <code>./role-clinic restore /absolute/path/role-clinic-data.tar.gz</code> to validate it
+   and inspect its date, file count and schema. This does not replace data.
+3. To apply it, repeat with <code>--confirm</code>. The entire prior data folder is preserved
+   as a sibling <code>the-role-clinic.before-restore-…</code> recovery folder. After validation,
+   the restored folder replaces the current one. Artifact paths are relocated to
+   the actual restored data directory.
+4. Start the app, check jobs, submitted records and files, then retain or manually
+   remove the old recovery folder when satisfied.</p><p>Archives with invalid paths, links, duplicate entries, missing files, checksum
+mismatches, invalid settings or an unsupported database version are rejected.
+A checksum protects consistency; it does not prove who created an archive. Restore
+only your own or otherwise trusted backups. Keep recovery folders private too.</p><h3 id="update">Update</h3><p>Desktop updates are manual: quit and back up first, replace the AppImage or
+run the new Windows installer, then reopen and check your saved workspace.
+Uninstalling leaves your data folder in place. There is no automatic updater.</p><p>For the Linux browser package, stop the running app, make a full backup, extract the new package into a <strong>new</strong>
+folder, and launch its <code>role-clinic</code>. Keep the old package until the update is
+checked. The data directory stays the same. Before a schema upgrade, the app makes
+a pre-migration database snapshot; it refuses to open a database from a newer app.
+Reinstall the optional desktop shortcut to point to the new folder.</p><p>For a rollback after a schema change, keep a copy of current data, use a compatible
+app to restore the pre-update full backup, then start the older package. Do not
+force an older app to write a newer database or overwrite the data folder manually.</p><h3 id="job-feed">Job-feed file</h3><p>A job feed is optional. If a search tool such as Claude Code or Codex saves the jobs it
 finds to <code>job-search/data/jobs.csv</code> inside your data folder (the folder shown in <strong>Settings</strong>),
 Role Clinic reads it automatically as soon as the file exists. To use a different file, set its
 full path in <strong>Settings → Job feed</strong>. The Jobs page then
@@ -79,52 +165,17 @@ file is not imported again.</p><p>The notes your search tool wrote (priority, fl
 by that tool and are never sent to a model. Application status is kept only in Role Clinic.
 <strong>Clean up</strong> in Settings removes imported rows and undecided Triage jobs older than a number of
 days you choose, after a preview, using the posted date when there is one and the found date
-otherwise. It never touches tracked, applied or skipped jobs, or rows not yet imported.</p><h2 id="stop">Stop and reopen</h2><p>For the desktop preview, close its window, press <strong>Ctrl+Q</strong>, or choose <strong>Settings →
-Quit app</strong>. Reopen it from the application menu or AppImage. The following commands
-apply to the browser fallback and the desktop maintenance launcher.</p><p>Closing the browser tab leaves the local server running. Use <strong>Settings → Stop
-local app</strong>, or run <code>./role-clinic stop</code>. Active model runs block an ordinary stop;
-wait for completion, or explicitly use <code>./role-clinic stop --force</code>. An interrupted
-run is recorded as failed on restart and can be retried where supported.</p><p><code>./role-clinic status</code> reports the running version and port. Reopen with the launcher.</p><h2 id="data">Data location</h2><p>On Linux, data is in <code>$XDG_DATA_HOME/the-role-clinic</code> or
-<code>~/.local/share/the-role-clinic</code>. On Mac it is in
-<code>~/Library/Application Support/The Role Clinic</code>; on Windows it is in
-<code>%APPDATA%\The Role Clinic</code>. <code>ROLE_CLINIC_DATA_DIR=/absolute/path</code> overrides
-it. Use the same override for every launch, backup and restore command. Settings
-shows the actual folder, and the launcher's <code>data-dir</code> command prints it on any system.
-Data is outside the replaceable package.</p><p><code>role-clinic.sqlite</code> stores jobs, answers and résumé records; <code>artifacts/</code> holds exported
-and attached files; <code>settings.json</code> may contain your API key with owner-only POSIX
-permissions or a current-account Windows DACL; <code>backups/</code> holds database snapshots. <code>app.log</code> records server errors.
-Do not sync or copy a live SQLite/WAL file as your backup.</p><h2 id="backups">Backups</h2><p><strong>Full backup (recommended for recovery and moving computers):</strong> stop the app first,
-then run <code>./role-clinic backup /absolute/path/role-clinic-data.tar.gz</code>. The archive
-includes a consistent database snapshot, recorded artifacts, settings and first-run
-state. Your Anthropic API key is <strong>left out</strong> by default, so enter it again in
-Settings after a restore; add <code>--include-api-key</code> only if you want it in the archive,
-and then keep the archive private. Archives are not encrypted.
-The command refuses to overwrite an existing archive or omit missing artifacts.
-It has a 2 GiB expanded-data limit. Existing backup history and logs are not included.</p><p><strong>Database snapshots:</strong> the server creates a snapshot at startup and daily, keeping
-14 automatic snapshots. Manual and pre-migration snapshots are retained. Settings
-can create/download a database snapshot, but it is not a full backup: it excludes
-artifact files and settings. Full restore uses the full backup archive format.</p><h2 id="restore">Restore</h2><p>1. Stop the app. Place the full backup archive <strong>outside</strong> the data folder.
-2. Run <code>./role-clinic restore /absolute/path/role-clinic-data.tar.gz</code> to validate it
-   and inspect its date, file count and schema. This does not replace data.
-3. To apply it, repeat with <code>--confirm</code>. The entire prior data folder is preserved
-   as a sibling <code>the-role-clinic.before-restore-…</code> recovery folder. After validation,
-   the restored folder replaces the current one. Artifact paths are relocated to
-   the actual restored data directory.
-4. Start the app, check jobs, submitted records and files, then retain or manually
-   remove the old recovery folder when satisfied.</p><p>Archives with invalid paths, links, duplicate entries, missing files, checksum
-mismatches, invalid settings or an unsupported database version are rejected.
-A checksum protects consistency; it does not prove who created an archive. Restore
-only your own or otherwise trusted backups. Keep recovery folders private too.</p><h2 id="update">Update</h2><p>Desktop updates are manual: quit and back up first, replace the AppImage/Mac app or
-run the new DEB/RPM/Windows installer, then reopen and check your saved workspace.
-Uninstalling should leave your data folder in place; native installation, upgrade and
-uninstall checks remain required on each advertised platform.
-There is no automatic updater.</p><p>For the Linux browser archive, stop the running app, make a full backup, extract the new package into a <strong>new</strong>
-folder, and launch its <code>role-clinic</code>. Keep the old package until the update is
-checked. The data directory stays the same. Before a schema upgrade, the app makes
-a pre-migration database snapshot; it refuses to open a database from a newer app.
-Reinstall the optional desktop shortcut to point to the new folder.</p><p>For a rollback after a schema change, keep a copy of current data, use a compatible
-app to restore the pre-update full backup, then start the older package. Do not
-force an older app to write a newer database or overwrite the data folder manually.</p><h2 id="troubleshooting">Troubleshooting and removal</h2><p>- <code>./role-clinic verify</code> checks the installed package against its file manifest.
+otherwise. It never touches tracked, applied or skipped jobs, or rows not yet imported.</p><h3 id="privacy">Privacy and models</h3><p>Each task (requirement extraction, evidence selection, résumé drafting, claim
+verification, writing review) has its own provider and model in <strong>Settings</strong>. A local
+Ollama model and Claude can be mixed. Local calls run one at a time. Claude sends the
+relevant résumé evidence and job text to Anthropic and bills your key; Ollama processes
+requests on this computer. Your profile, application answers and a job feed's notes are
+never part of a model request. Capturing a URL contacts the public job site; launching
+the app makes no model or API call.</p><p>For Claude, enter the current prices in Settings. The app shows an estimate before a run
+and refuses one above the per-run cap (default $1) or one that would pass the monthly
+cap (default $20, summed from recorded runs). Local models are never blocked by a cap.
+The API key is stored with owner-only permissions, is never returned to the browser, and is
+left out of full backups unless you add <code>--include-api-key</code>.</p><h3 id="troubleshooting">Troubleshooting</h3><p>- <code>./role-clinic verify</code> checks the installed package against its file manifest.
 - If launch fails, read <code>app.log</code> in the data folder. Errors never require installing
   npm dependencies into the downloaded package. Re-extract the package if damaged.
 - A busy explicit port can be resolved by unsetting <code>PORT</code> and relaunching. A second
@@ -134,7 +185,5 @@ force an older app to write a newer database or overwrite the data folder manual
   separately. The launcher never downloads models or makes paid inference calls.
 - To remove the app: stop it, remove the optional desktop shortcut, then delete the
   extracted package. Local data remains. To remove data too, first make any desired
-  full backup and then manually delete the exact data folder shown in Settings.</p><p>Linux x86_64 was smoke-tested on Fedora 44 and in an Ubuntu 22.04 container.
-macOS/Windows builds and native CI are configured but have not been validated here.
-Native rendering, dialogs, updates, removal and clean-install checks remain open.
+  full backup and then manually delete the exact data folder shown in Settings.
 </p></main></html>

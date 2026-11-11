@@ -1,9 +1,9 @@
 # Desktop packages
 
 The desktop app keeps the React workspace and a bundled local Node backend in a
-Tauri window. Version 0.5.0 remains a development preview. Linux has automated native
-workflow evidence; macOS/Windows build and install checks are configured but have
-not run here. No public release or automatic update service exists yet.
+Tauri window. Linux has automated native workflow checks; the Windows build
+and install check run in CI (`.github/workflows/desktop-native.yml`) on a version tag or
+when started by hand. The builds are not code-signed, and there is no automatic update service.
 
 ## Choose a download
 
@@ -12,8 +12,7 @@ format are used across them; a single executable cannot run on all three systems
 
 | Target | Package | Open it |
 | --- | --- | --- |
-| Linux x86_64 | `.AppImage`, `.deb`, `.rpm` | AppImage: allow execution in Properties → Permissions, then double-click. Alternatively open the DEB/RPM in your software installer and launch from the application menu. |
-| macOS Apple Silicon | `.dmg` containing `.app` | Open the disk image, drag **The Role Clinic** into Applications, eject the image, then open the app from Applications. Native qualification pending. |
+| Linux x86_64 | `.AppImage` | Allow execution in Properties → Permissions, then double-click. The `.tar.gz` browser package is the fallback where the AppImage will not run. |
 | Windows x64 | NSIS `-setup.exe` | Open the installer, install for your account, then open **The Role Clinic** from Start. Native qualification pending. |
 
 Download only a package published by a trusted source and compare its SHA-256 with
@@ -32,7 +31,7 @@ The Evergreen runtime then receives Microsoft's normal updates.
 
 - Linux targets Ubuntu 22.04+ and Fedora 44 on x86_64 with a desktop session.
   The bundled native binaries require glibc 2.34+ and GLIBCXX 3.4.29+.
-  DEB/RPM declare GTK3, WebKitGTK 4.1 and `xdg-utils` dependencies.
+  The AppImage uses the system's GTK3 and WebKitGTK 4.1.
 - AppImage needs FUSE 2 compatibility support. If unavailable, run it once with
   `--appimage-extract` and open `squashfs-root/AppRun`; keep that folder together.
   Normal FUSE mount/double-click still requires real-desktop acceptance.
@@ -46,6 +45,9 @@ The Evergreen runtime then receives Microsoft's normal updates.
   Windows previews are unsigned and may be blocked or warned about by SmartScreen.
   Public Windows signing and clean-machine launch checks remain release gates.
   Do not disable system security settings to test these previews.
+
+No macOS package is built or offered for now: the workflow no longer produces the DMG.
+The macOS configuration, scripts and notes below are kept for when it returns.
 
 ## Window, files and data
 
@@ -64,7 +66,7 @@ Stop the browser preview before using the same data folder in the desktop app.
 
 | OS | Default data folder | Maintenance launcher relative to installation |
 | --- | --- | --- |
-| Linux | `$XDG_DATA_HOME/the-role-clinic` or `~/.local/share/the-role-clinic` | `/usr/libexec/the-role-clinic/backend/role-clinic` (DEB/RPM) |
+| Linux | `$XDG_DATA_HOME/the-role-clinic` or `~/.local/share/the-role-clinic` | `squashfs-root/usr/libexec/the-role-clinic/backend/role-clinic` (extracted AppImage) |
 | macOS | `~/Library/Application Support/The Role Clinic` | `The Role Clinic.app/Contents/Resources/backend/role-clinic` |
 | Windows | `%APPDATA%\The Role Clinic` | `backend\role-clinic.cmd` inside the chosen installation folder |
 
@@ -79,7 +81,7 @@ inherited permissions; avoid shared folders for workspace overrides.
 ## Update, backup, restore and removal
 
 Updates are manual. Quit the app, make a full backup, then replace the AppImage or
-Mac app, or run the newer DEB/RPM/Windows installer. Keep the old package and backup
+run the newer Windows installer. Keep the old package and backup
 until records and exports are checked. App versions and schema migrations are
 independent: compatible updates reuse data, migrations make a pre-migration database
 snapshot, and older apps refuse newer schemas. There is no background updater.
@@ -119,7 +121,7 @@ Backend cross-compilation is deliberately refused; native SQLite is smoke-tested
 with exactly the Node executable being shipped. Only the target SQLite prebuild is copied.
 Linux places the companion in `usr/libexec/the-role-clinic/backend`, outside the
 `usr/lib` tree rewritten by AppImage's linuxdeploy tool. The shipped native binaries
-therefore retain their manifest hashes in all three Linux package formats. The
+therefore retain their manifest hashes in the AppImage. The
 AppImage CI check verifies its actual extracted payload, not only the staging folder.
 
 ```sh
@@ -133,7 +135,7 @@ npm run desktop:collect
 The package version must match `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`;
 the preparation/build checks refuse mismatches or nonnumeric version suffixes.
 No script bumps versions. Tauri automatically merges its macOS/Windows config overlay.
-Linux remains DEB/RPM/AppImage, macOS APP/DMG, Windows per-user NSIS.
+Linux is an AppImage (plus the separate `.tar.gz` browser package), Windows a per-user NSIS installer.
 Build results default to `src-tauri/target/release/bundle/`; `CARGO_TARGET_DIR` overrides
 that root. Collection writes OS-specific `dist/desktop-<target>-<version>/` artifacts,
 checksums and build provenance marked as unqualified development previews.
@@ -161,12 +163,13 @@ No signing secrets are required by the development CI builds.
 `.github/workflows/desktop-linux.yml` builds on Ubuntu 22.04 and runs the Linux native
 WebKit harness without outbound networking. Its test-only root containers disable the
 WebKit sandbox; production does not. `packaging/Dockerfile.desktop-linux` provides the
-pinned build environment. See the existing Linux evidence for Fedora checks.
+pinned build environment. The AppImage is the only Linux desktop package; the browser `.tar.gz` is built and
+smoke-tested by `.github/workflows/linux-package.yml`.
 
 `.github/workflows/desktop-native.yml` runs only on a version tag such as `v1.0.0` or a
-manual run, never on pull requests or branch pushes, because the macOS and Windows
-runners are costly. It builds on native macOS arm64 and Windows x64 runners, installs
-the DMG/NSIS artifacts into paths with spaces/non-ASCII, and runs:
+manual run, never on pull requests or branch pushes, because the Windows
+runner is costly. It builds on a native Windows x64 runner, installs
+the NSIS artifact into paths with spaces/non-ASCII, and runs:
 
 - `scripts/smoke-package.mjs`: bundled Node/SQLite, loopback guards, first-run capture,
   controlled local Ollama connection, real exports/submitted records, package move,

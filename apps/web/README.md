@@ -10,7 +10,7 @@ The hash routes `#tracker`, `#gaps`, `#resume` (master résumé), `#resume/profi
 résumé editor, profile, settings and the linked job workspace. The job answer editor is
 shared by the tailoring drawer and the answer library.
 
-A three-step welcome (résumé, model, first job) is shown once and remembered; Settings and `#welcome` show it again. Settings shows the version, data
+A one-time first-run screen asks whether to only track applications or to also set up AI features, and is remembered; `#welcome` shows the walkthrough again. AI features can be turned on, hidden and shown again in Settings. Settings shows the version, data
 folder, database backup downloads and a confirmed stop control. The Linux user guide is
 generated from `packaging/USER-GUIDE.md` and shipped as a static `/guide.html`, with no
 remote assets or model calls.
