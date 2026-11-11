@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -62,6 +62,17 @@ describe('saving a job to track, without its description', () => {
     expect((await f.call(`/api/jobs/${f.id}/description`, { method: 'PUT', body: JSON.stringify({ text: 'You will build and run internal tools for the finance team.' }) })).status).toBe(200)
     expect((await f.call(`/api/jobs/${f.id}/description`, { method: 'PUT', body: JSON.stringify({ text: 'A different description that must not replace the first one.' }) })).status).toBe(409)
     expect((f.sqlite.prepare('SELECT text,raw_snapshot AS raw FROM jobs WHERE id=?').get(f.id) as { text: string; raw: string })).toEqual({ text: 'You will build and run internal tools for the finance team.', raw: 'You will build and run internal tools for the finance team.' })
+    f.sqlite.close()
+  })
+  it('accepts today as the day applied early in the morning, and keeps the time from being later than now', async () => {
+    const f = await bare()
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date(2026, 10, 10, 7, 30))
+    try {
+      const apply = (body: unknown) => f.call(`/api/jobs/${f.id}/status`, { method: 'PUT', body: JSON.stringify(body) })
+      expect((await apply({ status: 'applied', appliedAt: '2026-11-11', submittedText: '' })).status).toBe(400)
+      expect((await apply({ status: 'applied', appliedAt: '2026-11-10', submittedText: '' })).status).toBe(200)
+      expect(new Date((f.sqlite.prepare('SELECT applied_at AS at FROM applications WHERE job_id=?').get(f.id) as { at: string }).at).getTime()).toBeLessThanOrEqual(Date.now())
+    } finally { vi.useRealTimers() }
     f.sqlite.close()
   })
   it('records a job as already applied on the day given, and refuses a future day', async () => {

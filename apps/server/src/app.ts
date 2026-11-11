@@ -377,7 +377,9 @@ export function createApp(options: AppOptions) {
     const status = payload.status as string, now = new Date().toISOString()
     // A job applied to before it was added can carry the day it was sent (not in the future).
     const sentOn = typeof (payload as { appliedAt?: unknown }).appliedAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test((payload as { appliedAt: string }).appliedAt) ? new Date(`${(payload as { appliedAt: string }).appliedAt}T12:00:00`) : null
-    if (sentOn && (Number.isNaN(sentOn.getTime()) || sentOn.getTime() > Date.now())) return context.json({ error: 'The date applied cannot be in the future.' }, 400)
+    // Today is allowed at any hour: only a day that has not started yet is in the future. A time later than now is stored as now.
+    if (sentOn && (Number.isNaN(sentOn.getTime()) || new Date(`${(payload as { appliedAt: string }).appliedAt}T00:00:00`).getTime() > Date.now())) return context.json({ error: 'The date applied cannot be in the future.' }, 400)
+    const sentAt = sentOn && sentOn.getTime() > Date.now() ? new Date() : sentOn
     if (status === 'closed' && !closedOutcomes.includes(payload.outcome as typeof closedOutcomes[number])) return context.json({ error: 'Say how this application ended: rejected, no reply, withdrawn or accepted.' }, 400)
     if (status !== 'closed' && payload.outcome != null) return context.json({ error: 'Only a closed application has an outcome.' }, 400)
     const outcome = status === 'closed' ? payload.outcome as string : null
@@ -410,7 +412,7 @@ export function createApp(options: AppOptions) {
     }
     const appId = application?.id ?? id()
     const tx = options.sqlite.transaction(() => {
-      options.sqlite.prepare(`INSERT INTO applications(id,job_id,status,outcome,applied_at,notes,submitted_text) VALUES(?,?,?,?,?,?,?) ON CONFLICT(job_id) DO UPDATE SET status=excluded.status,outcome=excluded.outcome,applied_at=COALESCE(applications.applied_at,excluded.applied_at),notes=excluded.notes,submitted_text=COALESCE(applications.submitted_text,excluded.submitted_text)`).run(appId, jobId, status, outcome, status === 'applied' ? (sentOn?.toISOString() ?? now) : null, payload.notes === undefined ? application?.notes ?? '' : cleanText(payload.notes, 5000), status === 'applied' ? artifactText || cleanText(payload.submittedText, 100_000) || null : null)
+      options.sqlite.prepare(`INSERT INTO applications(id,job_id,status,outcome,applied_at,notes,submitted_text) VALUES(?,?,?,?,?,?,?) ON CONFLICT(job_id) DO UPDATE SET status=excluded.status,outcome=excluded.outcome,applied_at=COALESCE(applications.applied_at,excluded.applied_at),notes=excluded.notes,submitted_text=COALESCE(applications.submitted_text,excluded.submitted_text)`).run(appId, jobId, status, outcome, status === 'applied' ? (sentAt?.toISOString() ?? now) : null, payload.notes === undefined ? application?.notes ?? '' : cleanText(payload.notes, 5000), status === 'applied' ? artifactText || cleanText(payload.submittedText, 100_000) || null : null)
       if (submittedArtifactId) options.sqlite.prepare('UPDATE applications SET submitted_artifact_id=COALESCE(submitted_artifact_id,?) WHERE id=?').run(submittedArtifactId, appId)
       options.sqlite.prepare('INSERT INTO status_events(id,application_id,status,outcome,created_at) VALUES(?,?,?,?,?)').run(id(), appId, status, outcome, now)
       if (status === 'applied') options.sqlite.prepare('UPDATE applications SET submitted_job_text=COALESCE(submitted_job_text,(SELECT text FROM jobs WHERE id=?)) WHERE id=?').run(jobId, appId)
