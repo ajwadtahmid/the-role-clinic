@@ -10,8 +10,9 @@ import { request as httpRequest } from 'node:http'
 import { randomUUID } from 'node:crypto'
 
 const execFile = promisify(execFileCallback)
-const version = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')).version
-const input = resolve(process.argv[2] || `dist/the-role-clinic-${version}-linux-x64.tar.gz`)
+// The version is only needed to find the default archive; CI runs this file from a bare mount with no package.json beside it.
+const defaultArchive = async () => `dist/the-role-clinic-${JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')).version}-linux-x64.tar.gz`
+const input = resolve(process.argv[2] || await defaultArchive())
 const root = await mkdtemp(join(tmpdir(), 'role-clinic-package-'))
 let bundle = input, data = join(root, 'private data ü'), running = false
 await mkdir(join(root, 'empty-path')); await mkdir(join(root, 'xdg'))
