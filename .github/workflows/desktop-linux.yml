@@ -1,8 +1,7 @@
 name: Linux desktop release
 on:
-  push:
-    tags: ['v[0-9]+.[0-9]+.[0-9]+']
-  pull_request:
+  # Called by release.yml on a version tag. Run by hand only to try a build; that makes no release.
+  workflow_call:
   workflow_dispatch:
 permissions:
   contents: read
@@ -43,7 +42,6 @@ jobs:
           name: the-role-clinic-desktop-linux-x64
           path: |
             dist/desktop-linux-x64-glibc-*/
-            dist/desktop-evidence/
             dist/appimage-evidence/
           if-no-files-found: error
           retention-days: 14

@@ -1,9 +1,7 @@
 name: Linux x86_64 package
 on:
-  push:
-    branches: [main]
-    tags: ['v[0-9]+.[0-9]+.[0-9]+']
-  pull_request:
+  # Called by release.yml on a version tag. Run by hand only to try a build; that makes no release.
+  workflow_call:
   workflow_dispatch:
 permissions:
   contents: read

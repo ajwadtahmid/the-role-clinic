@@ -1,0 +1,48 @@
+name: Release
+# Runs only when a version tag such as v1.0.0 is pushed. It builds every download, then
+# collects them into a draft GitHub release for the owner to review and publish.
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+permissions:
+  contents: read
+jobs:
+  linux-package:
+    uses: ./.github/workflows/linux-package.yml
+  linux-desktop:
+    uses: ./.github/workflows/desktop-linux.yml
+  windows-desktop:
+    uses: ./.github/workflows/desktop-native.yml
+  draft-release:
+    needs: [linux-package, linux-desktop, windows-desktop]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+      - name: Draft the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version=$(node -p 'require("./package.json").version')
+          [ "$TAG" = "v$version" ] || { echo "Tag $TAG does not match package.json version $version" >&2; exit 1; }
+          archive=$(find artifacts/the-role-clinic-linux-x64 -name '*.tar.gz' -print -quit)
+          appimage=$(find artifacts/the-role-clinic-desktop-linux-x64 -name '*.AppImage' -print -quit)
+          setup=$(find artifacts/the-role-clinic-desktop-win32-x64 -name '*-setup.exe' -print -quit)
+          [ -n "$archive" ] && [ -n "$appimage" ] && [ -n "$setup" ] || { echo "A download is missing from the build artifacts" >&2; exit 1; }
+          mkdir release
+          cp "$archive" "release/the-role-clinic-$version-linux-x64.tar.gz"
+          cp "$appimage" "release/the-role-clinic-$version-x86_64.AppImage"
+          cp "$setup" "release/the-role-clinic-$version-x64-setup.exe"
+          chmod 755 "release/the-role-clinic-$version-x86_64.AppImage"
+          (cd release && sha256sum the-role-clinic-* > ../SHA256SUMS) && mv SHA256SUMS release/
+          gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
+            --title "The Role Clinic $version" --notes "Draft. Release notes to be added."
