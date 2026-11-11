@@ -17,8 +17,8 @@ format are used across them; a single executable cannot run on all three systems
 
 Download only a package published by a trusted source and compare its SHA-256 with
 `SHA256SUMS`. Development artifacts come from the repository's GitHub Actions runs
-or a local build. A GitHub release download channel is intended after qualification;
-these workflows upload temporary build artifacts and never publish a release.
+or a local build. A tagged build creates a draft GitHub release that the owner publishes by hand;
+the workflows never publish it themselves.
 Checksums detect damage; unsigned checksums alone do not authenticate a publisher.
 
 No system Node, npm, Rust, SQLite command, Docker or developer toolchain is needed.
@@ -42,9 +42,9 @@ The Evergreen runtime then receives Microsoft's normal updates.
   floor is Windows 10. Windows ARM and Windows 10 support are not advertised.
 - Public Mac downloads require Developer ID signing and Apple notarization.
   CI uses ad-hoc signatures for development, which do not establish Gatekeeper trust.
-  Windows previews are unsigned and may be blocked or warned about by SmartScreen.
+  Windows builds are unsigned and may be blocked or warned about by SmartScreen.
   Public Windows signing and clean-machine launch checks remain release gates.
-  Do not disable system security settings to test these previews.
+  Do not disable system security settings to test these builds.
 
 No macOS package is built or offered for now: the workflow no longer produces the DMG.
 The macOS configuration, scripts and notes below are kept for when it returns.
@@ -62,7 +62,7 @@ Exports use native Save dialogs; canceling preserves the recorded export. PDF pr
 renders locally from the generated PDF. Desktop downloads have a 256 MiB limit;
 use maintenance for a larger full backup. Posting and guide links open in the default
 browser. Clipboard commands only write the text requested by the user.
-Stop the browser preview before using the same data folder in the desktop app.
+Stop the browser version before using the same data folder in the desktop app.
 
 | OS | Default data folder | Maintenance launcher relative to installation |
 | --- | --- | --- |
@@ -138,7 +138,7 @@ No script bumps versions. Tauri automatically merges its macOS/Windows config ov
 Linux is an AppImage (plus the separate `.tar.gz` browser package), Windows a per-user NSIS installer.
 Build results default to `src-tauri/target/release/bundle/`; `CARGO_TARGET_DIR` overrides
 that root. Collection writes OS-specific `dist/desktop-<target>-<version>/` artifacts,
-checksums and build provenance marked as unqualified development previews.
+checksums and build provenance recorded for traceability. They are not yet qualified on clean machines.
 
 macOS CI derives a monotonic build ordinal from `GITHUB_RUN_NUMBER * 100 +
 GITHUB_RUN_ATTEMPT` and maps it to Apple's numeric `CFBundleVersion` components.
@@ -153,12 +153,19 @@ SQLite addon with the same `APPLE_SIGNING_IDENTITY` (ad-hoc `-` by default).
 For a real signing build, the identity must already exist in the local keychain before
 preparation. Tauri can then sign/notarize the outer app with the normal Apple environment
 variables. Certificate import and secure release credential provisioning are not
-implemented by the preview workflow. Validate the nested signatures, notarization and
+implemented by the release workflow. Validate the nested signatures, notarization and
 Gatekeeper assessment before release. Windows signing can use Tauri's supported
 certificate/sign-command configuration once credentials and a channel are selected.
 No signing secrets are required by the development CI builds.
 
 ### Automated coverage and remaining checks
+
+`.github/workflows/release.yml` runs only when a version tag such as `v1.0.0` is pushed,
+never on pushes to a branch or on pull requests. It calls the three build workflows below,
+then collects the Windows installer, the AppImage and the browser `.tar.gz`, with a
+`SHA256SUMS` file, into a **draft** GitHub release for the owner to review and publish. It
+refuses a tag that does not match `package.json`. Each build workflow can also be started by
+hand to try a build; that makes no release.
 
 `.github/workflows/desktop-linux.yml` builds on Ubuntu 22.04 and runs the Linux native
 WebKit harness without outbound networking. Its test-only root containers disable the
@@ -166,9 +173,7 @@ WebKit sandbox; production does not. `packaging/Dockerfile.desktop-linux` provid
 pinned build environment. The AppImage is the only Linux desktop package; the browser `.tar.gz` is built and
 smoke-tested by `.github/workflows/linux-package.yml`.
 
-`.github/workflows/desktop-native.yml` runs only on a version tag such as `v1.0.0` or a
-manual run, never on pull requests or branch pushes, because the Windows
-runner is costly. It builds on a native Windows x64 runner, installs
+`.github/workflows/desktop-native.yml` builds on a native Windows x64 runner, installs
 the NSIS artifact into paths with spaces/non-ASCII, and runs:
 
 - `scripts/smoke-package.mjs`: bundled Node/SQLite, loopback guards, first-run capture,

@@ -10,8 +10,7 @@ options and other technical topics are in the [Advanced](#advanced) section at t
 ## Getting started
 
 Install the app for your system and open **The Role Clinic**. On Linux, use the `.AppImage`
-(or the `.tar.gz` browser version if it will not start). On a Mac, drag the app
-into Applications. On Windows, run the setup file. If your system warns you the first time
+(or the `.tar.gz` browser version if it will not start). On Windows, run the setup file. If your system warns you the first time
 you open it, that is because the app is not code-signed; follow the system's prompts. The
 [Advanced](#desktop) section has every detail, including the browser version for Linux.
 
@@ -89,7 +88,7 @@ after another.
 every line points to the part of your résumé it came from. Go through the lines in the
 review page: **A** accepts, **R** rejects, **E** edits and **C** copies a line. Only
 accepted lines go into the résumé. You can also click a line in the preview to copy it.
-Choose **View rendered PDF** to see the real page, then export a Word or PDF file.
+Switch the preview to **PDF page** to see the real page, then export a Word or PDF file.
 
 **When you apply,** choose the file you actually sent so the app keeps an exact copy. If
 you used your master résumé without saving a file, choose **No file: I used my master
@@ -116,8 +115,8 @@ Claude** when you are ready. More details are in [Advanced](#privacy).
 
 The app does not search for jobs. If you use an AI coding tool such as Claude Code or
 Codex to find them, the repository's `job-search` folder has instructions for it. The
-jobs it finds appear in **Jobs** behind an **Only from the job feed** filter, and nothing
-is tracked until you decide: **Track this job**, **Skip**, **Already applied**, or start
+jobs it finds appear in **Jobs** under **To review**, behind an **Only from the job feed**
+filter, and nothing is tracked until you decide: **Save**, **Skip**, **I applied**, or start
 tailoring. Details are in [Advanced](#job-feed).
 
 ## Keeping your data safe
@@ -168,7 +167,7 @@ menu shortcut, with WebView2 installation handled by the installer. Windows targ
 build yet, and Windows ARM is not supported. The builds are not code-signed, so your system may warn
 you the first time you open the app. Follow the system's prompts; do not disable its protection.
 
-Closing the desktop window or pressing **Ctrl+Q** (**Command+Q** on Mac) stops its local backend. An active
+Closing the desktop window or pressing **Ctrl+Q** stops its local backend. An active
 run prompts before interruption; choose **Keep working** to continue it. A second
 launch focuses the existing window. Stop an existing browser instance before opening
 the desktop app with the same data folder.
@@ -177,13 +176,12 @@ Exports open a native Save dialog; canceling it leaves the recorded export intac
 PDF proof renders inside the app. Posting and guide links open in your default browser.
 Data and backups use the same locations and formats as the browser package.
 
-For full-backup/restore commands below, the Linux desktop maintenance launcher is
-`/usr/libexec/the-role-clinic/backend/role-clinic`. For an extracted AppImage it is
-`squashfs-root/usr/libexec/the-role-clinic/backend/role-clinic`. Quote these paths with spaces
-and close the app before running maintenance. On Mac the launcher is inside
-`The Role Clinic.app/Contents/Resources/backend/role-clinic`; on Windows it is
-`backend\role-clinic.cmd` inside the installation folder. Use those launchers for
-all maintenance commands below. In PowerShell, prefix a quoted launcher path with `&`.
+For the full-backup and restore commands below, the Linux desktop maintenance launcher is
+inside the extracted AppImage, at
+`squashfs-root/usr/libexec/the-role-clinic/backend/role-clinic` (run the AppImage once with
+`--appimage-extract` to get that folder). On Windows it is `backend\role-clinic.cmd` inside
+the installation folder. Quote paths with spaces and close the app before running
+maintenance. Use those launchers for all maintenance commands below. In PowerShell, prefix a quoted launcher path with `&`.
 Normal desktop use needs no terminal.
 
 ### Browser package: download and launch
@@ -224,8 +222,7 @@ run is recorded as failed on restart and can be retried where supported.
 ### Data location
 
 On Linux, data is in `$XDG_DATA_HOME/the-role-clinic` or
-`~/.local/share/the-role-clinic`. On Mac it is in
-`~/Library/Application Support/The Role Clinic`; on Windows it is in
+`~/.local/share/the-role-clinic`; on Windows it is in
 `%APPDATA%\The Role Clinic`. `ROLE_CLINIC_DATA_DIR=/absolute/path` overrides
 it. Use the same override for every launch, backup and restore command. Settings
 shows the actual folder, and the launcher's `data-dir` command prints it on any system.
@@ -291,13 +288,14 @@ A job feed is optional. If a search tool such as Claude Code or Codex saves the 
 finds to `job-search/data/jobs.csv` inside your data folder (the folder shown in **Settings**),
 Role Clinic reads it automatically as soon as the file exists. To use a different file, set its
 full path in **Settings → Job feed**. The Jobs page then
-shows a **Triage** chip: jobs from the file that are waiting for your decision. Role Clinic
+lists them under **To review**, behind an **Only from the job feed** filter: jobs from the file
+that are waiting for your decision. Role Clinic
 never searches for jobs. It reads the file when it starts, when you return to the window
 (at most every 30 seconds) and when you choose **Check for new jobs**. It also fetches each
 full posting in the background; if that fails, the job shows **Summary only**, and a page
 that looks closed shows **May be closed**. No model runs during import.
 
-A job leaves Triage only when you decide: **Track this job**, **Skip**, **Already applied**,
+A job leaves To review only when you decide: **Save**, **Skip**, **I applied**,
 or start **Tailor résumé**. Opening a job does not move it.
 
 The file needs these columns: `Job Title`, `Company`, `Apply Link` and `Date Found`
@@ -313,7 +311,7 @@ file is not imported again.
 
 The notes your search tool wrote (priority, flags, why it fits) are shown to you as written
 by that tool and are never sent to a model. Application status is kept only in Role Clinic.
-**Clean up** in Settings removes imported rows and undecided Triage jobs older than a number of
+**Clean up** in Settings removes imported rows and undecided jobs from the file older than a number of
 days you choose, after a preview, using the posted date when there is one and the found date
 otherwise. It never touches tracked, applied or skipped jobs, or rows not yet imported.
 

@@ -5,7 +5,7 @@ or developer tools. Record date, OS/CPU, package SHA-256, app version, signing s
 webview version and screenshots. Use synthetic records and controlled model responses.
 A build or backend-only pass does not complete this checklist.
 
-| Check | Linux x64 | macOS arm64 | Windows x64 |
+| Check | Linux x64 | macOS arm64 (no build yet) | Windows x64 |
 | --- | --- | --- | --- |
 | Download, checksum, normal double-click/install; no terminal needed | Pending owner acceptance | Pending | Pending |
 | Missing WebView2/GTK/FUSE handling matches instructions | Pending clean machine | System WKWebView | Pending clean machine |
