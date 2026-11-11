@@ -2,8 +2,6 @@
   "bundle": {
     "resources": [],
     "linux": {
-      "deb": { "files": { "/usr/libexec/the-role-clinic/backend": "../dist/desktop-backend" } },
-      "rpm": { "files": { "/usr/libexec/the-role-clinic/backend": "../dist/desktop-backend" } },
       "appimage": { "files": { "/usr/libexec/the-role-clinic/backend": "../dist/desktop-backend" } }
     }
   }

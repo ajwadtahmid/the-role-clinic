@@ -8,7 +8,7 @@ const { target } = desktopTarget()
 const source = resolve(process.argv[2] || `${process.env.CARGO_TARGET_DIR || 'src-tauri/target'}/release/bundle`)
 const output = resolve(`dist/desktop-${target}-${version}`)
 await mkdir(output, { recursive: true })
-const extensions = process.platform === 'darwin' ? ['.dmg'] : process.platform === 'win32' ? ['.exe'] : ['.deb', '.rpm', '.AppImage']
+const extensions = process.platform === 'darwin' ? ['.dmg'] : process.platform === 'win32' ? ['.exe'] : ['.AppImage']
 const files = []
 async function collect(directory) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {

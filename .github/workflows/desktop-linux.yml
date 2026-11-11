@@ -1,5 +1,7 @@
-name: Linux desktop preview
+name: Linux desktop release
 on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
   pull_request:
   workflow_dispatch:
 permissions:
@@ -27,13 +29,6 @@ jobs:
             -e CARGO_HOME=/work/dist/cargo-cache -e XDG_CACHE_HOME=/work/dist/desktop-cache \
             -e CARGO_TARGET_DIR=/work/dist/desktop-target \
             -e CARGO_BUILD_JOBS=2 role-clinic-phase8-build npm run desktop:build
-      - name: Test native UI without outbound networking
-        run: |
-          docker run --rm --network none -v "$PWD:/work" \
-            -e TAURI_WEBVIEW_AUTOMATION=true -e DESKTOP_EVIDENCE_DIR=/work/dist/desktop-evidence \
-            -e WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 -e LIBGL_ALWAYS_SOFTWARE=1 \
-            role-clinic-phase8-build sh -c \
-            'dpkg-deb -x /work/dist/desktop-target/release/bundle/deb/*.deb / && dbus-run-session -- xvfb-run -a node scripts/smoke-desktop.mjs && node scripts/smoke-package.mjs /usr/libexec/the-role-clinic/backend'
       - name: Check the actual AppImage payload and native launcher
         run: |
           docker run --rm --network none -v "$PWD:/work" \

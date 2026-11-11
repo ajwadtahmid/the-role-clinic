@@ -14,11 +14,11 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["deb", "rpm", "appimage"],
+    "targets": ["appimage"],
     "category": "Productivity",
     "shortDescription": "Local job tracker and resume workspace",
     "resources": { "../dist/desktop-backend/": "backend/" },
     "icon": ["icons/icon.png"],
-    "linux": { "deb": { "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0", "xdg-utils"] }, "rpm": { "depends": ["webkit2gtk4.1", "gtk3", "xdg-utils"] }, "appimage": { "bundleMediaFramework": false } }
+    "linux": { "appimage": { "bundleMediaFramework": false } }
   }
 }

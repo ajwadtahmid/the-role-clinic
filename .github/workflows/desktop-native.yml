@@ -1,4 +1,4 @@
-name: macOS and Windows desktop previews
+name: Windows desktop release
 on:
   push:
     tags: ['v[0-9]+.[0-9]+.[0-9]+']
@@ -11,9 +11,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-15
-            arch: arm64
-            target: darwin-arm64
           - os: windows-2022
             arch: x64
             target: win32-x64
@@ -42,24 +39,13 @@ jobs:
         run: |
           toolchain=$(node -e 'process.stdout.write(require("fs").readFileSync("rust-toolchain.toml", "utf8").match(/channel = "([^"]+)"/)[1])')
           rustup toolchain install "$toolchain" --profile minimal
-      - name: Build native preview
+      - name: Build native release
         env:
           APPLE_SIGNING_IDENTITY: '-'
         run: npm run desktop:build
       - name: Check Rust commands
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml
-      - name: Install macOS DMG into a temporary Applications folder
-        if: runner.os == 'macOS'
-        run: |
-          mkdir -p "$RUNNER_TEMP/Clinic Applications ü" "$RUNNER_TEMP/clinic-volume"
-          dmg=$(find src-tauri/target/release/bundle/dmg -name '*.dmg' -print -quit)
-          hdiutil attach "$dmg" -nobrowse -mountpoint "$RUNNER_TEMP/clinic-volume"
-          ditto "$RUNNER_TEMP/clinic-volume/The Role Clinic.app" "$RUNNER_TEMP/Clinic Applications ü/The Role Clinic.app"
-          hdiutil detach "$RUNNER_TEMP/clinic-volume"
-          codesign --verify --deep --strict "$RUNNER_TEMP/Clinic Applications ü/The Role Clinic.app"
-          node scripts/smoke-package.mjs "$RUNNER_TEMP/Clinic Applications ü/The Role Clinic.app/Contents/Resources/backend"
-          node scripts/smoke-desktop-lifecycle.mjs "$RUNNER_TEMP/Clinic Applications ü/The Role Clinic.app/Contents/MacOS/the-role-clinic-desktop"
-      - name: Install Windows NSIS preview into a temporary per-user folder
+      - name: Install Windows NSIS release into a temporary per-user folder
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
