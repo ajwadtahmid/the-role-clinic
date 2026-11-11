@@ -60,6 +60,7 @@ const launcher = process.platform === 'win32' ? 'role-clinic.cmd' : 'role-clinic
 await cp(join('packaging', launcher), join(output, launcher)); await chmod(join(output, launcher), 0o755)
 await cp('packaging/launcher.mjs', join(output, 'launcher.mjs'))
 await cp('packaging/USER-GUIDE.md', join(output, 'USER-GUIDE.md'))
+await cp('LICENSE', join(output, 'LICENSE'))
 await writeFile(join(output, 'THIRD-PARTY.json'), JSON.stringify(licenses, null, 2))
 const binaryFiles = [`runtime/${platform.node}`, `app/node_modules/better-sqlite3/prebuilds/${platform.sqlite}`]
 const requirements = { ...platform.requirements, ...(process.platform === 'linux' ? { glibc: '0', glibcxx: '0' } : {}) }

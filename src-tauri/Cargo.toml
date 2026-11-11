@@ -1,7 +1,8 @@
 [package]
 name = "the-role-clinic-desktop"
-version = "0.5.0"
+version = "1.0.0"
 description = "The Role Clinic local desktop workspace"
+license = "GPL-3.0-only"
 edition = "2021"
 rust-version = "1.85"
 
