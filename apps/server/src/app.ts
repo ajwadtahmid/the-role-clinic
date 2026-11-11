@@ -183,7 +183,7 @@ export function createApp(options: AppOptions) {
   })
 
   app.use('/api/*', async (context, next) => { context.header('Cache-Control', 'no-store'); await next() })
-  registerRuntimeRoutes(app, options.sqlite, options.dataDirectory, options.runtime)
+  registerRuntimeRoutes(app, options.sqlite, options.dataDirectory, options.runtime, () => fitBatch.status().running)
   app.get('/api/health', (context) => context.json({ ok: true, app: 'the-role-clinic', database: options.sqlite.open ? 'connected' : 'unavailable' }))
   registerMasterRoutes(app, options.sqlite, options.dataDirectory)
   registerReviewRoutes(app, options.sqlite, options.dataDirectory, pipeline)

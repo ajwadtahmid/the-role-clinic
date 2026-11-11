@@ -25,7 +25,7 @@ try {
   try {
     try {
       const owner = JSON.parse(await readFile(join(data, 'server.lock'), 'utf8'))
-      if (lockOwnerAlive(owner)) throw new Error('This data folder is already in use. Close the running browser preview or desktop app before opening this version. No running process was stopped.')
+      if (lockOwnerAlive(owner)) throw new Error('This data folder is already in use. Close the running browser version or desktop app before opening this version. No running process was stopped.')
     } catch (error) { if (!(error instanceof SyntaxError) && (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
     const started = await startServer(); stop = started.shutdown
     if (parentGone) await stop(true)
