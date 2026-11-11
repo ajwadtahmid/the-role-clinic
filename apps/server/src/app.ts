@@ -588,6 +588,7 @@ export function createApp(options: AppOptions) {
     const webDist = fileURLToPath(new URL('../../web/dist/', import.meta.url))
     app.get('/guide.html', serveStatic({ root: webDist, path: 'guide.html' }))
     app.get('/icon.svg', serveStatic({ root: webDist, path: 'icon.svg' }))
+    app.get('/logo.svg', serveStatic({ root: webDist, path: 'logo.svg' }))
     app.use('/assets/*', serveStatic({ root: webDist }))
     app.get('*', async (context) => {
       const { readFile } = await import('node:fs/promises')

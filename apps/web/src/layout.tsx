@@ -20,7 +20,7 @@ export function AppHeader({ current }: { current: NavKey }) {
   return <>
     <a className="skip-link" href="#main" onClick={skipToMain}>Skip to main content</a>
     <header className="topbar">
-      <a className="wordmark" href="#top"><span className="mark">RC</span><span>The Role Clinic</span></a>
+      <a className="wordmark" href="#top"><img className="mark" src="/logo.svg" alt="" /><span>The Role Clinic</span></a>
       <nav aria-label="Primary">{links.filter(([key]) => key !== 'resume' || active).map(([key, href, label]) => <a key={key} href={href} aria-current={key === current ? 'page' : undefined}>{label}</a>)}</nav>
       <span className="local-chip">
         <svg className="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>

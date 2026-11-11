@@ -61,6 +61,7 @@ try {
   assert.equal((await api(script)).status, 200)
   assert.equal((await api('/guide.html')).status, 200)
   assert.equal((await api('/icon.svg')).status, 200)
+  assert.equal((await api('/logo.svg')).status, 200)
   assert.equal((await api('/api/not-a-route')).status, 404)
   assert.equal((await api('/api/app/welcome', { acknowledged: true }, 'POST', { origin: 'https://evil.example' })).status, 403)
   // A local controlled Ollama responder exercises connection/configuration without inference.

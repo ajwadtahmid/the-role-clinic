@@ -22,7 +22,7 @@ export function Welcome({ busy, error, onFinish }: { busy: boolean; error: strin
     try { await setAiFeatures({ enabled: false }); onFinish(withAi ? '#settings?setup' : '#jobs') } catch (issue) { setProblem((issue as Error).message) } finally { setChoosing(false) }
   }
   if (!features.chosen) return <main className="shell welcome-shell" id="main" tabIndex={-1}>
-    <header className="topbar"><span className="wordmark"><span className="mark">RC</span><span>The Role Clinic</span></span><span className="local-chip"><svg className="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>Private · on this device</span></header>
+    <header className="topbar"><span className="wordmark"><img className="mark" src="/logo.svg" alt="" /><span>The Role Clinic</span></span><span className="local-chip"><svg className="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>Private · on this device</span></header>
     <section className="page-header"><h1>How do you want to start?</h1><p className="page-note">Everything stays on this device either way. You can change this at any time in Settings.</p></section>
     <section className="panel welcome-panel" aria-label="Choose how to start">
       <div className="start-choices">
@@ -34,7 +34,7 @@ export function Welcome({ busy, error, onFinish }: { busy: boolean; error: strin
     </section>
   </main>
   return <main className="shell welcome-shell" id="main" tabIndex={-1}>
-    <header className="topbar"><span className="wordmark"><span className="mark">RC</span><span>The Role Clinic</span></span><span className="local-chip"><svg className="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>Private · on this device</span></header>
+    <header className="topbar"><span className="wordmark"><img className="mark" src="/logo.svg" alt="" /><span>The Role Clinic</span></span><span className="local-chip"><svg className="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>Private · on this device</span></header>
     <section className="page-header"><h1>Welcome</h1><p className="page-note">Save jobs, tailor a résumé for each one, and keep what you sent together. Everything stays on this device unless you choose Claude.</p></section>
     <section className="panel welcome-panel" aria-labelledby="welcome-step-title">
       <p className="subtle" aria-live="polite">Step {step + 1} of {steps.length}</p>
