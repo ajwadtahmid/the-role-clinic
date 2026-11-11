@@ -23,7 +23,8 @@
     "desktop:build": "node scripts/build-desktop.mjs",
     "desktop:prepare": "node scripts/prepare-desktop.mjs",
     "desktop:check": "node --test scripts/desktop-target.checks.mjs",
-    "desktop:collect": "node scripts/collect-desktop.mjs"
+    "desktop:collect": "node scripts/collect-desktop.mjs",
+    "preflight": "node scripts/preflight.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.12.4",

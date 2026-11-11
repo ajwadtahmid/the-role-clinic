@@ -167,6 +167,7 @@ npm run typecheck   # types
 npm test            # all tests, no network and no real models
 npm run build       # typecheck, build the guide and the UI
 npm start           # serve the built app on one port
+npm run preflight   # every check CI runs that can run here; add -- --desktop for the Linux AppImage in Docker
 ```
 
 Use a temporary `ROLE_CLINIC_DATA_DIR` for experiments so your real data is not touched. The

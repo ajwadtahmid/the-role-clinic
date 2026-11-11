@@ -9,9 +9,13 @@ permissions:
 jobs:
   linux-package:
     uses: ./.github/workflows/linux-package.yml
+  # The two desktop builds are the slow ones, and Windows minutes cost double, so they start only
+  # once the quick Linux package job (which runs the whole test suite) has passed.
   linux-desktop:
+    needs: linux-package
     uses: ./.github/workflows/desktop-linux.yml
   windows-desktop:
+    needs: linux-package
     uses: ./.github/workflows/desktop-native.yml
   draft-release:
     needs: [linux-package, linux-desktop, windows-desktop]

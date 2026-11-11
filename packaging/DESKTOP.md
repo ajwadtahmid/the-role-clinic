@@ -132,6 +132,11 @@ npm run desktop:build
 npm run desktop:collect
 ```
 
+Before pushing a release tag, run `npm run preflight -- --desktop`. It runs the checks CI would
+and, through `scripts/ci-desktop-linux.sh` (the same script the Linux workflow calls), builds the
+AppImage in Docker and runs the native UI test, so failures show up on this computer instead of
+in a billed GitHub run. It cannot run the Windows build or the Windows-only tests.
+
 The package version must match `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`;
 the preparation/build checks refuse mismatches or nonnumeric version suffixes.
 No script bumps versions. Tauri automatically merges its macOS/Windows config overlay.
