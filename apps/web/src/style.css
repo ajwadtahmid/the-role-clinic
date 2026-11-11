@@ -517,6 +517,7 @@ dl.facts{display:grid;grid-template-columns:120px minmax(0,1fr);gap:8px 16px;mar
 dl.facts dt{color:var(--muted);font-size:13px}dl.facts dd{margin:0}
 .confirm{display:none;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 14px;border-radius:10px;background:var(--sand);margin-top:8px}
 .confirm.on{display:flex}
+.confirm input.confirm-input{width:170px;flex:none;min-height:40px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
 .narrow-field{max-width:300px}
 .backup-list .row:first-child{border-top:1px solid var(--line)}
 @media(max-width:880px){.step .edit{grid-template-columns:1fr 1fr}dl.facts{grid-template-columns:1fr}details.more>summary{min-height:44px}}

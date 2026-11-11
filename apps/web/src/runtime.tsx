@@ -80,14 +80,15 @@ export function ClearDataPanel() {
     try { await localApi('/api/app/clear-data', { method: 'POST', body: JSON.stringify({ confirm: typed }) }); try { localStorage.clear() } catch { /* storage may be unavailable */ } location.hash = ''; location.reload() } catch (e) { fail(e); setBusy(false) }
   }
   return <section className="panel block editor-panel" aria-labelledby="clear-heading">
-    <div className="block-head"><h2 id="clear-heading">Clear data</h2><button className="button small quiet danger" disabled={step > 0} onClick={() => setStep(1)}>Clear all data…</button></div>
+    <div className="block-head"><h2 id="clear-heading">Clear data</h2>{step === 0 && <button className="button small quiet danger" onClick={() => setStep(1)}>Clear all data…</button>}</div>
     <p className="note">Deletes everything saved in your data folder and puts the app back to how it was when you first opened it. This cannot be undone.</p>
     {step === 1 && <div className="confirm on" role="alertdialog" aria-label="Clear all data">
       <span><b>This permanently deletes</b> your jobs, tracker, résumé, answers, exported files, settings and every backup kept in the data folder. Download a backup first if you might want anything back. Your job search files are not touched.</span>
       <button className="button small danger" onClick={() => setStep(2)}>Continue</button><button className="button small quiet" onClick={close}>Cancel</button>
     </div>}
     {step === 2 && <div className="confirm on" role="alertdialog" aria-label="Type DELETE to clear all data">
-      <label>Last step. Type <b>DELETE</b> to erase everything now <input value={typed} onChange={(event) => setTyped(event.target.value)} autoFocus autoComplete="off" spellCheck={false} /></label>
+      <span>Last step. Type <b>DELETE</b> to erase everything now.</span>
+      <input className="confirm-input" aria-label="Type DELETE to confirm" value={typed} onChange={(event) => setTyped(event.target.value)} autoFocus autoComplete="off" spellCheck={false} />
       <button className="button small danger" disabled={busy || typed !== 'DELETE'} onClick={() => void clear()}>Erase everything</button><button className="button small quiet" disabled={busy} onClick={close}>Cancel</button>
     </div>}
     {toastNode}
