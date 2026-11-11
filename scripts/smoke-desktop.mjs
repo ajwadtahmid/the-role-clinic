@@ -107,7 +107,13 @@ async function memory(label) {
 try {
   if (evidence) await mkdir(evidence, { recursive: true })
   await until(async()=> (await fetch('http://127.0.0.1:4445/status')).ok, 'WebKit driver ready')
-  await start(); await button('Skip for now'); checks.push('native first run')
+  // A new install asks how it will be used. This run exercises the AI pages, so it picks that path, turns AI features on
+  // as a finished setup would, and reloads so the page reads the new setting.
+  await start(); await button('Also tailor résumés with AI')
+  await api('/api/ai-features', { enabled: true }, 'PUT')
+  await evaluate('location.hash="#jobs"; location.reload()')
+  await until(async () => (await text()).includes('Add your first job'), 'jobs page with AI features on')
+  checks.push('native first run')
   await memory('idle after welcome')
   // Capture through actual React controls, including the blocked-site fallback.
   await button('Add your first job'); await button('From a link'); await field('Job link', 'https://www.linkedin.com/jobs/view/fixture'); await button('Fetch details')
@@ -151,7 +157,7 @@ try {
   await until(async()=>(await text()).includes('Built reliable TypeScript APIs'), 'saved draft')
   await button('Accept'); await until(async () => (await api(`/api/jobs/${jobId}/review`)).review.lines[0].decision === 'accepted', 'review accepted')
   await button('Copy résumé'); assert.ok((await execFile('xclip',['-selection','clipboard','-o'])).stdout.includes('Built reliable TypeScript APIs')); checks.push('native clipboard')
-  await button('View rendered PDF')
+  await button('PDF page')
   await until(() => evaluate(`const c=document.querySelector('.pdf-canvas-proof canvas');if(!c)return false;const d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let dark=0;for(let i=0;i<d.length;i+=4)if(d[i+3]&&d[i]<180&&d[i+1]<180&&d[i+2]<180)dark++;return dark>100`), 'actual PDF painted in WebKitGTK',40000)
   await evaluate('document.querySelector(".pdf-canvas-proof").scrollIntoView({block:"center"});return true')
   if(evidence)await writeFile(join(evidence,'pdf-proof.png'),Buffer.from(await driver(`/session/${session}/screenshot`),'base64'))
@@ -173,12 +179,12 @@ try {
     const bytes=await saveLink(selector,join(root,name));assert.ok(bytes.toString().includes(signature),name)
   }
   checks.push('native Save dialogs for XLSX and CSV')
-  await route('#resume','Bring in a résumé')
+  await route('#resume','Bring in your résumé')
   const masterFile=join(root,'master.json');const masterBytes=await saveLink('a[download="role-clinic-master.json"]',masterFile);assert.ok(JSON.parse(masterBytes).master)
   await importFile('input[accept=".json"]',masterFile);await until(async()=> (await text()).includes('Export file checked'),'native JSON file import')
   await importFile('input[accept=".pdf,.docx"]',join(root,'résumé docx.docx'));await until(async()=> (await text()).includes('Check the draft against the source'),'DOCX import');await button('Discard import draft');checks.push('master JSON and DOCX imports')
-  await route('#settings','Backups and app status');await button('Create database backup');await until(()=>evaluate('return document.querySelectorAll(".backup-row").length>0'),'database backup');await evaluate('document.querySelector(".maintenance-panel details").open=true;return true')
-  const backup=await saveLink('.backup-row a',join(root,'backup.sqlite'));assert.equal(backup.subarray(0,15).toString(),'SQLite format 3');checks.push('database backup and native download')
+  await route('#settings','Your data folder');await button('Back up now');await until(()=>evaluate('return document.querySelectorAll(".backup-list .row").length>0'),'database backup')
+  const backup=await saveLink('.backup-list .row a',join(root,'backup.sqlite'));assert.equal(backup.subarray(0,15).toString(),'SQLite format 3');checks.push('database backup and native download')
   // Invoke the same production IPC surface; no testing-only permissions exist.
   const rejected=await asyncEval(`const done=arguments[arguments.length-1];Promise.all(['file:///etc/passwd','javascript:alert(1)'].map(url=>window.__TAURI_INTERNALS__.invoke('open_external',{url}).then(()=>false,()=>true))).then(done)`)
   assert.deepEqual(rejected,[true,true])
