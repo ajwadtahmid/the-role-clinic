@@ -45,6 +45,9 @@ describe('settings page', () => {
     const address = await screen.findByLabelText('Local server address') as HTMLInputElement
     expect(screen.queryByRole('group', { name: 'Unsaved settings' })).toBeNull()
     expect(screen.queryByRole('heading', { name: 'Cost estimate and cap' })).toBeNull()
+    // The section rail points at Clear data, so the section itself has to be on the page, and AI features offers no dead link.
+    expect(await screen.findByRole('heading', { name: 'Clear data' })).toBeTruthy()
+    expect(screen.queryByRole('link', { name: 'Change model' })).toBeNull()
     await user.clear(address); await user.type(address, 'http://127.0.0.1:11500')
     expect(screen.getByRole('group', { name: 'Unsaved settings' })).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'Discard' }))

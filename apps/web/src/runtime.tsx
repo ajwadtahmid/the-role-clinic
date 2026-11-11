@@ -71,6 +71,29 @@ const backupKind = (filename: string) => filename.startsWith('auto-') ? 'Automat
 const shownBackups = 3
 const sizeText = (bytes: number) => bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.ceil(bytes / 1024))} KB`
 
+// Two separate confirmations: a first screen that lists what is lost, then typing DELETE. Nothing can be undone.
+export function ClearDataPanel() {
+  const [step, setStep] = useState<0 | 1 | 2>(0), [typed, setTyped] = useState(''), [busy, setBusy] = useState(false), { fail, node: toastNode } = useToast()
+  const close = () => { setStep(0); setTyped('') }
+  async function clear() {
+    setBusy(true)
+    try { await localApi('/api/app/clear-data', { method: 'POST', body: JSON.stringify({ confirm: typed }) }); try { localStorage.clear() } catch { /* storage may be unavailable */ } location.hash = ''; location.reload() } catch (e) { fail(e); setBusy(false) }
+  }
+  return <section className="panel block editor-panel" aria-labelledby="clear-heading">
+    <div className="block-head"><h2 id="clear-heading">Clear data</h2><button className="button small quiet danger" disabled={step > 0} onClick={() => setStep(1)}>Clear all data…</button></div>
+    <p className="note">Deletes everything saved in your data folder and puts the app back to how it was when you first opened it. This cannot be undone.</p>
+    {step === 1 && <div className="confirm on" role="alertdialog" aria-label="Clear all data">
+      <span><b>This permanently deletes</b> your jobs, tracker, résumé, answers, exported files, settings and every backup kept in the data folder. Download a backup first if you might want anything back. Your job search files are not touched.</span>
+      <button className="button small danger" onClick={() => setStep(2)}>Continue</button><button className="button small quiet" onClick={close}>Cancel</button>
+    </div>}
+    {step === 2 && <div className="confirm on" role="alertdialog" aria-label="Type DELETE to clear all data">
+      <label>Last step. Type <b>DELETE</b> to erase everything now <input value={typed} onChange={(event) => setTyped(event.target.value)} autoFocus autoComplete="off" spellCheck={false} /></label>
+      <button className="button small danger" disabled={busy || typed !== 'DELETE'} onClick={() => void clear()}>Erase everything</button><button className="button small quiet" disabled={busy} onClick={close}>Cancel</button>
+    </div>}
+    {toastNode}
+  </section>
+}
+
 export function BackupsPanel() {
   const [status, setStatus] = useState<Status | null>(null), [backups, setBackups] = useState<Backup[]>([]), [all, setAll] = useState(false), [busy, setBusy] = useState(false), { say: setNotice, fail, node: toastNode } = useToast()
   async function reload() { const [info, result] = await Promise.all([localApi<Status>('/api/app/status'), localApi<{ backups: Backup[] }>('/api/backups')]); setStatus(info); setBackups(result.backups) }

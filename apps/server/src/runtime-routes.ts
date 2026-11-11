@@ -4,6 +4,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { CURRENT_SCHEMA_VERSION } from './db.js'
+import { clearAppData } from './clear-data.js'
 
 export interface RuntimeInfo { version: string; instanceId: string; managed: boolean; desktop?: boolean; shutdown(force: boolean): Promise<void> }
 export function registerRuntimeRoutes(app: Hono, sqlite: Database.Database, dataDirectory: string, runtime?: RuntimeInfo) {
@@ -19,6 +20,14 @@ export function registerRuntimeRoutes(app: Hono, sqlite: Database.Database, data
     const value = await context.req.json().catch(() => null)
     if (!value || value.acknowledged !== true) return context.json({ error: 'Confirm the local-data introduction.' }, 400)
     await writeFile(join(dataDirectory, 'welcome.json'), JSON.stringify({ version: 1, acknowledgedAt: new Date().toISOString() }), { mode: 0o600 })
+    return context.json({ ok: true })
+  })
+  // Irreversible: the typed word is the second confirmation, so a stray request cannot erase everything.
+  app.post('/api/app/clear-data', async (context) => {
+    const value = await context.req.json().catch(() => null)
+    if (value?.confirm !== 'DELETE') return context.json({ error: 'Type DELETE to confirm.' }, 400)
+    if (sqlite.prepare("SELECT 1 FROM runs WHERE status IN ('queued','running')").get()) return context.json({ error: 'A model run is active. Wait for it to finish before clearing your data.' }, 409)
+    await clearAppData(sqlite, dataDirectory)
     return context.json({ ok: true })
   })
   app.post('/api/app/quit', async (context) => {

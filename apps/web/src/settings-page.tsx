@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { FeedSettings } from './feed-settings.js'
-import { AboutPanel, BackupsPanel } from './runtime.js'
+import { AboutPanel, BackupsPanel, ClearDataPanel } from './runtime.js'
 import { taskNames, type PublicSettings, type TaskName } from '../../../packages/shared/src/index.js'
 import { AppHeader, PageHeader, SectionRail } from './layout.js'
 import { FollowUpSettings } from './followup-settings.js'
@@ -188,7 +188,7 @@ export function SettingsPage() {
 
     {notice && <Toast error={notice.kind === 'error'} onClose={() => setNotice(null)}>{notice.text}</Toast>}
 
-    <div className="rs-layout"><SectionRail items={[{ id: 'ai', label: 'AI features' }, ...(showModels ? [{ id: 'models', label: 'Résumé tailoring' }] : []), { id: 'feed', label: 'Job feed' }, { id: 'followups', label: 'Follow-ups' }, { id: 'backups', label: 'Backups' }, { id: 'about', label: 'About' }]} /><div className="content">
+    <div className="rs-layout"><SectionRail items={[{ id: 'ai', label: 'AI features' }, ...(showModels ? [{ id: 'models', label: 'Résumé tailoring' }] : []), { id: 'feed', label: 'Job feed' }, { id: 'followups', label: 'Follow-ups' }, { id: 'backups', label: 'Backups' }, { id: 'cleardata', label: 'Clear data' }, { id: 'about', label: 'About' }]} /><div className="content">
     <AiFeaturesPanel advancedOpen={advanced} onAdvanced={setAdvanced} />
 
     {showModels && <section className="panel provider-panel block" id="models" tabIndex={-1} aria-labelledby="tailoring-heading">
@@ -262,6 +262,7 @@ export function SettingsPage() {
     <div id="feed" tabIndex={-1}><FeedSettings /></div>
     <div id="followups" tabIndex={-1}><FollowUpSettings /></div>
     <div id="backups" tabIndex={-1}><BackupsPanel /></div>
+    <div id="cleardata" tabIndex={-1}><ClearDataPanel /></div>
     <div id="about" tabIndex={-1}><AboutPanel /></div>
 
     </div></div>

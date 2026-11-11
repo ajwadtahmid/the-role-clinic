@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { Request as NodeRequest, Response as NodeResponse, Headers as NodeHeaders } from 'undici'
 import { createDatabase } from '../../server/src/db.js'
 import { createApp } from '../../server/src/app.js'
-import { AboutPanel, BackupsPanel, FirstRun } from './runtime.js'
+import { AboutPanel, BackupsPanel, ClearDataPanel, FirstRun } from './runtime.js'
 
 const resources: Array<{ directory: string; sqlite: ReturnType<typeof createDatabase>['sqlite'] }> = []
 afterEach(async () => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); for (const r of resources.splice(0)) { r.sqlite.close(); await rm(r.directory, { recursive: true, force: true }) } })
@@ -82,6 +82,38 @@ describe('first run and maintenance UI', () => {
     expect(link.getAttribute('href')).toMatch(/^\/api\/backups\//)
     await user.click(screen.getByRole('button', { name: 'Show fewer' }))
     expect(document.querySelectorAll('.backup-list .row')).toHaveLength(3)
+  })
+  it('clears the data folder only after two confirmations, and keeps the job search folder', async () => {
+    const { user, sqlite, directory } = await setup()
+    await fetch('/api/jobs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ company: 'Acme', title: 'Engineer', text: 'A job description that is long enough to be saved as a job.' }) })
+    await mkdir(join(directory, 'backups'), { recursive: true }); await mkdir(join(directory, 'artifacts'), { recursive: true }); await mkdir(join(directory, 'job-search', 'data'), { recursive: true })
+    await writeFile(join(directory, 'backups', 'clinic-2026-01-01T00-00-00Z.sqlite'), 'x'); await writeFile(join(directory, 'artifacts', 'a.pdf'), 'x'); await writeFile(join(directory, 'welcome.json'), '{}'); await writeFile(join(directory, 'job-search', 'data', 'jobs.csv'), 'keep')
+    const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {})
+    // A request without the typed word is refused, even with everything else right.
+    expect((await fetch('/api/app/clear-data', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirm: true }) })).status).toBe(400)
+    expect((sqlite.prepare('SELECT COUNT(*) AS n FROM jobs').get() as { n: number }).n).toBe(1)
+    render(<ClearDataPanel />)
+    await user.click(screen.getByRole('button', { name: 'Clear all data…' }))
+    // First confirmation lists what is lost; the destructive button is not there yet.
+    expect(screen.getByText(/permanently deletes/)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Erase everything' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    const erase = screen.getByRole('button', { name: 'Erase everything' }) as HTMLButtonElement
+    expect(erase.disabled).toBe(true)
+    await user.type(screen.getByRole('textbox'), 'delete')
+    expect(erase.disabled).toBe(true)
+    await user.clear(screen.getByRole('textbox')); await user.type(screen.getByRole('textbox'), 'DELETE')
+    await user.click(erase)
+    await waitFor(() => expect(reload).toHaveBeenCalled())
+    expect((sqlite.prepare('SELECT COUNT(*) AS n FROM jobs').get() as { n: number }).n).toBe(0)
+    expect((sqlite.prepare('SELECT ghosted_days AS d FROM tracker_preferences WHERE id=1').get() as { d: number }).d).toBe(14)
+    expect((sqlite.prepare('SELECT COUNT(*) AS n FROM synonyms').get() as { n: number }).n).toBe(3)
+    const { existsSync } = await import('node:fs')
+    for (const gone of ['backups', 'artifacts', 'welcome.json']) expect(existsSync(join(directory, gone))).toBe(false)
+    expect(existsSync(join(directory, 'job-search', 'data', 'jobs.csv'))).toBe(true)
+    // It is a new install again: the app asks how it will be used.
+    const status = (await (await fetch('/api/settings')).json()) as { aiFeatures: { chosen: boolean } }
+    expect(status.aiFeatures.chosen).toBe(false)
   })
   it('says so when there are no backups yet', async () => {
     await setup()

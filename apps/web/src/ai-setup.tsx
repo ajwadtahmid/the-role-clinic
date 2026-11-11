@@ -47,7 +47,7 @@ export function AiFeaturesPanel({ advancedOpen, onAdvanced }: { advancedOpen: bo
       ? <><div className="status-line" role="status"><span className="dot" aria-hidden="true" /><div><b>AI features are hidden</b><span className="t">Your fit checks, drafts and résumé are kept, just out of sight.</span></div></div>
         <div className="button-row"><button className="button primary" disabled={busy} onClick={() => void change({ hidden: false }, 'AI features are showing again.')}>Show AI features</button></div></>
       : <><div className="status-line" role="status"><span className="dot" aria-hidden="true" /><div><b>AI features are on</b><span className="t">{saved?.taskModels.requirementExtraction.provider === 'anthropic' ? 'Fit checks and tailoring use Claude, which sends the job text and your résumé bullets to Anthropic.' : `Fit checks and tailoring use ${model} on this computer. Nothing leaves it.`}</span></div></div>
-        <div className="button-row"><button className="button" disabled={busy} onClick={() => void change({ hidden: true }, 'AI features hidden. Nothing was deleted.')}>Hide AI features</button><a className="text-button" href="#models" onClick={(event) => { event.preventDefault(); document.getElementById('models')?.focus() }}>Change model</a></div>
+        <div className="button-row"><button className="button" disabled={busy} onClick={() => void change({ hidden: true }, 'AI features hidden. Nothing was deleted.')}>Hide AI features</button></div>
         <p className="subtle">Hiding only changes what you see. Fit checks, drafts and your résumé stay saved, and Show brings them back.</p></>}
   </section>
 
