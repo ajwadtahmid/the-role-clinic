@@ -89,7 +89,7 @@ async function inventory(directory) {
   }
 }
 await inventory(output)
-const manifest = { format: 'the-role-clinic-package', version: pkg.version, target: platform.target, nodeVersion: process.version, schemaVersion: 7, requirements, packageLockSha256: createHash('sha256').update(await readFile('package-lock.json')).digest('hex'), files }
+const manifest = { format: 'the-role-clinic-package', version: pkg.version, target: platform.target, nodeVersion: process.version, schemaVersion: Number((await readFile('apps/server/src/db.ts', 'utf8')).match(/CURRENT_SCHEMA_VERSION = (\d+)/)?.[1]), requirements, packageLockSha256: createHash('sha256').update(await readFile('package-lock.json')).digest('hex'), files }
 await writeFile(join(output, 'manifest.json'), JSON.stringify(manifest, null, 2))
 if (!stageOnly) {
   await c({ file: archive, cwd: join(root, 'dist'), gzip: true, portable: true, noMtime: true }, [name])
