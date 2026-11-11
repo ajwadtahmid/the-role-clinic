@@ -15,9 +15,12 @@ import { Workspace } from './workspace.js'
 
 const directories: string[] = []
 const servers: Array<ReturnType<typeof serve>> = []
+const databases: Array<{ close(): unknown }> = []
 afterEach(async () => {
   cleanup()
   await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve()))))
+  // Windows will not delete a database file that is still open.
+  for (const database of databases.splice(0)) database.close()
   vi.unstubAllGlobals()
   await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })))
 })
@@ -25,7 +28,7 @@ afterEach(async () => {
 // A real server with one saved job, and the page not yet rendered.
 async function setup() {
   const dataDirectory = await mkdtemp(join(tmpdir(), 'role-clinic-modes-')); directories.push(dataDirectory)
-  const { sqlite, db } = createDatabase(dataDirectory)
+  const { sqlite, db } = createDatabase(dataDirectory); databases.push(sqlite)
   const reservation = createServer()
   const port = await new Promise<number>((resolve) => reservation.listen(0, '127.0.0.1', () => resolve((reservation.address() as { port: number }).port)))
   await new Promise<void>((resolve) => reservation.close(() => resolve()))

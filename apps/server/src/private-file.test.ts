@@ -16,4 +16,5 @@ it.skipIf(process.platform !== 'win32')('protects settings with a Windows DACL r
     expect(acl.protected).toBe(true)
     expect(acl.rules).toEqual([{ sid: acl.user, inherited: false, type: 'Allow', rights: 'FullControl' }])
   } finally { await rm(root, { recursive: true, force: true }) }
-})
+  // Starting PowerShell and reading an ACL can take several seconds on a hosted Windows runner.
+}, 30_000)
