@@ -68,5 +68,6 @@ try {
   if (base) await fetch(`${base}/api/app/quit`, { method: 'POST', headers: { origin: base, 'content-type': 'application/json' }, body: JSON.stringify({ confirm: true, instanceId: state?.instanceId, force: true }), signal: AbortSignal.timeout(2000) }).catch(() => {})
   for (const child of children) if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
   await sleep(500)
-  await rm(root, { recursive: true, force: true })
+  // Windows can keep a file locked for a moment after its process exits, so retry the cleanup.
+  await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 })
 }

@@ -68,6 +68,13 @@ await check('tests close their databases before deleting them (Windows)', async 
   }
   await walk(join(rootPath, 'apps')); await walk(join(rootPath, 'packages'))
   if (found.length) throw new Error(`these tests open a database and delete its folder without closing it:\n  ${found.join('\n  ')}`)
+  // Windows reports file modes as 0666, so a check of POSIX permission bits must be guarded in the scripts that run there.
+  const unguarded = []
+  for (const script of ['scripts/smoke-package.mjs', 'scripts/smoke-desktop-lifecycle.mjs']) {
+    const lines = (await readFile(join(rootPath, script), 'utf8')).split('\n')
+    lines.forEach((line, index) => { if (/\.mode\s*&\s*0o/.test(line) && !/win32/.test(`${lines[index - 1] ?? ''}${line}`)) unguarded.push(`${script}:${index + 1}`) })
+  }
+  if (unguarded.length) throw new Error(`these lines check POSIX file modes without a Windows guard:\n  ${unguarded.join('\n  ')}`)
 })
 
 const quick = [

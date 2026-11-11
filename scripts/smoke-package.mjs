@@ -106,7 +106,9 @@ try {
   const fullBackup = join(root, 'full-backup.tar.gz')
   await assert.rejects(cli(['backup', fullBackup]), /Stop the app/)
   await cli(['stop']); running = false
-  await cli(['backup', fullBackup, '--include-api-key']); assert.equal((await stat(fullBackup)).mode & 0o777, 0o600)
+  await cli(['backup', fullBackup, '--include-api-key'])
+  // Windows has no POSIX file modes (it reports 0666); it protects the file with an ACL instead, which private-file.test.ts checks.
+  if (process.platform !== 'win32') assert.equal((await stat(fullBackup)).mode & 0o777, 0o600)
   // A previous schema is migrated from a preserved on-disk snapshot during update.
   await databaseWork(`db.exec('ALTER TABLE applications DROP COLUMN outcome; ALTER TABLE status_events DROP COLUMN outcome; DROP TABLE feed_imports; DROP INDEX jobs_origin_idx; ALTER TABLE jobs DROP COLUMN origin; ALTER TABLE jobs DROP COLUMN found_at; ALTER TABLE jobs DROP COLUMN posted_at; ALTER TABLE jobs DROP COLUMN finder_priority; ALTER TABLE jobs DROP COLUMN finder_note; ALTER TABLE jobs DROP COLUMN posting_state; DROP TABLE tracker_preferences; DROP INDEX job_answers_job_idx; ALTER TABLE applications DROP COLUMN follow_up_date; ALTER TABLE applications DROP COLUMN last_contact_at; ALTER TABLE applications DROP COLUMN contacts; ALTER TABLE applications DROP COLUMN submitted_job_text; ALTER TABLE job_answers DROP COLUMN submitted_question; ALTER TABLE job_answers DROP COLUMN submitted_category; PRAGMA user_version=6;')`)
   const updated = join(root, 'updated package with spaces'); await rename(bundle, updated); bundle = updated
@@ -148,5 +150,6 @@ try {
   throw error
 } finally {
   if (running) { try { await cli(['stop', '--force']) } catch {} }
-  await rm(root, { recursive: true, force: true })
+  // Windows can keep a file locked for a moment after its process exits, so retry the cleanup.
+  await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 })
 }
