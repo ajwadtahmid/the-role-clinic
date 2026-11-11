@@ -41,7 +41,7 @@ const evaluate = (script, ...args) => driver(`/session/${session}/execute/sync`,
 const asyncEval = (script, ...args) => driver(`/session/${session}/execute/async`, { script, args })
 const text = () => evaluate('return document.body.innerText')
 async function button(label) {
-  const element = await until(() => evaluate(`const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===arguments[0] && !b.disabled); if(!b)return false; b.click();return true`, label), `button ${label}`)
+  const element = await until(() => evaluate(`const name=(b)=>[...b.childNodes].filter(n=>n.nodeName!=='KBD').map(n=>n.textContent).join('').trim(); const b=[...document.querySelectorAll('button')].find(b=>name(b)===arguments[0] && !b.disabled); if(!b)return false; b.click();return true`, label), `button ${label}`)
   assert.ok(element)
 }
 async function field(label, value) {
@@ -109,7 +109,8 @@ try {
   await until(async()=> (await fetch('http://127.0.0.1:4445/status')).ok, 'WebKit driver ready')
   // A new install asks how it will be used. This run exercises the AI pages, so it picks that path, turns AI features on
   // as a finished setup would, and reloads so the page reads the new setting.
-  await start(); await button('Also tailor résumés with AI')
+  // These choices hold a title and a description, so the exact-text button helper cannot find them.
+  await start(); await until(() => evaluate(`const b=[...document.querySelectorAll('.start-choice')].find(b=>b.querySelector('strong')?.textContent.trim()===arguments[0]&&!b.disabled);if(!b)return false;b.click();return true`, 'Also tailor résumés with AI'), 'first-run choice')
   await api('/api/ai-features', { enabled: true }, 'PUT')
   await evaluate('location.hash="#jobs"; location.reload()')
   await until(async () => (await text()).includes('Add your first job'), 'jobs page with AI features on')
@@ -118,9 +119,11 @@ try {
   // Capture through actual React controls, including the blocked-site fallback.
   await button('Add your first job'); await button('From a link'); await field('Job link', 'https://www.linkedin.com/jobs/view/fixture'); await button('Fetch details')
   await until(async () => (await text()).includes('not supported for direct capture'), 'paste fallback')
-  await button('Paste the description'); await field('Company', 'Desktop Fixture'); await field('Role title', 'TypeScript Engineer'); await field('Job description', 'Build reliable TypeScript APIs and maintain software systems with our engineering team. This is a synthetic job used only for desktop validation.'); await button('Save job')
+  await button('Paste the description'); await field('Company', 'Desktop Fixture'); await field('Role title', 'TypeScript Engineer'); await field('Job description (optional)', 'Build reliable TypeScript APIs and maintain software systems with our engineering team. This is a synthetic job used only for desktop validation.'); await button('Save job')
   await until(async () => (await api('/api/jobs')).jobs?.length === 1, 'captured job')
   const job = (await api('/api/jobs')).jobs[0], jobId = job.id
+  // The app opens the saved job a moment after saving. Wait for that, or it would override the next page we ask for.
+  await until(() => evaluate('return location.hash.startsWith("#jobs/")'), 'the saved job opens')
   checks.push('paste capture and URL fallback')
   await api(`/api/jobs/${jobId}/status`, { status: 'saved' }, 'PUT')
   await route(`#tracker?job=${jobId}`, 'Questions and answers')
@@ -154,6 +157,8 @@ try {
   assert.equal(JSON.parse(await readFile(join(data,'instance.json'),'utf8')).instanceId,instance.instanceId); checks.push('second launch reuses native instance')
   await assert.rejects(execFile(join(backend,'role-clinic'),['start','--no-browser'],{env:process.env}),/desktop app/)
   await route(`#jobs/${jobId}`, 'Desktop Fixture'); await button('Résumé')
+  // The draft is reviewed on its own page, which the Résumé tab links to.
+  await until(() => evaluate(`const a=[...document.querySelectorAll('a')].find(a=>a.textContent.trim()==='Open the review');if(!a)return false;a.click();return true`), 'link to the review')
   await until(async()=>(await text()).includes('Built reliable TypeScript APIs'), 'saved draft')
   await button('Accept'); await until(async () => (await api(`/api/jobs/${jobId}/review`)).review.lines[0].decision === 'accepted', 'review accepted')
   await button('Copy résumé'); assert.ok((await execFile('xclip',['-selection','clipboard','-o'])).stdout.includes('Built reliable TypeScript APIs')); checks.push('native clipboard')
@@ -179,7 +184,7 @@ try {
     const bytes=await saveLink(selector,join(root,name));assert.ok(bytes.toString().includes(signature),name)
   }
   checks.push('native Save dialogs for XLSX and CSV')
-  await route('#resume','Bring in your résumé')
+  await route('#resume','Your master résumé is the source')
   const masterFile=join(root,'master.json');const masterBytes=await saveLink('a[download="role-clinic-master.json"]',masterFile);assert.ok(JSON.parse(masterBytes).master)
   await importFile('input[accept=".json"]',masterFile);await until(async()=> (await text()).includes('Export file checked'),'native JSON file import')
   await importFile('input[accept=".pdf,.docx"]',join(root,'résumé docx.docx'));await until(async()=> (await text()).includes('Check the draft against the source'),'DOCX import');await button('Discard import draft');checks.push('master JSON and DOCX imports')
