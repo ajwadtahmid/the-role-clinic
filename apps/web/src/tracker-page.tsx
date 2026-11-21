@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
-import { calendarDate, type TrackerJob, type TrackerSummary } from '../../../packages/shared/src/index.js'
+import { calendarDate, type FollowUpPreferences, type TrackerJob, type TrackerSummary } from '../../../packages/shared/src/index.js'
 import { AnswerLibrary, JobAnswers, localApi } from './answers.js'
-import { AppHeader, PageHeader } from './layout.js'
+import { AppHeader, JobsViews, PageHeader } from './layout.js'
 import { Icon } from './icons.js'
+import { Skeleton } from './ui/skeleton.js'
 import { AddJobDialog } from './add-job.js'
 import { Toast } from './toast.js'
 import { choiceOf, splitChoice, stageClass, stageLabel, stageLabels, statusChoices, statusText } from './stages.js'
+import { Toggle } from './ui/toggle.js'
 
 type Artifact = { id: string; filename: string; revision: number | null }
 export function SubmissionForm({ jobId, onSaved, onCancel }: { jobId: string; onSaved: () => void | Promise<void>; onCancel: () => void }) {
@@ -29,14 +31,21 @@ export function SubmittedRecord({ jobId }: { jobId: string }) {
   useEffect(() => { let active = true; void localApi<NonNullable<typeof record>>(`/api/jobs/${jobId}/submitted`).then((r) => { if (active) setRecord(r) }).catch((e) => { if (active) setError(e.message) }); return () => { active = false } }, [jobId])
   return <section className="submitted-record">{error && <p role="alert">{error}</p>}{record && (record.appliedAt ? <><p className="subtle">Sent and recorded · {new Date(record.appliedAt).toLocaleString()}</p>{record.artifactId && <a href={`/api/jobs/${jobId}/artifacts/${record.artifactId}`} download>Download submitted résumé · {record.filename}</a>}{record.submittedText ? <pre className="job-text">{record.submittedText}</pre> : <p className="subtle">No résumé file recorded for this application.</p>}<details><summary>Submitted job description</summary><pre className="job-text">{record.jobText}</pre></details><h4>Submitted answers</h4>{record.answers.map((a) => <article className="answer-card" key={a.id}><strong>{a.question}</strong><p className="answer-text">{a.answer}</p></article>)}{!record.answers.length && <p className="subtle">No answers were recorded at submission time.</p>}</> : <p className="subtle">This job has not been recorded as applied.</p>)}</section>
 }
-export function JobTrackerDetails({ job, onSaved }: { job: TrackerJob; onSaved: () => void | Promise<void> }) {
-  const [followUp, setFollowUp] = useState(job.followUpDate ?? ''), [lastContact, setLastContact] = useState(job.lastContactAt ? calendarDate(job.lastContactAt) : ''), [contacts, setContacts] = useState(job.contacts), [notes, setNotes] = useState(job.notes), [busy, setBusy] = useState(false), [notice, setNotice] = useState('')
-  async function save(event?: React.FormEvent, complete = false) {
+const plusDays = (days: number) => { const d = new Date(`${calendarDate()}T12:00:00`); d.setDate(d.getDate() + days); return calendarDate(d.toISOString()) }
+// Follow-up, last contact, contacts and notes for one application. Reminders for it can be silenced, or the date added to a calendar.
+export function JobTrackerDetails({ job, onSaved, preferences }: { job: TrackerJob; onSaved: () => void | Promise<void>; preferences?: FollowUpPreferences }) {
+  const [followUp, setFollowUp] = useState(job.followUpDate ?? ''), [lastContact, setLastContact] = useState(job.lastContactAt ? calendarDate(job.lastContactAt) : ''), [contacts, setContacts] = useState(job.contacts), [notes, setNotes] = useState(job.notes), [remindOff, setRemindOff] = useState(job.remindOff), [busy, setBusy] = useState(false), [notice, setNotice] = useState('')
+  const remindersOn = preferences?.remindersOn ?? true
+  // "done" records today as the last contact and sets the next date from the apply rule (or none); "wait" moves the date out by the snooze length.
+  async function save(event?: React.FormEvent, action: 'done' | 'wait' | null = null) {
     event?.preventDefault(); setBusy(true)
-    const contact = complete ? calendarDate() : lastContact, date = complete ? '' : followUp
-    try { await localApi(`/api/jobs/${job.id}/tracker`, { method: 'PUT', body: JSON.stringify({ followUpDate: date || null, lastContactAt: contact || null, contacts, notes }) }); setFollowUp(date); setLastContact(contact); await onSaved(); setNotice(complete ? 'Follow-up completed; last contact recorded today.' : 'Tracker details saved.') } catch (e) { setNotice((e as Error).message) } finally { setBusy(false) }
+    const contact = action === 'done' ? calendarDate() : lastContact
+    const date = action === 'done' ? (preferences?.remindersOn && preferences.applyOn ? plusDays(preferences.applyDays) : '') : action === 'wait' ? plusDays(preferences?.snoozeDays ?? 3) : followUp
+    try { await localApi(`/api/jobs/${job.id}/tracker`, { method: 'PUT', body: JSON.stringify({ followUpDate: date || null, lastContactAt: contact || null, contacts, notes, remindOff }) }); setFollowUp(date); setLastContact(contact); await onSaved(); setNotice(action === 'done' ? `Follow-up done; last contact recorded today${date ? `, next one ${date}` : ''}.` : action === 'wait' ? `Keeping on waiting until ${date}.` : 'Tracker details saved.') } catch (e) { setNotice((e as Error).message) } finally { setBusy(false) }
   }
-  return <details className="tracker-details" open><summary>Follow-up, contacts & notes</summary><form onSubmit={save}><div className="form-pair"><label>Follow-up date<input type="date" value={followUp} onChange={(e) => setFollowUp(e.target.value)} /></label><label>Last contact date<input type="date" max={calendarDate()} value={lastContact} onChange={(e) => setLastContact(e.target.value)} /></label></div><label>Contacts<textarea rows={2} maxLength={5000} value={contacts} onChange={(e) => setContacts(e.target.value)} placeholder="Recruiter, hiring manager, contact details" /></label><label>Application notes<textarea rows={4} maxLength={5000} value={notes} onChange={(e) => setNotes(e.target.value)} /></label><div className="button-row"><button className="button secondary" disabled={busy}>Save tracker details</button><button className="text-button" type="button" disabled={busy} onClick={() => void save(undefined, true)}>Mark follow-up done today</button></div></form>{notice && <p role="status">{notice}</p>}</details>
+  return <details className="tracker-details" open><summary>Follow-up, contacts & notes</summary><form onSubmit={save}><div className="form-pair"><label>Follow-up date<input type="date" value={followUp} onChange={(e) => setFollowUp(e.target.value)} /></label><label>Last contact date<input type="date" max={calendarDate()} value={lastContact} onChange={(e) => setLastContact(e.target.value)} /></label></div><label>Contacts<textarea rows={2} maxLength={5000} value={contacts} onChange={(e) => setContacts(e.target.value)} placeholder="Recruiter, hiring manager, contact details" /></label><label>Application notes<textarea rows={4} maxLength={5000} value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
+    <Toggle checked={remindOff} onChange={setRemindOff}>Don’t remind me about this one</Toggle>
+    <div className="button-row"><button className="button secondary" disabled={busy}>Save tracker details</button><button className="text-button" type="button" disabled={busy} onClick={() => void save(undefined, 'done')}>Mark follow-up done today</button><button className="text-button" type="button" disabled={busy} onClick={() => void save(undefined, 'wait')}>Keep waiting {preferences?.snoozeDays ?? 3} more days</button>{remindersOn && job.followUpDate && <a className="text-button" href={`/api/jobs/${job.id}/follow-up.ics`} download>Add to calendar (.ics)</a>}</div></form>{notice && <p role="status">{notice}</p>}</details>
 }
 type JobRecord = { answers: Array<{ id: string; question: string; answer: string; submittedAnswer: string | null; category: string; charLimit: number | null }>; events: Array<{ status: string; outcome?: string | null; createdAt: string }> }
 // One job's questions and answers (add, edit, copy) and its status history, opened from the Q&A column.
@@ -45,19 +54,42 @@ export function TrackerJobRecord({ jobId, onChanged }: { jobId: string; onChange
   async function load() { setRecord(await localApi<JobRecord>(`/api/jobs/${jobId}`)) }
   useEffect(() => { void load().catch((e) => setError(e.message)) }, [jobId])
   if (error) return <p role="alert" className="review-flag">{error}</p>
-  if (!record) return <p className="subtle" role="status">Loading questions and answers…</p>
+  if (!record) return <Skeleton lines={3} label="Loading questions and answers…" />
   return <>
-    <details className="record-answers" open><summary>Questions and answers ({record.answers.length})</summary><JobAnswers jobId={jobId} answers={record.answers} onSaved={async () => { await load(); await onChanged() }} /></details>
+    <details className="record-answers" open><summary>Q&A ({record.answers.length})</summary><JobAnswers jobId={jobId} answers={record.answers} onSaved={async () => { await load(); await onChanged() }} /></details>
     <details className="record-history"><summary>Status history</summary>{record.events.length ? <ol className="history-list">{record.events.map((event, i) => <li key={i}><strong>{statusText(event.status, event.outcome)}</strong> <span className="subtle">· {new Date(event.createdAt).toLocaleDateString()}</span></li>)}</ol> : <p className="subtle">No status changes yet.</p>}</details>
   </>
 }
 const pageRows = 50
+// Everything kept about one application: the facts, what was sent, follow-up and notes, questions and answers, and the history.
+// It is shown beside the Tracker table and on the job's own page, so an application looks the same wherever it is opened.
+export function ApplicationDetails({ job: chosen, preferences, onSaved }: { job: TrackerJob; preferences: FollowUpPreferences; onSaved: () => void | Promise<void> }) {
+  const todayKey = calendarDate(), load = onSaved
+  return <><dl className="track-facts"><div><dt>Stage</dt><dd>{statusText(chosen.status, chosen.outcome)}</dd></div><div><dt>Applied</dt><dd>{chosen.appliedAt ? calendarDate(chosen.appliedAt) : '—'}</dd></div><div><dt>Résumé sent</dt><dd>{chosen.appliedAt ? (chosen.submittedFilename || (chosen.hasSubmittedText ? 'Recorded résumé text' : 'No file kept')) : '—'}</dd></div><div><dt>Next follow-up</dt><dd>{chosen.followUpDate ? <span className={chosen.followUpDate <= todayKey ? 'due' : undefined}>{chosen.followUpDate}</span> : 'None'}</dd></div></dl>{chosen.appliedAt && <details className="submitted-panel" open><summary>What you sent</summary><SubmittedRecord key={chosen.id} jobId={chosen.id} /></details>}<JobTrackerDetails key={chosen.id} job={chosen} onSaved={load} preferences={preferences} /><TrackerJobRecord key={`record-${chosen.id}`} jobId={chosen.id} onChanged={load} /></>
+}
+// The same details for a job opened from Jobs. It asks for that one application only.
+export function ApplicationPanel({ jobId }: { jobId: string }) {
+  const [data, setData] = useState<{ job: TrackerJob; preferences: FollowUpPreferences } | null>(null), [error, setError] = useState('')
+  async function load() { setData(await localApi<{ job: TrackerJob; preferences: FollowUpPreferences }>(`/api/tracker/jobs/${jobId}`)) }
+  useEffect(() => { void load().catch((e) => setError(e.message)) }, [jobId])
+  if (error) return <p role="alert" className="review-flag">{error}</p>
+  if (!data) return <Skeleton lines={4} label="Loading application…" />
+  return <section className="application-panel" aria-label="Application"><h3>Application</h3><ApplicationDetails job={data.job} preferences={data.preferences} onSaved={load} /></section>
+}
 // The Tracker holds every job from applied onward; Saved and Skipped jobs stay in Jobs.
 const isTracked = (job: TrackerJob) => !['new', 'saved', 'skipped'].includes(job.status)
 // The strip counts jobs that ever reached a stage; the chips below count jobs in it now, so the words differ.
 const funnelWords: Record<string, string> = { applied: 'applied', interviewing: 'got to an interview', offer: 'got an offer', accepted: 'accepted' }
 const stageTabs: Array<[string, string]> = [['all', 'All'], ['applied', stageLabels.applied], ['interviewing', stageLabels.interviewing], ['offer', stageLabels.offer], ['closed', stageLabels.closed]]
-export function TrackerPage({ gapsOnly = false, openLibrary = false }: { gapsOnly?: boolean; openLibrary?: boolean }) {
+// The Tracker is a view inside Jobs (embedded): no page frame of its own, only the table, reminders and details.
+function Shell({ embedded, detailOpen, children }: { embedded: boolean; detailOpen: boolean; children: React.ReactNode }) {
+  return embedded ? <div className={`tracker-embedded tracker-shell${detailOpen ? ' detail-open' : ''}`}>{children}</div>
+    : <main className={`shell tracker-shell${detailOpen ? ' detail-open' : ''}`} id="main" tabIndex={-1}><AppHeader current="jobs" />{children}</main>
+}
+function EmbeddedHead({ actions, children }: { title: string; actions?: React.ReactNode; children?: React.ReactNode }) {
+  return <div className="embedded-head"><p className="page-note">{children}</p>{actions && <div className="page-actions">{actions}</div>}</div>
+}
+export function TrackerPage({ gapsOnly = false, embedded = false }: { gapsOnly?: boolean; embedded?: boolean }) {
   const [data, setData] = useState<TrackerSummary | null>(null), [query, setQuery] = useState(''), [stage, setStage] = useState('all'), [company, setCompany] = useState(''), [after, setAfter] = useState(''), [before, setBefore] = useState(''), [sort, setSort] = useState('captured'), [notice, setNotice] = useState(''), [selected, setSelected] = useState(() => new URLSearchParams(location.hash.split('?')[1] ?? '').get('job') ?? ''), [submitId, setSubmitId] = useState(''), [busy, setBusy] = useState(false), [page, setPage] = useState(1), [activeRow, setActiveRow] = useState(''), [toast, setToast] = useState<{ text: string; undo?: () => void } | null>(null)
   const [showAdd, setShowAdd] = useState(false)
   async function load() { setData(await localApi<TrackerSummary>('/api/tracker')) }
@@ -69,12 +101,17 @@ export function TrackerPage({ gapsOnly = false, openLibrary = false }: { gapsOnl
   // Escape closes the details beside the table.
   useEffect(() => { if (!selected) return; const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setSelected('') }; window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey) }, [selected])
   async function changeStatus(job: TrackerJob, choice: string, undoable = true) {
+  // Keeping on waiting moves the follow-up date out, which also takes the application off the no-reply suggestions until then.
+  async function keepWaiting(job: TrackerJob) {
+    const date = plusDays(data!.preferences.snoozeDays)
+    try { await localApi(`/api/jobs/${job.id}/tracker`, { method: 'PUT', body: JSON.stringify({ followUpDate: date, lastContactAt: job.lastContactAt ? calendarDate(job.lastContactAt) : null, contacts: job.contacts, notes: job.notes }) }); await load(); setToast({ text: `Waiting on ${job.company} until ${date}.` }) } catch (e) { setNotice((e as Error).message) }
+  }
     const { status: next, outcome } = splitChoice(choice)
     if (next === 'applied' && !job.appliedAt) { setSubmitId(job.id); return }
     setBusy(true)
     try { await localApi(`/api/jobs/${job.id}/status`, { method: 'PUT', body: JSON.stringify({ status: next, ...(outcome ? { outcome } : {}) }) }); await load(); setToast({ text: `Status updated to ${statusText(next, outcome).toLowerCase()}.`, ...(undoable ? { undo: () => void changeStatus({ ...job, status: next, outcome: outcome ?? null }, choiceOf(job.status, job.outcome), false) } : {}) }) } catch (e) { setNotice((e as Error).message) } finally { setBusy(false) }
   }
-  if (!data) return <main className="shell"><p role="status">{notice || 'Loading tracker…'}</p></main>
+  if (!data) { const waiting = notice ? <p role="status">{notice}</p> : <Skeleton lines={6} label="Loading tracker…" />; return embedded ? <div>{waiting}</div> : <main className="shell">{waiting}</main> }
   const tracked = data.jobs.filter(isTracked), filtered = matching(data.jobs), pages = Math.max(1, Math.ceil(filtered.length / pageRows)), pageNo = Math.min(page, pages), rows = filtered.slice((pageNo - 1) * pageRows, pageNo * pageRows)
   const chosen = data.jobs.find((j) => j.id === selected), exportQuery = new URLSearchParams({ q: query, status: stage === 'all' ? 'tracker' : stage, company, ...(after ? { after } : {}), ...(before ? { before } : {}) }).toString()
   // The table is one Tab stop: only the active row's controls are tabbable, and Up and Down move between rows.
@@ -104,9 +141,9 @@ export function TrackerPage({ gapsOnly = false, openLibrary = false }: { gapsOnl
       {filtered.length > 0 && <table className="applications-table"><caption className="sr-only">Applications and next steps</caption><thead><tr><th scope="col">Job</th><th scope="col">Stage</th><th scope="col" className="col-applied">Applied</th><th scope="col" className="col-next">Follow-up</th><th scope="col" className="col-sent">Résumé sent</th></tr></thead><tbody onKeyDown={moveRow}>{rows.map((job) => <tr key={job.id} className={job.id === selected ? 'selected' : undefined} onFocus={() => setActiveRow(job.id)}><td className="job-cell"><button className="table-job" tabIndex={rowTab(job)} aria-current={job.id === selected ? 'true' : undefined} onClick={() => setSelected(job.id)}><strong>{job.title}</strong><span>{place(job)}</span></button></td><td data-label="Stage"><label><span className="sr-only">Status for {job.company} {job.title}</span>{statusSelect(job)}</label></td><td className="num col-applied" data-label="Applied">{job.appliedAt ? calendarDate(job.appliedAt) : <span className="muted">—</span>}</td><td className="num col-next" data-label="Follow-up">{job.followUpDate ? <span className={job.followUpDate <= todayKey ? 'due' : undefined}>{job.followUpDate <= todayKey ? `Follow up now (${job.followUpDate})` : job.followUpDate}</span> : <span className="muted">None</span>}</td><td className="col-sent" data-label="Résumé sent">{job.appliedAt ? <button className="text-button" tabIndex={rowTab(job)} onClick={() => showRecord(job)}>{job.submittedFilename || (job.hasSubmittedText ? 'Recorded résumé text' : 'No file kept')}</button> : <span className="muted">—</span>}</td></tr>)}</tbody></table>}
       {!filtered.length && <div className="empty-note"><strong>{tracked.length ? 'No applications match' : 'No applications yet'}</strong>{tracked.length ? 'Try fewer words or another stage.' : <>When you mark a job applied, it appears here with the résumé you sent. <a href="#jobs">Go to Jobs</a></>}</div>}
       {filtered.length > pageRows && <div className="pager"><span className="num">{(pageNo - 1) * pageRows + 1} to {Math.min(pageNo * pageRows, filtered.length)} of {filtered.length}</span><span className="spacer" /><button className="button small" disabled={pageNo === 1} onClick={() => setPage(pageNo - 1)}>Previous</button><span className="num">Page {pageNo} of {pages}</span><button className="button small" disabled={pageNo === pages} onClick={() => setPage(pageNo + 1)}>Next</button></div>}</section>
-    {chosen && <aside className="panel tracker-job-details" aria-label={`Details for ${chosen.company}`}><button className="text-button back-button" onClick={() => setSelected('')}>← All applications</button><div className="job-header-row details-head"><div className="job-title-block"><h2>{chosen.title}</h2><p>{place(chosen)}{chosen.appliedAt ? ` · Applied ${calendarDate(chosen.appliedAt)}` : ''}</p></div><span className={stageClass(chosen.status)}>{statusText(chosen.status, chosen.outcome)}</span><button className="text-button" aria-label="Close details" onClick={() => setSelected('')}><Icon name="x" /></button></div><div className="button-row"><a href={`#jobs/${chosen.id}`}>Open job and résumé</a>{chosen.sourceUrl && <a href={chosen.sourceUrl} target="_blank" rel="noreferrer">Original posting ↗</a>}</div><dl className="track-facts"><div><dt>Stage</dt><dd>{statusText(chosen.status, chosen.outcome)}</dd></div><div><dt>Applied</dt><dd>{chosen.appliedAt ? calendarDate(chosen.appliedAt) : '—'}</dd></div><div><dt>Résumé sent</dt><dd>{chosen.appliedAt ? (chosen.submittedFilename || (chosen.hasSubmittedText ? 'Recorded résumé text' : 'No file kept')) : '—'}</dd></div><div><dt>Next follow-up</dt><dd>{chosen.followUpDate ? <span className={chosen.followUpDate <= todayKey ? 'due' : undefined}>{chosen.followUpDate}</span> : 'None'}</dd></div></dl>{chosen.appliedAt && <details className="submitted-panel" open><summary>What you sent</summary><SubmittedRecord key={chosen.id} jobId={chosen.id} /></details>}<JobTrackerDetails key={chosen.id} job={chosen} onSaved={load} /><TrackerJobRecord key={`record-${chosen.id}`} jobId={chosen.id} onChanged={load} /></aside>}
+    {chosen && <aside className="panel tracker-job-details" aria-label={`Details for ${chosen.company}`}><button className="text-button back-button" onClick={() => setSelected('')}>← All applications</button><div className="job-header-row details-head"><div className="job-title-block"><h2>{chosen.title}</h2><p>{place(chosen)}{chosen.appliedAt ? ` · Applied ${calendarDate(chosen.appliedAt)}` : ''}</p></div><span className={stageClass(chosen.status)}>{statusText(chosen.status, chosen.outcome)}</span><button className="text-button" aria-label="Close details" onClick={() => setSelected('')}><Icon name="x" /></button></div><div className="button-row"><a href={`#jobs/${chosen.id}`}>Open job and résumé</a>{chosen.sourceUrl && <a href={chosen.sourceUrl} target="_blank" rel="noreferrer">Original posting ↗</a>}</div><ApplicationDetails job={chosen} preferences={data.preferences} onSaved={load} /></aside>}
     </div>
-    <details className="panel answer-library-panel" open={openLibrary}><summary>Answer library · search every saved answer and reuse one for another job</summary><AnswerLibrary /></details></>}
+    <details className="panel answer-library-panel"><summary>Question and Answer Bank · search every saved answer and reuse one for another job</summary><AnswerLibrary /></details></>}
     {gapsOnly && <section className="panel gap-trends"><p className="subtle">{data.analyzedJobs} tracked job(s) with a tailored draft. Each job counts once per gap; previous runs are excluded.</p>{data.gaps.map((gap) => <details key={gap.key}><summary>{gap.label} · {gap.count} job(s)</summary>{gap.jobs.map((job) => <article key={job.id}><a href={`#jobs/${job.id}`}>{job.company} · {job.title}</a><p>{job.reason}</p></article>)}</details>)}{!data.gaps.length && <p className="empty-state">No recorded evidence gaps yet. Tailor tracked jobs to build this view.</p>}</section>}
     {showAdd && <AddJobDialog alreadyApplied onClose={() => setShowAdd(false)} onOpenExisting={(id) => { setShowAdd(false); showRecord({ id } as TrackerJob) }} onAdded={() => load()} onSaved={async (id) => { setShowAdd(false); await load(); setSelected(id) }} />}
   </main>

@@ -1,9 +1,13 @@
+import { Toggle } from './ui/toggle.js'
+import { Skeleton } from './ui/skeleton.js'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { FeedSettings } from './feed-settings.js'
 import { AboutPanel, BackupsPanel, ClearDataPanel } from './runtime.js'
 import { taskNames, type PublicSettings, type TaskName } from '../../../packages/shared/src/index.js'
 import { AppHeader, PageHeader, SectionRail } from './layout.js'
 import { FollowUpSettings } from './followup-settings.js'
+import { SetupPanel } from './setup-panel.js'
+import { AppearancePanel } from './appearance-panel.js'
 import { Toast } from './toast.js'
 import { RestoreAnnouncer, SaveRegistry, type SaveSection } from './settings-save.js'
 import { readDraft, useDraft } from './unsaved.js'
@@ -163,7 +167,7 @@ export function SettingsPage() {
   const [confirmDiscard, setConfirmDiscard] = useState(false)
   useDraft('settings', stored, settings, settingsChanged, settings !== null)
   const usesClaude = runsOn('anthropic').length > 0
-  if (!settings) return <main className="shell"><p className="loading">Loading local settings…</p></main>
+  if (!settings) return <main className="shell"><Skeleton lines={6} label="Loading local settings…" /></main>
 
   const claudeReady = Boolean(settings.anthropicApiKeyConfigured || settings.anthropicApiKey)
   const localModel = providerModel('ollama'), claudeModel = providerModel('anthropic')
@@ -188,7 +192,8 @@ export function SettingsPage() {
 
     {notice && <Toast error={notice.kind === 'error'} onClose={() => setNotice(null)}>{notice.text}</Toast>}
 
-    <div className="rs-layout"><SectionRail items={[{ id: 'ai', label: 'AI features' }, ...(showModels ? [{ id: 'models', label: 'Résumé tailoring' }] : []), { id: 'feed', label: 'Job feed' }, { id: 'followups', label: 'Follow-ups' }, { id: 'backups', label: 'Backups' }, { id: 'cleardata', label: 'Clear data' }, { id: 'about', label: 'About' }]} /><div className="content">
+    <div className="rs-layout"><SectionRail items={[{ id: 'setup', label: 'Your setup' }, { id: 'ai', label: 'AI features' }, ...(showModels ? [{ id: 'models', label: 'Résumé tailoring' }] : []), { id: 'feed', label: 'Job feed' }, { id: 'followups', label: 'Follow-ups' }, { id: 'backups', label: 'Backups' }, { id: 'cleardata', label: 'Clear data' }, { id: 'about', label: 'About' }]} /><div className="content">
+    <SetupPanel />
     <AiFeaturesPanel advancedOpen={advanced} onAdvanced={setAdvanced} />
 
     {showModels && <section className="panel provider-panel block" id="models" tabIndex={-1} aria-labelledby="tailoring-heading">
@@ -210,7 +215,7 @@ export function SettingsPage() {
           <div className="button-row"><button className="button small" disabled={busy === 'anthropic'} onClick={() => testConnection('anthropic')}>{busy === 'anthropic' ? 'Checking…' : 'Test key'}</button>{settings.anthropicApiKeyConfigured && <button className="button small quiet danger" disabled={busy === 'clear-key'} onClick={clearKey}>Remove saved key</button>}</div>
         </article>
       </div>
-      {settings.taskModels.requirementExtraction.provider === 'ollama' && <label className="auto-fit"><input type="checkbox" checked={settings.autoFitCheck} onChange={(event) => setSettings({ ...settings, autoFitCheck: event.target.checked })} /><span><b>Check each new job’s fit automatically</b><span className="t">Off by default. Uses this computer in the background while you work, including for jobs the job feed brings in. You can always check a job yourself, or press Check fits on the Jobs page.</span></span></label>}
+      {settings.taskModels.requirementExtraction.provider === 'ollama' && <div className="auto-fit"><Toggle checked={settings.autoFitCheck} onChange={(on) => setSettings({ ...settings, autoFitCheck: on })}><span className="sr-only">Check each new job’s fit automatically</span></Toggle><span aria-hidden="true"><b>Check each new job’s fit automatically</b><span className="t">Off by default. Uses this computer in the background while you work, including for jobs the job feed brings in. You can always check a job yourself, or press Check fits on the Jobs page.</span></span></div>}
 
       {usesClaude && <details className="more" open>
         <summary>Spending limits <span className="muted">· ${settings.costCapUsd} a run · ${settings.monthlyCapUsd} a month</span></summary>
@@ -261,6 +266,7 @@ export function SettingsPage() {
 
     <div id="feed" tabIndex={-1}><FeedSettings /></div>
     <div id="followups" tabIndex={-1}><FollowUpSettings /></div>
+    <AppearancePanel />
     <div id="backups" tabIndex={-1}><BackupsPanel /></div>
     <div id="cleardata" tabIndex={-1}><ClearDataPanel /></div>
     <div id="about" tabIndex={-1}><AboutPanel /></div>

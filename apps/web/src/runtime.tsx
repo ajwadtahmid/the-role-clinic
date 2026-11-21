@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { localApi } from './answers.js'
 import { useToast } from './toast.js'
 import { loadAiFeatures, setAiFeatures, useAiFeatures } from './ai-features.js'
+import { setFeedEnabled } from './feed-switch.js'
 
 interface Status { version: string; platform: string; arch: string; nodeVersion: string; schemaVersion: number; dataDirectory: string; instanceId: string | null; managed: boolean; canShutdown: boolean; welcomeComplete: boolean; activeRuns: number }
 const welcomeSteps: Array<{ title: string; body: string[]; action: string; target: string }> = [
@@ -17,17 +18,19 @@ export function Welcome({ busy, error, onFinish }: { busy: boolean; error: strin
   // Without AI features the walkthrough is just the last step.
   const steps = features.enabled ? welcomeSteps : [{ ...welcomeSteps[2], body: [welcomeSteps[2].body[0], 'AI features are off. You can turn them on at any time in Settings.'] }]
   const current = steps[step], last = step === steps.length - 1
-  async function choose(withAi: boolean) {
+  // Three starting points: track only, track with a job file, or both plus tailoring. The choice only sets the switches; each can change later in Settings.
+  async function choose(level: 'track' | 'feed' | 'tailor') {
     setChoosing(true); setProblem('')
-    try { await setAiFeatures({ enabled: false }); onFinish(withAi ? '#settings?setup' : '#jobs') } catch (issue) { setProblem((issue as Error).message) } finally { setChoosing(false) }
+    try { await setFeedEnabled(level !== 'track'); await setAiFeatures({ enabled: false }); onFinish(level === 'tailor' ? '#settings?setup' : level === 'feed' ? '#settings' : '#jobs') } catch (issue) { setProblem((issue as Error).message) } finally { setChoosing(false) }
   }
   if (!features.chosen) return <main className="shell welcome-shell" id="main" tabIndex={-1}>
     <header className="topbar"><span className="wordmark"><img className="mark" src="/logo.svg" alt="" /><span>The Role Clinic</span></span><span className="local-chip"><svg className="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>Private · on this device</span></header>
     <section className="page-header"><h1>How do you want to start?</h1><p className="page-note">Everything stays on this device either way. You can change this at any time in Settings.</p></section>
     <section className="panel welcome-panel" aria-label="Choose how to start">
       <div className="start-choices">
-        <button className="start-choice" disabled={busy || choosing} onClick={() => void choose(false)}><strong>Just track my applications</strong><span>Save jobs, record what you applied to, set follow-ups and keep notes. Nothing else to set up.</span><span className="pill-note">Ready in a minute</span></button>
-        <button className="start-choice" disabled={busy || choosing} onClick={() => void choose(true)}><strong>Also tailor résumés with AI</strong><span>Check how well you fit a job and write a tailored résumé from your own facts. Needs a local AI model; we will walk you through it.</span><span className="pill-note">Takes a few minutes the first time</span></button>
+        <button className="start-choice" disabled={busy || choosing} onClick={() => void choose('track')}><strong>Just track my applications</strong><span>Save jobs, record what you applied to, set follow-ups and keep notes. Nothing else to set up.</span><span className="pill-note">Ready in a minute</span></button>
+        <button className="start-choice" disabled={busy || choosing} onClick={() => void choose('feed')}><strong>Track, and fill from a job file</strong><span>Everything in tracking, plus jobs that a search tool saves to a CSV file arrive in a To review list. No AI needed.</span><span className="pill-note">Needs a CSV from a search tool</span></button>
+        <button className="start-choice" disabled={busy || choosing} onClick={() => void choose('tailor')}><strong>Also tailor résumés with AI</strong><span>Check how well you fit a job and write a tailored résumé from your own facts. Needs a local AI model; we will walk you through it.</span><span className="pill-note">Takes a few minutes the first time</span></button>
       </div>
       <p className="subtle">Not sure? Start with tracking. Setting up AI later does not change anything you have saved.</p>
       {(problem || error) && <p role="alert" className="notice error">{problem || error}</p>}

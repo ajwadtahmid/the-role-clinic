@@ -10,11 +10,16 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); window.location.hash = '' })
 const json = (value: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } }))
 // A stand-in server: what Ollama answers can be changed between clicks, and the AI-features choice is remembered like the real one.
 function stub(initial: { enabled: boolean; hidden?: boolean }) {
-  const state = { features: { chosen: true, enabled: initial.enabled, hidden: initial.hidden ?? false }, ollama: 'down' as 'down' | 'no-model' | 'ready', test: 'ok' as 'ok' | 'fail' }
+  const state = { features: { chosen: true, enabled: initial.enabled, hidden: initial.hidden ?? false }, ollama: 'down' as 'down' | 'no-model' | 'ready', test: 'ok' as 'ok' | 'fail', pull: 'ok' as 'ok' | 'fail' }
   const saved = { ollamaBaseUrl: 'http://127.0.0.1:11434', anthropicApiKeyConfigured: false, taskModels: { requirementExtraction: { provider: 'ollama', model: 'gemma4:12b' } } }
   vi.stubGlobal('fetch', (path: string, init: RequestInit = {}) => {
     if (path === '/api/settings') return json({ ...saved, aiFeatures: state.features })
     if (path === '/api/connections/ollama/test') return state.ollama === 'down' ? json({ error: 'fetch failed' }, 500) : json({ ok: true, models: state.ollama === 'ready' ? ['gemma4:12b'] : ['llama3:8b'] })
+    if (path === '/api/connections/ollama/pull') {
+      if (state.pull === 'fail') return Promise.resolve(new Response('{"status":"pulling","total":100,"completed":20}\n{"error":"disk full"}\n', { status: 200 }))
+      state.ollama = 'ready'
+      return Promise.resolve(new Response('{"status":"pulling","total":100,"completed":60}\n{"status":"success"}\n', { status: 200 }))
+    }
     if (path === '/api/ai/test') return state.test === 'ok' ? json({ ok: true, seconds: 3, model: 'gemma4:12b' }) : json({ ok: false, error: 'The model did not answer.' }, 502)
     if (path === '/api/ai-features') { state.features = { ...state.features, ...JSON.parse(String(init.body)), chosen: true }; return json({ aiFeatures: state.features }) }
     return json({}, 404)
@@ -58,6 +63,20 @@ describe('AI features setup', () => {
     expect(server.features).toEqual({ chosen: true, enabled: true, hidden: true })
     await user.click(screen.getByRole('button', { name: 'Show AI features' }))
     expect(await screen.findByText('AI features are on')).toBeTruthy()
+  })
+
+  it('downloads the model from the setup, shows a failure with a retry, then moves on to the test', async () => {
+    const server = stub({ enabled: false }), user = userEvent.setup()
+    server.ollama = 'no-model'; server.pull = 'fail'
+    await show()
+    await user.click(screen.getByRole('button', { name: 'Set up AI features' }))
+    await user.click(screen.getByRole('button', { name: 'Check for Ollama' }))
+    await user.click(await screen.findByRole('button', { name: 'Download gemma4:12b' }))
+    expect((await screen.findByRole('alert')).textContent).toContain('disk full')
+    server.pull = 'ok'
+    await user.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByRole('button', { name: 'Run a quick test' })).toBeTruthy()
+    expect(server.features.enabled).toBe(false)
   })
 
   it('opens straight into the setup when sent there from the first-run choice, and keeps Claude as a separate advanced option', async () => {

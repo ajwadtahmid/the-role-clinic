@@ -22,7 +22,7 @@ async function setup() {
 }
 describe('first run and maintenance UI', () => {
   it('asks a new install once how it will be used, and records the choice either way', async () => {
-    for (const [name, target, enabled] of [['Just track my applications', '#jobs', false], ['Also tailor résumés with AI', '#settings?setup', false]] as const) {
+    for (const [name, target, feedOn] of [['Just track my applications', '#jobs', false], ['Track, and fill from a job file', '#settings', true], ['Also tailor résumés with AI', '#settings?setup', true]] as const) {
       const { user, sqlite } = await setup()
       window.location.hash = ''
       const view = render(<FirstRun><p>Workspace ready</p></FirstRun>)
@@ -31,8 +31,9 @@ describe('first run and maintenance UI', () => {
       await screen.findByText('Workspace ready')
       expect(window.location.hash).toBe(target)
       const saved = (await (await fetch('/api/settings')).json()) as { aiFeatures: { chosen: boolean; enabled: boolean } }
-      // Choosing AI only says the person wants it; it turns on once setup has passed.
-      expect(saved.aiFeatures).toMatchObject({ chosen: true, enabled })
+      // Choosing AI only says the person wants it; it turns on once setup has passed. The job feed switch follows the card.
+      expect(saved.aiFeatures).toMatchObject({ chosen: true, enabled: false })
+      expect(await (await fetch('/api/feed/status')).json()).toMatchObject({ enabled: feedOn })
       view.unmount(); cleanup(); sqlite.close()
     }
     window.location.hash = ''

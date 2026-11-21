@@ -69,7 +69,7 @@ describe('settings page', () => {
     const address = await screen.findByLabelText('Local server address') as HTMLInputElement
     await user.clear(address); await user.type(address, 'http://127.0.0.1:11555')
     await user.type(screen.getByLabelText('API key'), 'sk-ant-typed')
-    const days = screen.getByLabelText('Days with no reply') as HTMLInputElement
+    const days = screen.getByLabelText('Suggest closing as “No reply” after (days)') as HTMLInputElement
     await waitFor(() => expect(days.disabled).toBe(false))
     await user.clear(days); await user.type(days, '21')
     await user.type(screen.getByLabelText('Path to a different CSV file'), '/tmp/other.csv')
@@ -77,7 +77,7 @@ describe('settings page', () => {
     render(<SettingsPage />)
     expect((await screen.findByLabelText('Local server address') as HTMLInputElement).value).toBe('http://127.0.0.1:11555')
     expect((screen.getByLabelText('API key') as HTMLInputElement).value).toBe('sk-ant-typed')
-    await waitFor(() => expect((screen.getByLabelText('Days with no reply') as HTMLInputElement).value).toBe('21'))
+    await waitFor(() => expect((screen.getByLabelText('Suggest closing as “No reply” after (days)') as HTMLInputElement).value).toBe('21'))
     await waitFor(() => expect((screen.getByLabelText('Path to a different CSV file') as HTMLInputElement).value).toBe('/tmp/other.csv'))
     expect(screen.getByRole('group', { name: 'Unsaved settings' })).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'Discard' })); await user.click(screen.getByRole('button', { name: 'Yes, discard' }))
@@ -142,14 +142,14 @@ describe('settings page', () => {
 
   it('offers automatic fit checks only for a local model, off until chosen, and saves the choice', async () => {
     const { user, sqlite } = await setup()
-    const box = await screen.findByRole('checkbox', { name: /Check each new job’s fit automatically/ }) as HTMLInputElement
+    const box = await screen.findByRole('switch', { name: /Check each new job’s fit automatically/ }) as HTMLInputElement
     expect(box.checked).toBe(false)
     await user.click(box)
     await user.click(screen.getByRole('button', { name: 'Save settings' }))
     await screen.findByText('Settings saved locally.')
     expect((await (await fetch('/api/settings')).json() as { autoFitCheck: boolean }).autoFitCheck).toBe(true)
     await user.click(screen.getByRole('radio', { name: 'Use this' }))
-    expect(screen.queryByRole('checkbox', { name: /Check each new job’s fit automatically/ })).toBeNull()
+    expect(screen.queryByRole('switch', { name: /Check each new job’s fit automatically/ })).toBeNull()
     sqlite.close()
   })
 

@@ -54,7 +54,7 @@ describe('tracker mode (AI features off)', () => {
     expect(screen.queryByText('Not checked')).toBeNull()
     expect(screen.queryByRole('button', { name: /Tailor résumé/ })).toBeNull()
     expect(screen.queryByRole('link', { name: 'Résumé' })).toBeNull()
-    expect(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('link', { name: 'Tracker' })).toBeTruthy()
+    expect(within(screen.getByRole('group', { name: 'Jobs view' })).getByRole('link', { name: 'Tracker' }).getAttribute('href')).toBe('#tracker')
     await user.click(apply)
     // One click: no "Record what you submitted" form, and the job description is kept with the application.
     await waitFor(async () => expect((await status()).status).toBe('applied'))

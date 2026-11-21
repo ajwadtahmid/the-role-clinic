@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react'
 import { useAiFeatures } from './ai-features.js'
 
-export type NavKey = 'jobs' | 'tracker' | 'resume' | 'settings'
+export type NavKey = 'today' | 'jobs' | 'qa' | 'resume' | 'settings'
 const links: Array<[NavKey, string, string]> = [
-  ['jobs', '#jobs', 'Jobs'], ['tracker', '#tracker', 'Tracker'],
+  ['today', '#today', 'Today'], ['jobs', '#jobs', 'Jobs'], ['qa', '#qa', 'Q&A'],
   ['resume', '#resume', 'Résumé'], ['settings', '#settings', 'Settings'],
 ]
 
@@ -46,4 +46,9 @@ export function PageHeader({ title, children, actions }: { title: string; childr
 // A short list of the sections on a long page; each button scrolls to its section.
 export function SectionRail({ items }: { items: Array<{ id: string; label: string; count?: number }> }) {
   return <nav className="rail" aria-label="On this page">{items.map(({ id, label, count }) => <button key={id} type="button" onClick={() => { const target = document.getElementById(id); target?.scrollIntoView?.({ block: 'start' }); target?.focus() }}>{label}{count !== undefined && <span className="n">{count}</span>}</button>)}</nav>
+}
+
+// Jobs has two views of the same jobs: the working list, and the Tracker, a table of everything applied to.
+export function JobsViews({ current }: { current: 'list' | 'tracker' }) {
+  return <div className="seg jobs-views" role="group" aria-label="Jobs view"><a href="#jobs" aria-current={current === 'list' ? 'page' : undefined}>List</a><a href="#tracker" aria-current={current === 'tracker' ? 'page' : undefined}>Tracker</a></div>
 }

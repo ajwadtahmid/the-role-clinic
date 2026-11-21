@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { SubmissionForm } from './tracker-page.js'
-import { AppHeader, PageHeader } from './layout.js'
+import { AppHeader, JobsViews, PageHeader } from './layout.js'
+import { ApplicationPanel } from './tracker-page.js'
 import { Icon } from './icons.js'
 import { api } from './api.js'
-import { AddJobDialog, Quickstart } from './add-job.js'
+import { AddJobDialog, Quickstart, usePasteJobLink } from './add-job.js'
+import { usePendingAddJob } from './shortcuts.js'
+import { Skeleton } from './ui/skeleton.js'
 import { Toast } from './toast.js'
 import { FitMeter, JobFit, useFitBatch } from './fit-check.js'
 import { JobHeader, JobOverview, RunStrip, latestRun, JobResume, JobTabs, type Analysis, type Detail, type Estimate, type Job, type JobTab } from './job-detail.js'
@@ -72,6 +75,14 @@ export function Workspace() {
   const [query, setQuery] = useState(''),[statusFilter, setStatusFilter] = useState<JobStage>('new'), [feedOnly, setFeedOnly] = useState(false), [limit, setLimit] = useState(pageSize), [notice, setNotice] = useState<ReactNode>(''), [toast, setToast] = useState<{ text: ReactNode; undo?: () => void } | null>(null), [busy, setBusy] = useState(false)
   const [sort, setSort] = useState<'newest' | 'company'>('newest'), [counts, setCounts] = useState<Counts | null>(null)
   const [feed, setFeed] = useState<FeedStatus | null>(null), [checking, setChecking] = useState(false), lastCheck = useRef(0), chainTailor = useRef<string | null>(null), [showSubmit, setShowSubmit] = useState(false), [showAdd, setShowAdd] = useState(false)
+  const [pastedLink, setPastedLink] = useState('')
+  // Counts the stage tabs the person has clicked, so a job finishing loading later does not switch the list away from their choice.
+  const filterChoices = useRef(0)
+  // The tab showing now. Work that finishes after a click (a reload after Save, say) must use this, not the tab from when it started.
+  const shown = useRef({ filter: statusFilter, feedOnly })
+  shown.current = { filter: statusFilter, feedOnly }
+  usePendingAddJob(() => { setPastedLink(''); setShowAdd(true) })
+  usePasteJobLink(showAdd || showSubmit, (url) => { setPastedLink(url); setShowAdd(true) })
   const [analysis, setAnalysis] = useState<Analysis | null>(null), [estimate, setEstimate] = useState<Estimate | null>(null), [estimateError, setEstimateError] = useState(''), [hasExport, setHasExport] = useState(false)
   const [readiness, setReadiness] = useState<Readiness | null>(null), [dismissedRun, setDismissedRun] = useState<string | null>(null)
   // Without AI features there is only the Overview, no fit meters, no batch checks and no résumé form to fill in.
@@ -79,7 +90,7 @@ export function Workspace() {
   const batch = useFitBatch(() => { void loadJobs().catch(() => undefined) }, (text) => flash(text))
   async function loadReadiness() { setReadiness(await api<Readiness>('/api/onboarding')) }
   // The feed filter only applies to To review; the server names that view `triage`.
-  async function loadJobs(filter = statusFilter, onlyFeed = feedOnly) { const view = onlyFeed && filter === 'new' ? 'triage' : filter; const [result, summary] = await Promise.all([api<{ jobs: Job[] }>(`/api/jobs?q=${encodeURIComponent(query)}&status=${encodeURIComponent(view)}`), api<Counts>('/api/jobs/counts')]); setJobs(result.jobs); setCounts(summary) }
+  async function loadJobs(filter = shown.current.filter, onlyFeed = shown.current.feedOnly) { const view = onlyFeed && filter === 'new' ? 'triage' : filter; const [result, summary] = await Promise.all([api<{ jobs: Job[] }>(`/api/jobs?q=${encodeURIComponent(query)}&status=${encodeURIComponent(view)}`), api<Counts>('/api/jobs/counts')]); setJobs(result.jobs); setCounts(summary) }
   const priorityRank = (value?: string | null) => { const rank = ['high', 'medium-high', 'medium', 'low'].indexOf((value ?? '').trim().toLowerCase()); return rank < 0 ? 9 : rank }
   const sortedJobs = feedOnly && statusFilter === 'new' && sort === 'newest' ? [...jobs].sort((a, b) => priorityRank(a.finderPriority) - priorityRank(b.finderPriority) || (b.postedAt ?? b.foundAt ?? b.capturedAt).localeCompare(a.postedAt ?? a.foundAt ?? a.capturedAt)) : sort === 'company' ? [...jobs].sort((a, b) => (a.company || '').localeCompare(b.company || '') || (a.title || '').localeCompare(b.title || '')) : jobs
   async function loadExports(id: string) { const result = await api<{ artifacts: unknown[] }>(`/api/jobs/${id}/artifacts`); setHasExport(result.artifacts.length > 0) }
@@ -89,10 +100,12 @@ export function Workspace() {
     await loadExports(id)
   }
   async function loadDetail(id: string) {
+    const chosenBefore = filterChoices.current
     const loaded = await api<Detail>(`/api/jobs/${id}`); setDetail(loaded)
     // A job opened from an address or another page may belong to a different stage than the list is showing; switch so it is listed.
     const stage = stageOfStatus(loaded.job.status ?? 'new')
-    if (stage && stage !== statusFilter) { setStatusFilter(stage); setFeedOnly(false) }
+    // A stage tab the person picked while the job was loading wins.
+    if (stage && stage !== statusFilter && chosenBefore === filterChoices.current) { setStatusFilter(stage); setFeedOnly(false) }
     await loadAnalysis(id)
   }
   async function checkFeed(manual: boolean) {
@@ -153,10 +166,11 @@ export function Workspace() {
   }
   async function afterStatusChange(jobId: string, status: string, outcome?: string, undo?: () => void) {
     const stage = stageOfStatus(status), index = sortedJobs.findIndex((job) => job.id === jobId), neighbour = sortedJobs[index + 1] ?? sortedJobs[index - 1]
-    const leaving = !detailOnly && stage !== statusFilter && jobId === selected
+    const leaving = !detailOnly && stage !== statusFilter && jobId === selected, choicesBefore = filterChoices.current
     await loadReadiness()
     flash(stage === null ? <>Status updated to {statusText(status, outcome).toLowerCase()}. <a href={`#tracker?job=${jobId}`}>View in Tracker</a></> : status === 'saved' ? 'Job saved.' : status === 'skipped' ? 'Job skipped.' : status === 'new' ? 'Moved back to To review.' : `Status updated to ${statusText(status, outcome).toLowerCase()}.`, undo)
-    if (leaving) { await loadJobs(); if (neighbour) selectJob(neighbour.id); else backToList() } else { if (jobId === selected) await loadDetail(jobId); await loadJobs() }
+    // Opening the next job keeps decisions one click apart, unless the person has already moved to another tab.
+    if (leaving) { await loadJobs(); if (choicesBefore !== filterChoices.current) { setDetail(await api<Detail>(`/api/jobs/${jobId}`)); return } if (neighbour) selectJob(neighbour.id); else backToList() } else { if (jobId === selected) await loadDetail(jobId); await loadJobs() }
   }
   // Save, Skip and Restore on a row act on that job without opening it.
   async function changeStatus(job: Job, status: string) {
@@ -206,13 +220,13 @@ export function Workspace() {
   useEffect(() => { if (selected || noJobs || !firstId || !window.matchMedia?.('(min-width: 881px)').matches) return; if (!/^(#jobs?)?$/.test(location.hash)) return; location.replace(`#jobs/${firstId}`) }, [selected, noJobs, firstId])
   return <main className={`shell${selected ? ' detail-open' : ''}`} id="main" tabIndex={-1}>
     <AppHeader current="jobs" />
-    <PageHeader title="Jobs" actions={<>{feed?.configured && <>{feed.lastCheckedAt && <span className="subtle feed-checked">Last checked {new Date(feed.lastCheckedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>}<button className="button secondary" disabled={checking} onClick={() => void checkFeed(true)}>{checking ? 'Checking…' : 'Check for new jobs'}</button></>}{aiOn && batch.button}<button className="button primary" onClick={() => setShowAdd(true)}><Icon name="plus" />Add job</button></>}>Jobs you have not applied to yet. Applied jobs are in the <a href="#tracker">Tracker</a>{counts && counts.applied > 0 ? ` (${counts.applied})` : ''}.</PageHeader>
+    <PageHeader title="Jobs" actions={<><JobsViews current="list" />{feed?.configured && <>{feed.lastCheckedAt && <span className="subtle feed-checked">Last checked {new Date(feed.lastCheckedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>}<button className="button secondary" disabled={checking} onClick={() => void checkFeed(true)}>{checking ? 'Checking…' : 'Check for new jobs'}</button></>}{aiOn && batch.button}<button className="button primary" onClick={() => { setPastedLink(''); setShowAdd(true) }}><Icon name="plus" />Add job</button></>}>Jobs you have not applied to yet. Applied jobs are in the <a href="#tracker">Tracker</a>{counts && counts.applied > 0 ? ` (${counts.applied})` : ''}.</PageHeader>
     {notice && <Toast error onClose={() => setNotice('')}>{notice}</Toast>}
     {toast && <Toast onUndo={toast.undo} onClose={() => setToast(null)}>{toast.text}</Toast>}
     {aiOn && batch.panel}
     {listing && <>
       <div className="toolbar"><label className="search"><Icon name="search" /><input aria-label="Search jobs" value={query} placeholder="Search title or company" onChange={(e) => setQuery(e.target.value)} /></label><label className="select">Sort<select value={sort} onChange={(event) => setSort(event.target.value as 'newest' | 'company')}><option value="newest">Newest first</option><option value="company">Company A–Z</option></select></label></div>
-      <div className="chips" role="group" aria-label="Show jobs">{stageOptions.map(([value, label]) => <button key={value} type="button" className="chip" aria-pressed={statusFilter === value} onClick={() => setStatusFilter(value)}><Icon name="check" />{label}{counts && <span className="n">{counts[value]}</span>}</button>)}<span className="spacer" />{(feed?.configured || (counts?.triage ?? 0) > 0) && <label className="toggle"><input type="checkbox" checked={feedOnly && statusFilter === 'new'} disabled={statusFilter !== 'new'} onChange={(event) => setFeedOnly(event.target.checked)} />Only from the job feed{counts ? ` (${counts.triage})` : ''}</label>}</div>
+      <div className="chips" role="group" aria-label="Show jobs">{stageOptions.map(([value, label]) => <button key={value} type="button" className="chip" aria-pressed={statusFilter === value} onClick={() => { filterChoices.current++; setStatusFilter(value) }}><Icon name="check" />{label}{counts && <span className="n">{counts[value]}</span>}</button>)}<span className="spacer" />{(feed?.configured || (counts?.triage ?? 0) > 0) && <label className="toggle"><input type="checkbox" checked={feedOnly && statusFilter === 'new'} disabled={statusFilter !== 'new'} onChange={(event) => setFeedOnly(event.target.checked)} />Only from the job feed{counts ? ` (${counts.triage})` : ''}</label>}</div>
     </>}
     {noJobs ? <Quickstart readiness={readiness} onAdd={() => setShowAdd(true)} /> : <div className={`jobs-layout ${selected ? 'has-selection' : ''} ${detailOnly ? 'detail-only' : ''}`}>
       <div className={`list-col ${feedOnly && statusFilter === 'new' ? 'feed-only' : ''}`}><div className="list-scroll" aria-label="Job list">
@@ -232,9 +246,10 @@ export function Workspace() {
             {tab === 'fit' && <JobFit jobId={selected!} analysis={analysis} busy={busy} onCheck={() => void startRun('extract')} />}
             {tab === 'resume' && <JobResume jobId={selected!} analysis={analysis} busy={busy} onRetry={(id) => void retryRun(id)} />}
           </div>
-        </div> : selected ? <p className="loading panel job-detail" role="status">Loading job…</p> : <div className="panel job-empty"><h2>Select a job</h2><p className="subtle">Pick a job from the list to see its requirements, résumé and history. Use Add job to save a new posting.</p></div>}
+          {!['new', 'saved', 'skipped'].includes(detail.job.status ?? 'new') && <ApplicationPanel key={selected!} jobId={selected!} />}
+        </div> : selected ? <div className="panel job-detail"><Skeleton lines={5} label="Loading job…" /></div> : <div className="panel job-empty"><h2>Select a job</h2><p className="subtle">Pick a job from the list to see its requirements, résumé and history. Use Add job to save a new posting.</p></div>}
       </section>
     </div>}
-    {showAdd && <AddJobDialog onClose={() => setShowAdd(false)} onOpenExisting={(id) => { setShowAdd(false); selectJob(id) }} onSaved={async (id) => { setShowAdd(false); setStatusFilter('new'); setFeedOnly(false); await loadJobs('new', false); selectJob(id); await loadReadiness(); flash('Job saved.') }} />}
+    {showAdd && <AddJobDialog initialUrl={pastedLink} onClose={() => { setShowAdd(false); setPastedLink('') }} onOpenExisting={(id) => { setShowAdd(false); selectJob(id) }} onSaved={async (id) => { setShowAdd(false); setStatusFilter('new'); setFeedOnly(false); await loadJobs('new', false); selectJob(id); await loadReadiness(); flash('Job saved.') }} />}
   </main>
 }

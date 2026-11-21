@@ -41,13 +41,29 @@ async function setup() {
 describe('Follow-up settings', () => {
   it('shows the saved number of quiet days and saves a new one', async () => {
     const { user, sqlite } = await setup()
-    const input = await screen.findByLabelText('Days with no reply') as HTMLInputElement
+    const input = await screen.findByLabelText('Suggest closing as “No reply” after (days)') as HTMLInputElement
     await waitFor(() => expect(input.disabled).toBe(false))
     expect(input.value).toBe('14')
     await user.clear(input); await user.type(input, '30')
     await user.click(screen.getByRole('button', { name: 'Save settings' }))
     await screen.findByText('Settings saved locally.')
     expect(sqlite.prepare('SELECT ghosted_days AS days FROM tracker_preferences').get()).toEqual({ days: 30 })
+    sqlite.close()
+  })
+
+  it('turns each rule and the whole section off, folds when off, and keeps the numbers', async () => {
+    const { user, sqlite } = await setup()
+    const master = await screen.findByRole('switch', { name: 'Remind me to follow up' }) as HTMLInputElement
+    await waitFor(() => expect(master.disabled).toBe(false))
+    expect(master.checked).toBe(true)
+    await user.click(screen.getByRole('switch', { name: 'After you apply, follow up after' }))
+    expect((screen.getByLabelText('After you apply, follow up after (days)') as HTMLInputElement).disabled).toBe(true)
+    await user.click(master)
+    expect(screen.getByText('Off')).toBeTruthy()
+    expect((document.querySelector('details.fold-card') as HTMLDetailsElement).open).toBe(false)
+    await user.click(screen.getByRole('button', { name: 'Save settings' }))
+    await screen.findByText('Settings saved locally.')
+    expect(sqlite.prepare('SELECT reminders_on AS r,apply_on AS a,apply_days AS d FROM tracker_preferences').get()).toEqual({ r: 0, a: 0, d: 7 })
     sqlite.close()
   })
 })

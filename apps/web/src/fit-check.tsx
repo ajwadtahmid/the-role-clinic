@@ -1,3 +1,4 @@
+import { Skeleton } from './ui/skeleton.js'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { api } from './api.js'
 import { Icon } from './icons.js'
@@ -47,7 +48,7 @@ function Row({ requirement, covered, match }: { requirement: Requirement; covere
 export function JobFit({ jobId, analysis, busy, onCheck }: { jobId: string; analysis: Analysis | null; busy: boolean; onCheck: () => void }) {
   const [cost, setCost] = useState<Estimate | null>(null), checked = Boolean(analysis?.extraction)
   useEffect(() => { setCost(null); if (!checked) void api<Estimate>(`/api/jobs/${jobId}/estimate?kind=extract`).then(setCost).catch(() => undefined) }, [jobId, checked])
-  if (!analysis) return <p className="loading" role="status">Loading…</p>
+  if (!analysis) return <Skeleton lines={3} />
   const active = running(analysis), last = analysis.runs.find((run) => run.kind === 'extract')
   if (active) return <section className="fit-card" aria-labelledby="fit-h"><h3 id="fit-h">Checking the fit…</h3><div className="fit-progress" role="progressbar" aria-label="Checking the fit"><i /></div><p className="subtle" role="status">{active.status === 'queued' ? 'Waiting in the queue.' : active.step && active.step !== 'starting' ? active.step : 'Reading the posting and comparing it with your résumé.'} You can leave this page; the result will be here when you come back.</p></section>
   if (!analysis.extraction) return <section className="fit-card" aria-labelledby="fit-h"><h3 id="fit-h">Fit check</h3>

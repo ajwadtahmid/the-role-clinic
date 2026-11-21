@@ -119,16 +119,16 @@ try {
   checks.push('native first run')
   await memory('idle after welcome')
   // Capture through actual React controls, including the blocked-site fallback.
-  await button('Add your first job'); await button('From a link'); await field('Job link', 'https://www.linkedin.com/jobs/view/fixture'); await button('Fetch details')
+  await button('Add your first job'); await field('Job link (optional)', 'https://www.linkedin.com/jobs/view/fixture'); await button('Fetch details')
   await until(async () => (await text()).includes('not supported for direct capture'), 'paste fallback')
-  await button('Paste the description'); await field('Company', 'Desktop Fixture'); await field('Role title', 'TypeScript Engineer'); await field('Job description (optional)', 'Build reliable TypeScript APIs and maintain software systems with our engineering team. This is a synthetic job used only for desktop validation.'); await button('Save job')
+  await field('Company', 'Desktop Fixture'); await field('Role title', 'TypeScript Engineer'); await field('Job description (optional)', 'Build reliable TypeScript APIs and maintain software systems with our engineering team. This is a synthetic job used only for desktop validation.'); await button('Save job')
   await until(async () => (await api('/api/jobs')).jobs?.length === 1, 'captured job')
   const job = (await api('/api/jobs')).jobs[0], jobId = job.id
   // The app opens the saved job a moment after saving. Wait for that, or it would override the next page we ask for.
   await until(() => evaluate('return location.hash.startsWith("#jobs/")'), 'the saved job opens')
   checks.push('paste capture and URL fallback')
   await api(`/api/jobs/${jobId}/status`, { status: 'saved' }, 'PUT')
-  await route(`#tracker?job=${jobId}`, 'Questions and answers')
+  await route(`#tracker?job=${jobId}`, 'Q&A for this job')
   await field('Question','Why this team?');await field('Answer','Fixture draft answer.');await button('Save answer')
   await until(async()=>(await api(`/api/jobs/${jobId}`)).answers.length===1,'answer saved')
   const answer=(await api(`/api/jobs/${jobId}`)).answers[0]

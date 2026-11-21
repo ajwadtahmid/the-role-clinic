@@ -14,6 +14,8 @@ import { saveMaster } from '../../server/src/master.js'
 import { emptyMaster, type TaskName } from '../../../packages/shared/src/index.js'
 import { randomUUID } from 'node:crypto'
 import type { ModelRequest, ModelRouter } from '../../server/src/model-adapters.js'
+import { ShortcutKeys } from './shortcuts.js'
+import { JobsTrackerView } from './tracker-page.js'
 import { Workspace } from './workspace.js'
 
 const temporaryDirectories: string[] = []
@@ -91,9 +93,12 @@ describe('job workspace flow', () => {
   it('has one labelled primary navigation that marks the current page, and a skip link to the content', async () => {
     const { user, sqlite } = await setup()
     const nav = screen.getByRole('navigation', { name: 'Primary' })
-    expect(within(nav).getAllByRole('link').map((link) => link.textContent)).toEqual(['Jobs', 'Tracker', 'Résumé', 'Settings'])
+    expect(within(nav).getAllByRole('link').map((link) => link.textContent)).toEqual(['Today', 'Jobs', 'Q&A', 'Résumé', 'Settings'])
     expect(within(nav).getByRole('link', { name: 'Jobs' }).getAttribute('aria-current')).toBe('page')
-    expect(within(nav).getByRole('link', { name: 'Tracker' }).getAttribute('aria-current')).toBeNull()
+    // The Tracker is a view inside Jobs, beside the List view that is showing now.
+    const views = within(screen.getByRole('group', { name: 'Jobs view' }))
+    expect(views.getByRole('link', { name: 'List' }).getAttribute('aria-current')).toBe('page')
+    expect(views.getByRole('link', { name: 'Tracker' }).getAttribute('aria-current')).toBeNull()
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Jobs')
     await user.click(screen.getByRole('link', { name: 'Skip to main content' }))
     expect(document.activeElement).toBe(document.getElementById('main'))
@@ -279,10 +284,9 @@ describe('job workspace flow', () => {
       ? Promise.resolve(Response.json({ company: 'Clear', title: 'Engineer', location: 'Remote', url: 'https://job-boards.greenhouse.io/clear/jobs/123', applyUrl: 'https://job-boards.greenhouse.io/clear/jobs/123', text: 'Build useful software for customers and collaborate across a team of product engineers and designers.', rawSnapshot: '{"original":"API response"}', source: 'greenhouse-api', captureMethod: 'greenhouse-api' }))
       : originalFetch(input, init))
     await user.click(screen.getByRole('button', { name: 'Add job' }))
-    await user.click(screen.getByRole('button', { name: 'From a link' }))
-    await user.type(screen.getByRole('textbox', { name: 'Job link' }), 'https://job-boards.greenhouse.io/clear/jobs/123')
+    await user.type(screen.getByRole('textbox', { name: 'Job link (optional)' }), 'https://job-boards.greenhouse.io/clear/jobs/123')
     await user.click(screen.getByRole('button', { name: 'Fetch details' }))
-    await screen.findByText('Captured via greenhouse-api. Review the fields, then save the job.')
+    await screen.findByText('Captured via greenhouse-api. Check the fields, then save the job.')
     expect((screen.getByRole('textbox', { name: 'Company' }) as HTMLInputElement).value).toBe('Clear')
     await user.click(screen.getByRole('button', { name: 'Save job' }))
     await screen.findByText('Job saved.')
@@ -370,4 +374,72 @@ describe('job analysis view', () => {
     sqlite.close()
   }, 15_000)
 
+})
+
+describe('Tracker inside Jobs', () => {
+  it('shows the applications table under the Jobs heading with the same navigation, and an applied job opens with its application details', async () => {
+    const { sqlite } = await setup()
+    sqlite.prepare("INSERT INTO jobs(id,company,title,captured_at,raw_snapshot,text) VALUES('j-applied','Acme','Applied Role','2026-11-01T12:00:00.000Z','raw','Applied Role at Acme. Build useful software every day with a team.')").run()
+    sqlite.prepare("INSERT INTO applications(id,job_id,status,applied_at) VALUES('a1','j-applied','applied','2026-11-02T12:00:00.000Z')").run()
+    cleanup(); window.location.hash = '#tracker'
+    render(<JobsTrackerView />)
+    expect((await screen.findByRole('heading', { level: 1 })).textContent).toBe('Jobs')
+    expect(within(screen.getByRole('group', { name: 'Jobs view' })).getByRole('link', { name: 'Tracker' }).getAttribute('aria-current')).toBe('page')
+    expect(await screen.findByRole('button', { name: 'Applied Role Acme' })).toBeTruthy()
+    cleanup(); window.location.hash = '#jobs/j-applied'
+    render(<Workspace />)
+    expect(await screen.findByRole('heading', { name: 'Application' })).toBeTruthy()
+    expect(await screen.findByText('Follow-up, contacts & notes')).toBeTruthy()
+    sqlite.close()
+  })
+})
+
+describe('keyboard shortcuts', () => {
+  it('N opens Add a job and ? lists the keys, but neither fires while typing or with a window open', async () => {
+    const { user, sqlite } = await setup()
+    render(<ShortcutKeys />)
+    await user.keyboard('n')
+    expect(await screen.findByRole('dialog', { name: 'Add a job' })).toBeTruthy()
+    // Typing an n in a field must not do anything else; Escape closes the window.
+    await user.type(screen.getByRole('textbox', { name: 'Company' }), 'Nnn')
+    expect((screen.getByRole('textbox', { name: 'Company' }) as HTMLInputElement).value).toBe('Nnn')
+    expect(screen.queryByRole('dialog', { name: 'Keyboard shortcuts' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Add a job' })).toBeNull())
+    await user.keyboard('?')
+    expect(await screen.findByRole('dialog', { name: 'Keyboard shortcuts' })).toBeTruthy()
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Keyboard shortcuts' })).toBeNull())
+    sqlite.close()
+  })
+})
+
+describe('stage tabs', () => {
+  it('keeps the tab the person clicks right after saving, instead of jumping back to the next job’s stage', async () => {
+    const { user, sqlite } = await setup()
+    for (const [id, title] of [['j-1', 'First Role'], ['j-2', 'Second Role']]) sqlite.prepare("INSERT INTO jobs(id,company,title,captured_at,raw_snapshot,text) VALUES(?,'Acme',?,'2026-11-01T12:00:00.000Z','raw','A role at Acme. Build useful things for a living every day.')").run(id, title)
+    cleanup(); window.location.hash = '#jobs/j-1'
+    render(<Workspace />)
+    await screen.findByRole('heading', { name: 'First Role' })
+    // After Save, hold back the reload of To review until the person has clicked the Saved tab.
+    let release = () => {}, armed = false
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    const passThrough = globalThis.fetch
+    vi.stubGlobal('fetch', async (input: string, init?: RequestInit) => { if (armed && input.startsWith('/api/jobs?') && input.includes('status=new')) await gate; return passThrough(input, init) })
+    armed = true
+    await user.click(screen.getByText('To review', { selector: '.pill-menu summary' }))
+    await user.click(screen.getByRole('button', { name: /^Save for later/ }))
+    await screen.findByText('Job saved.')
+    const tabs = within(screen.getByRole('group', { name: 'Show jobs' }))
+    await user.click(tabs.getByRole('button', { name: /^Saved/ }))
+    release()
+    expect(await screen.findByText('First Role', { selector: '.job-card strong' })).toBeTruthy()
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    expect(tabs.getByRole('button', { name: /^Saved/ }).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByText('First Role', { selector: '.job-card strong' })).toBeTruthy()
+    expect(screen.queryByText('Second Role', { selector: '.job-card strong' })).toBeNull()
+    // The job still open shows its new stage.
+    await waitFor(() => expect(document.querySelector('.pill-menu summary')?.textContent).toBe('Saved'))
+    sqlite.close()
+  })
 })

@@ -4,14 +4,23 @@ import React, { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { FirstRun } from './runtime.js'
 import { SettingsPage } from './settings-page.js'
-import { TrackerPage } from './tracker-page.js'
+import { JobsTrackerView, TrackerPage } from './tracker-page.js'
 import { Workspace } from './workspace.js'
 import { MasterPage, ProfilePage } from './master-page.js'
 import { RunNotices } from './run-notices.js'
+import { ReminderNotice } from './reminder-notice.js'
 import { ReviewPage } from './review-page.js'
+import { TodayPage } from './today-page.js'
+import { ReviewFlow } from './review-flow.js'
+import { QAPage } from './qa-page.js'
+import { CommandPalette } from './command-palette.js'
+import { ShortcutKeys } from './shortcuts.js'
 import './style.css'
 
+import { applyTheme, watchTheme } from './theme.js'
+
 installDesktopLinks()
+applyTheme(); watchTheme()
 
 function Pages() {
   const [route, setRoute] = useState(location.hash)
@@ -33,7 +42,7 @@ function Pages() {
     return () => { window.removeEventListener('keydown', close, true); document.removeEventListener('click', outside) }
   }, [])
   // Moving to another page puts focus on its heading, so screen readers announce where you are. Choosing a job within Jobs does not count.
-  const page = route.split(/[/?]/)[0].replace(/^#job$/, '#jobs').replace('#answers', '#tracker').replace('#master', '#resume').replace('#profile', '#resume'), previousPage = useRef(page)
+  const page = route.split(/[/?]/)[0].replace(/^#job$/, '#jobs').replace('#answers', '#qa').replace(/^#tracker$/, '#jobs').replace('#master', '#resume').replace('#profile', '#resume'), previousPage = useRef(page)
   useEffect(() => {
     if (previousPage.current === page) return
     previousPage.current = page
@@ -47,15 +56,17 @@ function Pages() {
   }, [page])
   const review = route.match(/^#jobs\/([^/?]+)\/review(\?.*)?$/)
   if (review) return <ReviewPage key={route} jobId={review[1]} startWithApply={review[2] === '?apply'} />
-  if (route === '#answers') return <TrackerPage openLibrary />
-  if (route.startsWith('#tracker')) return <TrackerPage key={route} />
+  if (route === '#today') return <TodayPage />
+  if (route === '#review') return <ReviewFlow />
+  if (route === '#qa' || route === '#answers') return <QAPage />
+  if (route.startsWith('#tracker')) return <JobsTrackerView key={route} />
   if (route === '#gaps') return <TrackerPage gapsOnly />
-  if (route.split('?')[0] === '#settings') return <SettingsPage />
+  if (route.split('?')[0] === '#settings') return <SettingsPage key={route} />
   if (route === '#resume/profile' || route === '#profile') return <ProfilePage />
   if (route.startsWith('#resume') || route.startsWith('#master')) return <MasterPage key={route} />
   return <Workspace />
 }
 
-function App() { return <><Pages /><RunNotices /></> }
+function App() { return <><Pages /><RunNotices /><ReminderNotice /><CommandPalette /><ShortcutKeys /></> }
 
 createRoot(document.getElementById('root')!).render(<React.StrictMode><FirstRun><DesktopNotice /><App /></FirstRun></React.StrictMode>)

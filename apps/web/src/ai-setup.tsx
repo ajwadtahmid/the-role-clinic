@@ -15,6 +15,7 @@ export function AiFeaturesPanel({ advancedOpen, onAdvanced }: { advancedOpen: bo
   const { features } = useAiFeatures(), { say, fail, node: toastNode } = useToast()
   const [saved, setSaved] = useState<Saved | null>(null), [step, setStep] = useState(wantsSetup() ? 1 : 0)
   const [ollamaMissing, setOllamaMissing] = useState(false), [modelMissing, setModelMissing] = useState(false), [checking, setChecking] = useState(false)
+  const [pull, setPull] = useState<{ state: 'idle' | 'running' | 'failed'; percent: number; text: string }>({ state: 'idle', percent: 0, text: '' })
   const [test, setTest] = useState<{ state: 'idle' | 'running' | 'passed' | 'failed'; text: string }>({ state: 'idle', text: '' }), [busy, setBusy] = useState(false)
   useEffect(() => { void api<Saved>('/api/settings').then(setSaved).catch(() => undefined) }, [])
   const model = saved?.taskModels.requirementExtraction.model || 'gemma4:12b'
@@ -28,6 +29,29 @@ export function AiFeaturesPanel({ advancedOpen, onAdvanced }: { advancedOpen: bo
       const installed = (result.models ?? []).some((name) => name === model || name === `${model}:latest`)
       if (installed) { setModelMissing(false); setTest({ state: 'idle', text: '' }); setStep(3) } else { setModelMissing(forModel); setStep(2) }
     } catch { setOllamaMissing(true); setStep(1) } finally { setChecking(false) }
+  }
+  // Downloads the model through Ollama and shows how far it got. The server passes Ollama's progress lines on as they arrive.
+  async function download() {
+    setPull({ state: 'running', percent: 0, text: 'Starting…' })
+    try {
+      const response = await fetch('/api/connections/ollama/pull', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
+      if (!response.ok || !response.body) throw new Error(((await response.json().catch(() => null)) as { error?: string } | null)?.error ?? 'The download did not start.')
+      const reader = response.body.getReader(), decoder = new TextDecoder()
+      let buffer = '', failed = ''
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n'); buffer = lines.pop() ?? ''
+        for (const line of lines.filter(Boolean)) {
+          const event = JSON.parse(line) as { status?: string; total?: number; completed?: number; error?: string }
+          if (event.error) failed = event.error
+          else setPull({ state: 'running', percent: event.total ? Math.min(100, Math.round(((event.completed ?? 0) / event.total) * 100)) : 0, text: event.status ?? '' })
+        }
+      }
+      if (failed) throw new Error(failed)
+      setPull({ state: 'idle', percent: 0, text: '' }); await look(true)
+    } catch (error) { setPull({ state: 'failed', percent: 0, text: (error as Error).message }) }
   }
   async function runTest() {
     setTest({ state: 'running', text: '' })
@@ -64,7 +88,11 @@ export function AiFeaturesPanel({ advancedOpen, onAdvanced }: { advancedOpen: bo
               {ollamaMissing && <p role="alert" className="notice error"><b>Ollama was not found.</b> Install it from ollama.com and open it, then check again.</p>}
               <div className="button-row"><button className="button primary" disabled={checking} onClick={() => void look(false)}>{checking ? 'Checking…' : ollamaMissing ? 'Check again' : 'Check for Ollama'}</button><button className="text-button" onClick={leave}>Do this later</button></div></>}</div></li>
           <li className={stepClass(2)}><span className="n" aria-hidden="true">{step > 2 ? '✓' : 2}</span><div><b>Get a model</b>
-            {step === 2 && <><p className="subtle">We suggest <b>{model}</b>, downloaded once. Run this in a terminal:</p>
+            {step === 2 && <><p className="subtle">We suggest <b>{model}</b>, downloaded once. This can take a while and uses disk space.</p>
+              {pull.state === 'running' && <div role="status"><progress max={100} value={pull.percent} aria-label={`Downloading ${model}`} /> <span className="subtle">{pull.percent}% · {pull.text}</span></div>}
+              {pull.state === 'failed' && <p role="alert" className="notice error"><b>The download stopped.</b> {pull.text}</p>}
+              <div className="button-row"><button className="button primary" disabled={pull.state === 'running'} onClick={() => void download()}>{pull.state === 'running' ? 'Downloading…' : pull.state === 'failed' ? 'Try again' : `Download ${model}`}</button><button className="text-button" onClick={leave}>Do this later</button></div>
+              <p className="subtle">Or run this in a terminal yourself:</p>
               <div className="ai-cmd"><code>ollama pull {model}</code><button className="button small" onClick={() => void copyText(`ollama pull ${model}`, say)}>Copy</button></div>
               {modelMissing && <p role="alert" className="notice error"><b>{model} is not downloaded yet.</b> It can take a while. Check again when the download finishes.</p>}
               <div className="button-row"><button className="button primary" disabled={checking} onClick={() => void look(true)}>{checking ? 'Checking…' : modelMissing ? 'Check again' : 'Check for the model'}</button><button className="text-button" onClick={leave}>Do this later</button></div></>}</div></li>
