@@ -14,6 +14,8 @@ import { SerialRunQueue } from './queue.js'
 import { ModelRouter } from './model-adapters.js'
 import { captureJobUrl } from './capture.js'
 import { FeedService, normalizeFeedUrl, type PostingCapture } from './feed.js'
+import { similarity } from './similarity.js'
+import { registerImportRoutes } from './import-routes.js'
 import { registerFeedRoutes } from './feed-routes.js'
 import { FitBatch } from './fit-batch.js'
 import { computeFit, fitGaps } from './fit.js'
@@ -46,21 +48,6 @@ function parseFinderNote(raw: string | null): { flags: string; whyItFits: string
   catch { return { flags: '', whyItFits: '', source: '', similarTo: null } }
 }
 const cleanText = (value: unknown, max: number) => typeof value === 'string' ? value.trim().slice(0, max) : ''
-function similarity(left: string, right: string) {
-  const a = left.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(), b = right.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
-  if (a === b) return 1
-  if (!a || !b) return 0
-  const range = Math.max(0, Math.floor(Math.max(a.length, b.length) / 2) - 1)
-  const am = Array(a.length).fill(false), bm = Array(b.length).fill(false)
-  let matches = 0
-  for (let i = 0; i < a.length; i++) for (let j = Math.max(0, i - range); j < Math.min(b.length, i + range + 1); j++) if (!bm[j] && a[i] === b[j]) { am[i] = true; bm[j] = true; matches++; break }
-  if (!matches) return 0
-  let k = 0, transpositions = 0
-  for (let i = 0; i < a.length; i++) if (am[i]) { while (!bm[k]) k++; if (a[i] !== b[k]) transpositions++; k++ }
-  const jaro = (matches / a.length + matches / b.length + (matches - transpositions / 2) / matches) / 3
-  let prefix = 0; while (prefix < Math.min(4, a.length, b.length) && a[prefix] === b[prefix]) prefix++
-  return jaro + prefix * 0.1 * (1 - jaro)
-}
 function parseAnswer(payload: Record<string, unknown> | null) {
   if (typeof payload?.question === 'string' && payload.question.length > 2000) return { error: 'Question exceeds the 2,000 character limit.' } as const
   if (typeof payload?.answer === 'string' && payload.answer.length > 20_000) return { error: 'Answer exceeds the 20,000 character limit.' } as const
@@ -173,7 +160,7 @@ export function createApp(options: AppOptions) {
   })
   app.use('/api/*', (context, next) => {
     const masterRequest = context.req.path.startsWith('/api/master/') || context.req.path === '/api/master'
-    const maxSize = context.req.path === '/api/master/import-preview' || context.req.path.endsWith('/submitted-resume') ? 8_100_000 : masterRequest ? 8_000_000 : context.req.path === '/api/jobs' && context.req.method === 'POST' ? 5_000_000 : 1024 * 1024
+    const maxSize = context.req.path.startsWith('/api/import/') || context.req.path === '/api/master/import-preview' || context.req.path.endsWith('/submitted-resume') ? 8_100_000 : masterRequest ? 8_000_000 : context.req.path === '/api/jobs' && context.req.method === 'POST' ? 5_000_000 : 1024 * 1024
     return bodyLimit({ maxSize, onError: (limitedContext) => limitedContext.json({ error: `Request body exceeds the ${maxSize >= 8_000_000 ? '8 MB' : maxSize === 5_000_000 ? '5 MB' : '1 MB'} limit.` }, 413) })(context, next)
   })
 
@@ -188,6 +175,7 @@ export function createApp(options: AppOptions) {
   registerMasterRoutes(app, options.sqlite, options.dataDirectory)
   registerReviewRoutes(app, options.sqlite, options.dataDirectory, pipeline)
   registerTrackerRoutes(app, options.sqlite, options.dataDirectory)
+  registerImportRoutes(app, options.sqlite)
   registerFeedRoutes(app, feed, options.dataDirectory, () => { void fitBatch.maybeStart().catch(() => {}) })
   // Check the feed once at start; a missing or unreadable file is shown later in Settings, never here.
   void feed.refreshOnStart().catch(() => undefined)
@@ -382,9 +370,6 @@ export function createApp(options: AppOptions) {
     const sentOn = typeof (payload as { appliedAt?: unknown }).appliedAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test((payload as { appliedAt: string }).appliedAt) ? new Date(`${(payload as { appliedAt: string }).appliedAt}T12:00:00`) : null
     // Today is allowed at any hour: only a day that has not started yet is in the future. A time later than now is stored as now.
     if (sentOn && (Number.isNaN(sentOn.getTime()) || new Date(`${(payload as { appliedAt: string }).appliedAt}T00:00:00`).getTime() > Date.now())) return context.json({ error: 'The date applied cannot be in the future.' }, 400)
-        // The follow-up date the applied rule set goes too; a date the person chose themselves stays.
-        const rules = followUpPreferences(options.sqlite)
-        if (row.appliedAt && row.followUp && rules.applyOn && row.followUp === addDays(calendarDate(row.appliedAt), rules.applyDays)) options.sqlite.prepare('UPDATE applications SET follow_up_date=NULL WHERE id=?').run(row.id)
     const sentAt = sentOn && sentOn.getTime() > Date.now() ? new Date() : sentOn
     if (status === 'closed' && !closedOutcomes.includes(payload.outcome as typeof closedOutcomes[number])) return context.json({ error: 'Say how this application ended: rejected, no reply, withdrawn or accepted.' }, 400)
     if (status !== 'closed' && payload.outcome != null) return context.json({ error: 'Only a closed application has an outcome.' }, 400)
@@ -397,6 +382,9 @@ export function createApp(options: AppOptions) {
       if (!row || row.status !== 'applied' || row.artifactId || row.text) return context.json({ error: 'Only a job just marked applied, with no résumé recorded, can be undone.' }, 409)
       options.sqlite.transaction(() => {
         options.sqlite.prepare('UPDATE applications SET status=?,outcome=NULL,applied_at=NULL,submitted_job_text=NULL,submitted_text=NULL WHERE id=?').run(status, row.id)
+        // The follow-up date the applied rule set goes too; a date the person chose themselves stays.
+        const rules = followUpPreferences(options.sqlite)
+        if (row.appliedAt && row.followUp && rules.applyOn && row.followUp === addDays(calendarDate(row.appliedAt), rules.applyDays)) options.sqlite.prepare('UPDATE applications SET follow_up_date=NULL WHERE id=?').run(row.id)
         options.sqlite.prepare('UPDATE job_answers SET submitted_question=NULL,submitted_category=NULL,submitted_answer=NULL,submitted_at=NULL WHERE job_id=?').run(jobId)
         options.sqlite.prepare("DELETE FROM status_events WHERE id=(SELECT id FROM status_events WHERE application_id=? AND status='applied' ORDER BY created_at DESC,rowid DESC LIMIT 1)").run(row.id)
       })()
@@ -409,16 +397,6 @@ export function createApp(options: AppOptions) {
       if (!artifact?.document || !artifact.parse_check || !JSON.parse(artifact.parse_check).ok) return context.json({ error: 'Choose a verified export belonging to this job.' }, 422)
       submittedArtifactId = artifact.id
       artifactText = (JSON.parse(artifact.document).blocks as Array<{ text: string }>).map((b) => b.text).join('\n')
-      // Reminder rules: a date the person set is never replaced by the applied rule, and the interview rule only moves an earlier date forward.
-      const rules = followUpPreferences(options.sqlite)
-      if (rules.remindersOn && (status === 'applied' || status === 'interviewing')) {
-        const rule = status === 'applied' ? { on: rules.applyOn, days: rules.applyDays } : { on: rules.interviewOn, days: rules.interviewDays }
-        const from = status === 'applied' ? calendarDate((options.sqlite.prepare('SELECT applied_at FROM applications WHERE id=?').get(appId) as { applied_at: string }).applied_at) : calendarDate()
-        if (rule.on) {
-          const target = addDays(from, rule.days), current = (options.sqlite.prepare('SELECT follow_up_date AS d FROM applications WHERE id=?').get(appId) as { d: string | null }).d
-          if (!current || (status === 'interviewing' && current < target)) options.sqlite.prepare('UPDATE applications SET follow_up_date=? WHERE id=?').run(target, appId)
-        }
-      }
     }
 
     const application = options.sqlite.prepare('SELECT id,notes FROM applications WHERE job_id=?').get(jobId) as { id: string; notes: string } | undefined
@@ -431,6 +409,16 @@ export function createApp(options: AppOptions) {
       options.sqlite.prepare(`INSERT INTO applications(id,job_id,status,outcome,applied_at,notes,submitted_text) VALUES(?,?,?,?,?,?,?) ON CONFLICT(job_id) DO UPDATE SET status=excluded.status,outcome=excluded.outcome,applied_at=COALESCE(applications.applied_at,excluded.applied_at),notes=excluded.notes,submitted_text=COALESCE(applications.submitted_text,excluded.submitted_text)`).run(appId, jobId, status, outcome, status === 'applied' ? (sentAt?.toISOString() ?? now) : null, payload.notes === undefined ? application?.notes ?? '' : cleanText(payload.notes, 5000), status === 'applied' ? artifactText || cleanText(payload.submittedText, 100_000) || null : null)
       if (submittedArtifactId) options.sqlite.prepare('UPDATE applications SET submitted_artifact_id=COALESCE(submitted_artifact_id,?) WHERE id=?').run(submittedArtifactId, appId)
       options.sqlite.prepare('INSERT INTO status_events(id,application_id,status,outcome,created_at) VALUES(?,?,?,?,?)').run(id(), appId, status, outcome, now)
+      // Reminder rules: a date the person set is never replaced by the applied rule, and the interview rule only moves an earlier date forward.
+      const rules = followUpPreferences(options.sqlite)
+      if (rules.remindersOn && (status === 'applied' || status === 'interviewing')) {
+        const rule = status === 'applied' ? { on: rules.applyOn, days: rules.applyDays } : { on: rules.interviewOn, days: rules.interviewDays }
+        const from = status === 'applied' ? calendarDate((options.sqlite.prepare('SELECT applied_at FROM applications WHERE id=?').get(appId) as { applied_at: string }).applied_at) : calendarDate()
+        if (rule.on) {
+          const target = addDays(from, rule.days), current = (options.sqlite.prepare('SELECT follow_up_date AS d FROM applications WHERE id=?').get(appId) as { d: string | null }).d
+          if (!current || (status === 'interviewing' && current < target)) options.sqlite.prepare('UPDATE applications SET follow_up_date=? WHERE id=?').run(target, appId)
+        }
+      }
       if (status === 'applied') options.sqlite.prepare('UPDATE applications SET submitted_job_text=COALESCE(submitted_job_text,(SELECT text FROM jobs WHERE id=?)) WHERE id=?').run(jobId, appId)
       if (status === 'applied') options.sqlite.prepare('UPDATE job_answers SET submitted_question=COALESCE(submitted_question,question),submitted_category=COALESCE(submitted_category,category),submitted_answer=COALESCE(submitted_answer,answer),submitted_at=COALESCE(submitted_at,?) WHERE job_id=?').run(now, jobId)
     })
@@ -484,6 +472,18 @@ export function createApp(options: AppOptions) {
 
   // Whether AI features are chosen, on and showing. Hiding changes only what is shown; nothing is deleted.
   app.put('/api/ai-features', async (context) => {
+    const payload = await context.req.json().catch(() => null) as Record<string, unknown> | null
+    const flags = ['chosen', 'enabled', 'hidden'] as const
+    if (!payload || typeof payload !== 'object' || flags.some((flag) => payload[flag] !== undefined && typeof payload[flag] !== 'boolean')) return context.json({ error: 'Send chosen, enabled or hidden as true or false.' }, 400)
+    const settings = await readSettings(options.dataDirectory), current = resolveAiFeatures(options.sqlite, options.dataDirectory, settings)
+    const next = { ...current, ...Object.fromEntries(flags.filter((flag) => typeof payload[flag] === 'boolean').map((flag) => [flag, payload[flag]])) }
+    // Turning AI on (or choosing at all) shows it again, and turning it off settles the first question.
+    if (payload.enabled === true && payload.hidden === undefined) next.hidden = false
+    next.chosen = true
+    await writeSettings(options.dataDirectory, { ...settings, aiFeatures: next })
+    return context.json({ aiFeatures: next })
+  })
+
   // The weekly goal: a number, or null for none. It is off until the person picks one.
   app.get('/api/weekly-goal', async (context) => context.json({ goal: (await readSettings(options.dataDirectory)).weeklyGoal ?? null }))
   app.put('/api/weekly-goal', async (context) => {
@@ -506,18 +506,6 @@ export function createApp(options: AppOptions) {
     } catch { return context.json({ error: 'Ollama is not running. Open it, then try again.' }, 502) }
     if (!upstream.ok || !upstream.body) return context.json({ error: `Ollama could not download ${choice.model} (HTTP ${upstream.status}).` }, 502)
     return new Response(upstream.body, { headers: { 'content-type': 'application/x-ndjson', 'cache-control': 'no-store' } })
-  })
-
-    const payload = await context.req.json().catch(() => null) as Record<string, unknown> | null
-    const flags = ['chosen', 'enabled', 'hidden'] as const
-    if (!payload || typeof payload !== 'object' || flags.some((flag) => payload[flag] !== undefined && typeof payload[flag] !== 'boolean')) return context.json({ error: 'Send chosen, enabled or hidden as true or false.' }, 400)
-    const settings = await readSettings(options.dataDirectory), current = resolveAiFeatures(options.sqlite, options.dataDirectory, settings)
-    const next = { ...current, ...Object.fromEntries(flags.filter((flag) => typeof payload[flag] === 'boolean').map((flag) => [flag, payload[flag]])) }
-    // Turning AI on (or choosing at all) shows it again, and turning it off settles the first question.
-    if (payload.enabled === true && payload.hidden === undefined) next.hidden = false
-    next.chosen = true
-    await writeSettings(options.dataDirectory, { ...settings, aiFeatures: next })
-    return context.json({ aiFeatures: next })
   })
 
   // One tiny question to the local model, so setup can say it works before AI features are turned on.
