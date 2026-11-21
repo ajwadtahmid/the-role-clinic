@@ -11,6 +11,7 @@ use std::{
 };
 use tauri::{Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use tauri_plugin_clipboard_manager::ClipboardExt;
+use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 #[derive(Default)]
@@ -188,6 +189,27 @@ fn clipboard_write(
     }
     app.clipboard().write_text(text).map_err(|e| e.to_string())
 }
+// A reminder shown by the operating system. The text is plain and short; control characters are dropped so it cannot
+// break the notification layout, and an empty or oversized message is refused.
+fn clean_notice(title: &str, body: &str) -> Result<(String, String), String> {
+    let tidy = |text: &str| text.chars().filter(|c| !c.is_control() || *c == ' ').collect::<String>().trim().to_string();
+    let (title, body) = (tidy(title), tidy(body));
+    if title.is_empty() || title.chars().count() > 100 { return Err("A notification needs a title of up to 100 characters".into()); }
+    if body.chars().count() > 300 { return Err("A notification message can be up to 300 characters".into()); }
+    Ok((title, body))
+}
+#[tauri::command]
+fn show_notification(
+    app: tauri::AppHandle,
+    window: WebviewWindow,
+    state: State<'_, Desktop>,
+    title: String,
+    body: String,
+) -> Result<(), String> {
+    authorize(&window, &state)?;
+    let (title, body) = clean_notice(&title, &body)?;
+    app.notification().builder().title(title).body(body).show().map_err(|e| format!("The notification could not be shown: {e}"))
+}
 #[tauri::command]
 fn open_external(
     window: WebviewWindow,
@@ -332,6 +354,15 @@ fn start_backend(app: &tauri::AppHandle) -> Result<(), String> {
         .resource_dir()
         .map_err(|e| e.to_string())?
         .join("backend");
+    // Windows hands back resource paths in the extended form (\\?\D:\...). Node cannot start a script from one (it fails with EISDIR on the drive), so use the plain path.
+    #[cfg(all(target_os = "windows", not(debug_assertions)))]
+    let root = {
+        let text = root.to_string_lossy().into_owned();
+        match text.strip_prefix(r"\\?\") {
+            Some(plain) if !plain.starts_with("UNC") => std::path::PathBuf::from(plain),
+            _ => root,
+        }
+    };
     let node = root.join(if cfg!(target_os = "windows") { "runtime/node.exe" } else { "runtime/node" });
     let mut command = Command::new(node);
     #[cfg(target_os = "windows")]
@@ -354,15 +385,6 @@ fn start_backend(app: &tauri::AppHandle) -> Result<(), String> {
         .map_err(|e| format!("Could not start the bundled backend: {e}"))?;
     let stdout = child
         .stdout
-    // Windows hands back resource paths in the extended form (\\?\D:\...). Node cannot start a script from one (it fails with EISDIR on the drive), so use the plain path.
-    #[cfg(all(target_os = "windows", not(debug_assertions)))]
-    let root = {
-        let text = root.to_string_lossy().into_owned();
-        match text.strip_prefix(r"\\?\") {
-            Some(plain) if !plain.starts_with("UNC") => std::path::PathBuf::from(plain),
-            _ => root,
-        }
-    };
         .take()
         .ok_or("Backend readiness pipe is unavailable")?;
     let (tx, rx) = mpsc::channel();
@@ -421,8 +443,8 @@ fn main() {
     let app = tauri::Builder::default()
         .manage(Desktop::default())
         .plugin(tauri_plugin_single_instance::init(|app, _, _| { if let Some(window) = app.get_webview_window("main") { let _ = window.unminimize(); let _ = window.show(); let _ = window.set_focus(); } }))
-        .plugin(tauri_plugin_dialog::init()).plugin(tauri_plugin_clipboard_manager::init())
-        .invoke_handler(tauri::generate_handler![save_download, clipboard_write, open_external, quit_app])
+        .plugin(tauri_plugin_dialog::init()).plugin(tauri_plugin_clipboard_manager::init()).plugin(tauri_plugin_notification::init())
+        .invoke_handler(tauri::generate_handler![save_download, clipboard_write, open_external, quit_app, show_notification])
         .setup(|app| {
             #[cfg(target_os = "macos")]
             {
@@ -480,6 +502,14 @@ mod tests {
         assert!(!download_path("/api/master/export/../profile"));
         assert!(!download_path("/api/backups/../../settings.json"));
         assert!(!download_path("//example.com/api/master/export"));
+    }
+    #[test]
+    fn notifications_are_short_plain_text() {
+        assert_eq!(clean_notice("2 follow-ups due", "Acme\nBeta\u{7}").unwrap(), ("2 follow-ups due".to_string(), "AcmeBeta".to_string()));
+        assert!(clean_notice("   ", "x").is_err());
+        assert!(clean_notice(&"t".repeat(101), "x").is_err());
+        assert!(clean_notice("ok", &"b".repeat(301)).is_err());
+        assert!(clean_notice("ok", "").is_ok());
     }
     #[test]
     fn filenames_cannot_set_the_destination_directory() {

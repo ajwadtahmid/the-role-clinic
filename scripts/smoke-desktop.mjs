@@ -196,6 +196,12 @@ try {
   const rejected=await asyncEval(`const done=arguments[arguments.length-1];Promise.all(['file:///etc/passwd','javascript:alert(1)'].map(url=>window.__TAURI_INTERNALS__.invoke('open_external',{url}).then(()=>false,()=>true))).then(done)`)
   assert.deepEqual(rejected,[true,true])
   const denied=await asyncEval(`const done=arguments[arguments.length-1];window.__TAURI_INTERNALS__.invoke('save_download',{path:'/api/settings'}).then(()=>done(false),()=>done(true))`);assert.equal(denied,true)
+  // Native notification command: bad messages are refused by the shell itself; a good one is accepted or fails only because this container has no notification service.
+  const badNotes=await asyncEval(`const done=arguments[arguments.length-1];Promise.all([{title:'',body:'x'},{title:'t'.repeat(101),body:'x'},{title:'ok',body:'b'.repeat(301)}].map(a=>window.__TAURI_INTERNALS__.invoke('show_notification',a).then(()=>false,e=>String(e)))).then(done)`)
+  assert.equal(badNotes.every((r)=>typeof r==='string'&&/notification/i.test(r)),true,'oversized or empty notifications must be refused')
+  const goodNote=await asyncEval(`const done=arguments[arguments.length-1];window.__TAURI_INTERNALS__.invoke('show_notification',{title:'The Role Clinic',body:'1 follow-up due'}).then(()=>done('shown'),e=>done(String(e)))`)
+  assert.equal(goodNote==='shown'||/could not be shown/.test(goodNote),true,`unexpected notification result: ${goodNote}`)
+  checks.push('native notification command validates and runs')
   const forbidden=await fetch(base+'/api/app/welcome',{method:'POST',headers:{origin:'https://evil.example','content-type':'application/json'},body:'{"acknowledged":true}'});assert.equal(forbidden.status,403)
   const csp=(await fetch(base)).headers.get('content-security-policy');assert.ok(csp.includes("object-src 'none'"));checks.push('restricted IPC and unchanged API origin guard')
   await asyncEval(`const done=arguments[arguments.length-1];window.__TAURI_INTERNALS__.invoke('open_external',{url:'https://example.test/fixture'}).then(()=>done(true),e=>done(String(e)))`)

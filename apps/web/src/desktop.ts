@@ -5,6 +5,11 @@ export async function writeClipboard(text: string) {
   if (isDesktop()) await invoke('clipboard_write', { text })
   else await navigator.clipboard.writeText(text)
 }
+// Desktop reminders are a per-computer choice kept in this app only: off until switched on in Settings, and only in the desktop app.
+const notifyKey = 'rc-desktop-notify'
+export const desktopNotifyOn = () => { try { return isDesktop() && localStorage.getItem(notifyKey) === '1' } catch { return false } }
+export function setDesktopNotify(on: boolean) { try { if (on) localStorage.setItem(notifyKey, '1'); else localStorage.removeItem(notifyKey) } catch { /* the choice then lasts for this visit only */ } }
+export async function showDesktopNotification(title: string, body: string) { await invoke('show_notification', { title, body }) }
 export async function quitDesktop() { await invoke('quit_app') }
 function notice(message: string, error = false) { window.dispatchEvent(new CustomEvent('role-clinic:desktop-notice', { detail: { message, error } })) }
 // Keep browser links unchanged. In a desktop webview downloads need a user-selected native destination.

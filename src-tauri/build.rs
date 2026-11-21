@@ -5,6 +5,7 @@ fn main() {
             "clipboard_write",
             "open_external",
             "quit_app",
+            "show_notification",
         ]),
     ))
     .expect("desktop configuration could not be built");
