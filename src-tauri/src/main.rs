@@ -354,6 +354,15 @@ fn start_backend(app: &tauri::AppHandle) -> Result<(), String> {
         .map_err(|e| format!("Could not start the bundled backend: {e}"))?;
     let stdout = child
         .stdout
+    // Windows hands back resource paths in the extended form (\\?\D:\...). Node cannot start a script from one (it fails with EISDIR on the drive), so use the plain path.
+    #[cfg(all(target_os = "windows", not(debug_assertions)))]
+    let root = {
+        let text = root.to_string_lossy().into_owned();
+        match text.strip_prefix(r"\\?\") {
+            Some(plain) if !plain.starts_with("UNC") => std::path::PathBuf::from(plain),
+            _ => root,
+        }
+    };
         .take()
         .ok_or("Backend readiness pipe is unavailable")?;
     let (tx, rx) = mpsc::channel();
