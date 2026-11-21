@@ -634,3 +634,80 @@ details.more .actions label{font:600 12px system-ui;color:var(--text-soft)}
 .ai-cmd{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:8px;background:#f1f2ec;padding:8px 10px}.ai-cmd code{font-family:var(--mono);font-size:13px;flex:1;overflow-wrap:anywhere}
 .inline-check{display:flex;gap:8px;align-items:center;font-weight:400}.inline-check input{width:auto}
 .ai-steps{margin-top:12px}
+
+/* Switch: a checkbox drawn as a toggle. The label text sits beside it. */
+.switch{display:inline-flex;align-items:center;gap:10px;min-height:44px;font-size:13px;font-weight:600;cursor:pointer}
+.switch input[type=checkbox]{appearance:none;-webkit-appearance:none;position:relative;flex:none;width:38px;height:22px;margin:0;border-radius:999px;background:#b9bfae;transition:background .15s}
+.switch input[type=checkbox]::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:var(--on-green);transition:transform .15s}
+.switch input[type=checkbox]:checked{background:var(--green)}
+.switch input[type=checkbox]:checked::after{transform:translateX(16px)}
+.switch input[type=checkbox]:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.switch input[type=checkbox]:disabled{opacity:.5}
+@media (prefers-reduced-motion:reduce){.switch input[type=checkbox],.switch input[type=checkbox]::after{transition:none}}
+/* Skeleton */
+.skeleton{display:grid;gap:10px;padding:6px 0}
+.skeleton-line{display:block;height:14px;border-radius:6px;background:linear-gradient(90deg,var(--hover) 25%,var(--surface-soft) 50%,var(--hover) 75%);background-size:200% 100%;animation:skeleton 1.4s ease-in-out infinite}
+@keyframes skeleton{to{background-position:-200% 0}}
+@media (prefers-reduced-motion:reduce){.skeleton-line{animation:none}}
+/* Fold card */
+.fold-card>summary{display:flex;align-items:baseline;gap:12px;cursor:pointer;list-style:none}
+.fold-card>summary::-webkit-details-marker{display:none}
+.fold-card>summary h2{margin:0;font-size:16px}
+.fold-card>summary::before{content:"▸";color:var(--muted);transition:transform .15s}
+.fold-card[open]>summary::before{transform:rotate(90deg)}
+.fold-body{margin-top:12px}
+/* Add dialog link row */
+.fetch-box{display:grid;gap:6px;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--surface-soft)}
+/* Follow-up reminder rules */
+.rules{border:0;margin:14px 0 0;padding:0;display:grid;gap:4px}
+.rule-row{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.rule-days{display:inline-flex;align-items:center;gap:8px;color:var(--text-soft);font-size:13px}
+.rule-days input{width:72px;border:1px solid var(--field-line);border-radius:8px;background:var(--paper);color:var(--ink);padding:6px 8px}
+.rule-line{border-top:1px solid var(--line);padding:2px 0}
+.rule-days.snooze{padding-top:10px;border-top:1px solid var(--line)}
+.reminder-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.reminder-line .reminder-row{flex:1}
+.setup-row{display:grid;gap:0;border-top:1px solid var(--line);padding:6px 0}
+.setup-row .subtle{padding-left:48px;margin-top:-6px;padding-bottom:6px}
+@media(max-width:900px){.start-choices{grid-template-columns:1fr}}
+/* Today, review flow, palette */
+.today-card{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:18px 20px;margin-bottom:14px;flex-wrap:wrap}
+.today-card.stacked{display:block}.today-card h2{font-size:16px;margin:0 0 6px}
+.momentum{display:flex;gap:28px;margin:8px 0 12px}.momentum dt{font-size:12px;color:var(--muted)}.momentum dd{margin:0;font-size:26px;font-weight:700}
+.goal-form{display:flex;gap:10px;align-items:end;flex-wrap:wrap}.goal-form input{width:150px;border:1px solid var(--field-line);border-radius:8px;padding:8px;background:var(--paper);color:var(--ink)}
+.triage-card{padding:22px;max-width:760px}.triage-card h2{margin:8px 0 2px;font-size:22px}.review-summary{white-space:pre-wrap;color:var(--text-soft);max-width:68ch}
+.triage-card progress,.today-card progress{width:100%;max-width:360px}
+kbd{font:600 11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 5px;background:var(--surface-soft)}
+.palette{width:min(560px,100%);display:grid;gap:10px}.palette input{width:100%;border:1px solid var(--field-line);border-radius:8px;padding:11px;font-size:15px;background:var(--paper);color:var(--ink)}
+.palette ul{list-style:none;margin:0;padding:0;max-height:320px;overflow:auto}.palette li button{display:flex;justify-content:space-between;width:100%;border:0;background:transparent;padding:10px 12px;border-radius:8px;text-align:left;color:var(--ink)}
+.palette li button.active,.palette li button:hover{background:var(--hover)}
+.coverage-list{list-style:none;margin:0;padding:0;display:grid;gap:4px}.coverage-list li{font-size:13px}
+.cov-state{display:inline-block;min-width:78px;font-weight:600}.cov-met .cov-state{color:var(--green)}.cov-gap .cov-state{color:var(--red-text)}.cov-unknown .cov-state{color:var(--amber-text)}
+.run-history{list-style:none;margin:0;padding:0;display:grid;gap:4px;font-size:13px}.run-fail{color:var(--red-text)}
+
+/* Dark theme: the same tokens with dark values. The résumé page stays a light document, as it prints. */
+:root[data-theme=dark]{color-scheme:dark;color:#e8ebe3;background:#151814;--ink:#e8ebe3;--muted:#a3aa9c;--line:#343b30;--green:#86bb94;--green-dark:#9acba7;--paper:#1c201a;--card:#20251e;--cream:#151814;--red:#d8806f;--tint:#252c22;--field-line:#3d4539;--text-soft:#b5bcae;--hover:#2a3227;--red-text:#f0a496;--red-deep:#e59384;--focus:#8fb59a;--amber-text:#e6c27a;--green-mid:#8cc09a;--ink-soft:#c9cfc2;--surface:#222820;--surface-soft:#1f251d;--surface-sage:#252c22;--red-tint:#3a2420;--red-border:#5a3a34;--amber-tint:#3a2f1a;--amber-border:#5a4a2a;--green-tint:#20352a;--green-border:#355a43;--blue-tint:#1f2735;--text-mid:#b5bcae;--red-wash:#2e1f1c;--sand:#2a261e;--amber-wash:#2c2518;--on-green:#10150f;accent-color:#86bb94;scrollbar-color:#454d40 transparent}
+:root[data-theme=dark] .resume-paper,:root[data-theme=dark] .rv-doc,:root[data-theme=dark] .paper{color-scheme:light;--ink:#242920;--muted:#5b6157;--line:#e4e4dc;--paper:#fffefa;--card:#fff;--green:#315b45;--hover:#ecefe6;background:#fffefa;color:#242920}
+:root[data-theme=dark] .job-text,:root[data-theme=dark] .pdf-proof{background:var(--paper);color:var(--ink)}
+/* Appearance */
+.theme-choices{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+/* Phone: one column, wide tables scroll, buttons stay reachable */
+@media(max-width:700px){
+  .topbar{flex-wrap:wrap;gap:6px 12px;padding:8px 0}.topbar nav{display:flex;flex-wrap:wrap;gap:2px 12px;order:3;width:100%}.local-chip{margin-left:auto}
+  .applications-table{display:block;overflow-x:auto}.page-header{flex-wrap:wrap}.page-actions{flex-wrap:wrap}
+  .momentum{gap:16px;flex-wrap:wrap}.today-card{padding:14px}.form-pair{grid-template-columns:1fr}.dialog{padding:16px}
+  .button,.text-button{min-height:44px}.palette{width:100%}
+}
+.editor-panel label.switch,.panel label.switch{display:inline-flex;flex-direction:row;align-items:center;gap:10px;margin:0;font:600 13px system-ui;color:var(--ink)}
+
+.fold-card{padding:16px 20px;margin-bottom:14px}
+.seg.jobs-views{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.jobs-views a{padding:8px 14px;font-size:13px;font-weight:600;color:var(--ink);text-decoration:none;min-height:44px;display:inline-flex;align-items:center}
+.jobs-views a[aria-current=page]{background:var(--green);color:var(--on-green)}
+.embedded-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.application-panel{border-top:1px solid var(--line);margin-top:18px;padding-top:6px}
+.keys{display:grid;gap:6px;margin:0}.keys>div{display:flex;gap:16px;align-items:center}.keys dt{min-width:72px}.keys dd{margin:0;color:var(--text-soft)}
+.import-dialog{width:min(860px,100%);max-height:calc(100vh - 40px);overflow:auto}.import-step{display:grid;gap:12px}
+.import-match{width:100%;border-collapse:collapse;font-size:13px}.import-match th,.import-match td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}.import-match select{max-width:100%;background:var(--card);color:var(--ink);border:1px solid var(--field-line);border-radius:6px;padding:4px}
+.import-rows{max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:8px}.import-skipped td{color:var(--red-text)}.import-duplicate td{color:var(--amber-text)}
+.date-order{border:1px solid var(--line);border-radius:8px;padding:8px 12px}.date-order label{margin-right:16px}

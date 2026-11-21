@@ -5,9 +5,10 @@ import { AppHeader, JobsViews, PageHeader } from './layout.js'
 import { Icon } from './icons.js'
 import { Skeleton } from './ui/skeleton.js'
 import { AddJobDialog } from './add-job.js'
+import { ImportDialog } from './import-dialog.js'
 import { Toast } from './toast.js'
-import { choiceOf, splitChoice, stageClass, stageLabel, stageLabels, statusChoices, statusText } from './stages.js'
 import { Toggle } from './ui/toggle.js'
+import { choiceOf, splitChoice, stageClass, stageLabel, stageLabels, statusChoices, statusText } from './stages.js'
 
 type Artifact = { id: string; filename: string; revision: number | null }
 export function SubmissionForm({ jobId, onSaved, onCancel }: { jobId: string; onSaved: () => void | Promise<void>; onCancel: () => void }) {
@@ -60,7 +61,6 @@ export function TrackerJobRecord({ jobId, onChanged }: { jobId: string; onChange
     <details className="record-history"><summary>Status history</summary>{record.events.length ? <ol className="history-list">{record.events.map((event, i) => <li key={i}><strong>{statusText(event.status, event.outcome)}</strong> <span className="subtle">· {new Date(event.createdAt).toLocaleDateString()}</span></li>)}</ol> : <p className="subtle">No status changes yet.</p>}</details>
   </>
 }
-const pageRows = 50
 // Everything kept about one application: the facts, what was sent, follow-up and notes, questions and answers, and the history.
 // It is shown beside the Tracker table and on the job's own page, so an application looks the same wherever it is opened.
 export function ApplicationDetails({ job: chosen, preferences, onSaved }: { job: TrackerJob; preferences: FollowUpPreferences; onSaved: () => void | Promise<void> }) {
@@ -76,6 +76,7 @@ export function ApplicationPanel({ jobId }: { jobId: string }) {
   if (!data) return <Skeleton lines={4} label="Loading application…" />
   return <section className="application-panel" aria-label="Application"><h3>Application</h3><ApplicationDetails job={data.job} preferences={data.preferences} onSaved={load} /></section>
 }
+const pageRows = 50
 // The Tracker holds every job from applied onward; Saved and Skipped jobs stay in Jobs.
 const isTracked = (job: TrackerJob) => !['new', 'saved', 'skipped'].includes(job.status)
 // The strip counts jobs that ever reached a stage; the chips below count jobs in it now, so the words differ.
@@ -91,7 +92,7 @@ function EmbeddedHead({ actions, children }: { title: string; actions?: React.Re
 }
 export function TrackerPage({ gapsOnly = false, embedded = false }: { gapsOnly?: boolean; embedded?: boolean }) {
   const [data, setData] = useState<TrackerSummary | null>(null), [query, setQuery] = useState(''), [stage, setStage] = useState('all'), [company, setCompany] = useState(''), [after, setAfter] = useState(''), [before, setBefore] = useState(''), [sort, setSort] = useState('captured'), [notice, setNotice] = useState(''), [selected, setSelected] = useState(() => new URLSearchParams(location.hash.split('?')[1] ?? '').get('job') ?? ''), [submitId, setSubmitId] = useState(''), [busy, setBusy] = useState(false), [page, setPage] = useState(1), [activeRow, setActiveRow] = useState(''), [toast, setToast] = useState<{ text: string; undo?: () => void } | null>(null)
-  const [showAdd, setShowAdd] = useState(false)
+  const [showAdd, setShowAdd] = useState(false), [showImport, setShowImport] = useState(false)
   async function load() { setData(await localApi<TrackerSummary>('/api/tracker')) }
   useEffect(() => { void load().catch((e) => setNotice(e.message)) }, [])
   const matching = (jobs: TrackerJob[]) => jobs.filter((j) => isTracked(j) && (stage === 'all' || j.status === stage) && (!query || `${j.company} ${j.title} ${j.notes} ${j.contacts}`.toLowerCase().includes(query.toLowerCase())) && (!company || j.company === company) && (!after || calendarDate(j.capturedAt) >= after) && (!before || calendarDate(j.capturedAt) <= before)).sort((a, b) => sort === 'company' ? a.company.localeCompare(b.company) : sort === 'followup' ? (a.followUpDate ?? '9999').localeCompare(b.followUpDate ?? '9999') : sort === 'applied' ? (b.appliedAt ?? '').localeCompare(a.appliedAt ?? '') : b.capturedAt.localeCompare(a.capturedAt))
@@ -100,12 +101,12 @@ export function TrackerPage({ gapsOnly = false, embedded = false }: { gapsOnly?:
   useEffect(() => { if (!selected || !data) return; const index = matching(data.jobs).findIndex((j) => j.id === selected); if (index >= 0) setPage(Math.floor(index / pageRows) + 1) }, [selected, Boolean(data)])
   // Escape closes the details beside the table.
   useEffect(() => { if (!selected) return; const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setSelected('') }; window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey) }, [selected])
-  async function changeStatus(job: TrackerJob, choice: string, undoable = true) {
   // Keeping on waiting moves the follow-up date out, which also takes the application off the no-reply suggestions until then.
   async function keepWaiting(job: TrackerJob) {
     const date = plusDays(data!.preferences.snoozeDays)
     try { await localApi(`/api/jobs/${job.id}/tracker`, { method: 'PUT', body: JSON.stringify({ followUpDate: date, lastContactAt: job.lastContactAt ? calendarDate(job.lastContactAt) : null, contacts: job.contacts, notes: job.notes }) }); await load(); setToast({ text: `Waiting on ${job.company} until ${date}.` }) } catch (e) { setNotice((e as Error).message) }
   }
+  async function changeStatus(job: TrackerJob, choice: string, undoable = true) {
     const { status: next, outcome } = splitChoice(choice)
     if (next === 'applied' && !job.appliedAt) { setSubmitId(job.id); return }
     setBusy(true)
@@ -129,8 +130,9 @@ export function TrackerPage({ gapsOnly = false, embedded = false }: { gapsOnly?:
   const statusSelect = (job: TrackerJob) => <select tabIndex={rowTab(job)} value={choiceOf(job.status, job.outcome)} disabled={busy} onChange={(e) => void changeStatus(job, e.target.value)}>{statusChoices.map((choice) => <option key={choice.value} value={choice.value}>{choice.label}</option>)}</select>
   const showRecord = (job: TrackerJob) => setSelected(job.id)
   const todayKey = new Date().toISOString().slice(0, 10), place = (job: TrackerJob) => [job.company, job.location].filter(Boolean).join(' · ')
-  return <main className={`shell tracker-shell${chosen ? ' detail-open' : ''}`} id="main" tabIndex={-1}><AppHeader current="tracker" /><PageHeader title={gapsOnly ? 'Evidence gaps' : 'Tracker'} actions={gapsOnly ? undefined : <><button className="button primary" onClick={() => setShowAdd(true)}><Icon name="plus" />Add a job I already applied to</button><details className="more-menu export-menu"><summary>Export</summary><div className="more-panel"><a className="external-link" href={`/api/tracker/export/xlsx?${exportQuery}`} download>Export XLSX</a><a className="external-link" href={`/api/tracker/export/applications.csv?${exportQuery}`} download>Applications CSV</a><a className="external-link" href={`/api/tracker/export/qa.csv?${exportQuery}`} download>Q&A CSV</a></div></details></>}>{gapsOnly ? 'Gaps from the latest tailored draft for each tracked job. They reflect recorded evidence, not a judgment of your abilities.' : <>Jobs you have applied to. Find new ones in <a href="#jobs">Jobs</a>.</>}</PageHeader>{notice && <Toast error onClose={() => setNotice('')}>{notice}</Toast>}{toast && <Toast onUndo={toast.undo} onClose={() => setToast(null)}>{toast.text}</Toast>}
-    {!gapsOnly && <>{(data.followUps.length > 0 || data.ghostedSuggestions.length > 0) && <section className="panel tracker-reminders" aria-label="Follow-ups">{data.followUps.length > 0 && <><h2>Needs follow-up <span className="count">{data.followUps.length}</span></h2>{data.followUps.map((job) => <button className="reminder-row" key={job.id} onClick={() => setSelected(job.id)}>{job.company} · {job.title} <strong>Due {job.followUpDate}</strong></button>)}</>}{data.ghostedSuggestions.length > 0 && <details><summary>No reply in {data.preferences.ghostedDays} days · {data.ghostedSuggestions.length === 1 ? '1 suggestion' : `${data.ghostedSuggestions.length} suggestions`}</summary><p className="subtle">Change the number of days under Settings, Follow-ups.</p>{data.ghostedSuggestions.map((job) => <article className="quiet-row" key={job.id}><span>{job.company} · {job.title} · last activity {calendarDate(job.lastActivityAt)}</span><button className="text-button" disabled={busy} onClick={() => { if (window.confirm(`Mark ${job.title} at ${job.company} as closed with no reply? No status changes until you confirm.`)) void changeStatus(job, 'closed:no_reply') }}>Close as no reply</button></article>)}</details>}</section>}
+  const Head = embedded ? EmbeddedHead : PageHeader
+  return <Shell embedded={embedded} detailOpen={Boolean(chosen)}><Head title={gapsOnly ? 'Evidence gaps' : 'Tracker'} actions={gapsOnly ? undefined : <><button className="button primary" onClick={() => setShowAdd(true)}><Icon name="plus" />Add a job I already applied to</button><button className="button secondary" onClick={() => setShowImport(true)}>Import from a spreadsheet</button><details className="more-menu export-menu"><summary>Export</summary><div className="more-panel"><a className="external-link" href={`/api/tracker/export/xlsx?${exportQuery}`} download>Export XLSX</a><a className="external-link" href={`/api/tracker/export/applications.csv?${exportQuery}`} download>Applications CSV</a><a className="external-link" href={`/api/tracker/export/qa.csv?${exportQuery}`} download>Q&A CSV</a></div></details></>}>{gapsOnly ? 'Gaps from the latest tailored draft for each tracked job. They reflect recorded evidence, not a judgment of your abilities.' : <>Jobs you have applied to. Find new ones in <a href="#jobs">Jobs</a>.</>}</Head>{notice && <Toast error onClose={() => setNotice('')}>{notice}</Toast>}{toast && <Toast onUndo={toast.undo} onClose={() => setToast(null)}>{toast.text}</Toast>}
+    {!gapsOnly && <>{(data.followUps.length > 0 || data.ghostedSuggestions.length > 0) && <section className="panel tracker-reminders" aria-label="Follow-ups">{data.followUps.length > 0 && <><h2>Needs follow-up <span className="count">{data.followUps.length}</span></h2>{data.followUps.map((job) => <div className="reminder-line" key={job.id}><button className="reminder-row" onClick={() => setSelected(job.id)}>{job.company} · {job.title} <strong>{job.followUpDate! < calendarDate() ? 'Overdue' : 'Due'} {job.followUpDate}</strong></button><button className="text-button" disabled={busy} onClick={() => void keepWaiting(job)}>Snooze {data.preferences.snoozeDays} days</button></div>)}</>}{data.ghostedSuggestions.length > 0 && <details><summary>No reply in {data.preferences.ghostedDays} days · {data.ghostedSuggestions.length === 1 ? '1 suggestion' : `${data.ghostedSuggestions.length} suggestions`}</summary><p className="subtle">Change the number of days, or turn this off, under Settings, Follow-up reminders.</p>{data.ghostedSuggestions.map((job) => <article className="quiet-row" key={job.id}><span>{job.company} · {job.title} · last activity {calendarDate(job.lastActivityAt)}</span><button className="text-button" disabled={busy} onClick={() => void keepWaiting(job)}>Keep waiting</button><button className="text-button" disabled={busy} onClick={() => { if (window.confirm(`Mark ${job.title} at ${job.company} as closed with no reply? No status changes until you confirm.`)) void changeStatus(job, 'closed:no_reply') }}>Close as no reply</button></article>)}</details>}</section>}
     {submitId && <SubmissionForm key={submitId} jobId={submitId} onSaved={async () => { setSubmitId(''); await load(); setToast({ text: 'Application submitted record saved.' }) }} onCancel={() => setSubmitId('')} />}
     {tracked.length > 0 && <>
     <div className="toolbar"><label className="search"><Icon name="search" /><input aria-label="Search applications" placeholder="Search title or company" value={query} onChange={(e) => setQuery(e.target.value)} /></label><label className="select"><span aria-hidden="true">Sort</span><select aria-label="Sort applications" value={sort} onChange={(e) => setSort(e.target.value)}><option value="captured">Newest captured</option><option value="company">Company</option><option value="applied">Recently applied</option><option value="followup">Follow-up date</option></select></label>
@@ -146,5 +148,11 @@ export function TrackerPage({ gapsOnly = false, embedded = false }: { gapsOnly?:
     <details className="panel answer-library-panel"><summary>Question and Answer Bank · search every saved answer and reuse one for another job</summary><AnswerLibrary /></details></>}
     {gapsOnly && <section className="panel gap-trends"><p className="subtle">{data.analyzedJobs} tracked job(s) with a tailored draft. Each job counts once per gap; previous runs are excluded.</p>{data.gaps.map((gap) => <details key={gap.key}><summary>{gap.label} · {gap.count} job(s)</summary>{gap.jobs.map((job) => <article key={job.id}><a href={`#jobs/${job.id}`}>{job.company} · {job.title}</a><p>{job.reason}</p></article>)}</details>)}{!data.gaps.length && <p className="empty-state">No recorded evidence gaps yet. Tailor tracked jobs to build this view.</p>}</section>}
     {showAdd && <AddJobDialog alreadyApplied onClose={() => setShowAdd(false)} onOpenExisting={(id) => { setShowAdd(false); showRecord({ id } as TrackerJob) }} onAdded={() => load()} onSaved={async (id) => { setShowAdd(false); await load(); setSelected(id) }} />}
-  </main>
+    {showImport && <ImportDialog onClose={() => setShowImport(false)} onImported={load} />}
+  </Shell>
+}
+
+// Jobs, Tracker view: the same page frame and heading as the list, with the applications table inside.
+export function JobsTrackerView() {
+  return <main className="shell" id="main" tabIndex={-1}><AppHeader current="jobs" /><PageHeader title="Jobs" actions={<JobsViews current="tracker" />}>Everything you have applied to, with follow-ups and what you sent.</PageHeader><TrackerPage embedded /></main>
 }
