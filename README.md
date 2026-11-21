@@ -7,18 +7,29 @@ Everything runs on your own computer: no accounts, no hosted service, no shared 
 ## Features
 
 - **Job tracker.** Save a job with just a company and a title, or paste its description or
-  fetch a public posting. Mark it applied in one click, set follow-up dates, keep contacts
-  and notes, and see a funnel of where your applications stand. Export to XLSX or CSV.
-- **Answer library.** Record the questions an application asked and the answers you gave,
-  then search and reuse them later.
+  fetch a public posting from a link. Mark it applied in one click, keep contacts and notes,
+  and see a funnel of where your applications stand. Export to XLSX or CSV, or
+  [import](#importing-a-spreadsheet) a spreadsheet you already keep.
+- **Today.** A page for what needs you now: follow-ups that are due, applications that may be
+  worth closing, jobs waiting for review, and how the week is going. An optional weekly goal
+  is off until you set one.
+- **Follow-up reminders.** Sensible defaults (a week after you apply, two days after an
+  interview, a "no reply" suggestion after two weeks) that you can change or switch off one
+  by one, or all together. Each application can also be silenced or added to your calendar
+  as an `.ics` file. The desktop app can show a system notification too.
+- **Q&A.** Record the questions an application asked and the answers you gave in the
+  Question and Answer Bank, then search and reuse them later.
 - **Fit check** (optional). Reads a job's requirements, compares them with your master
   résumé and shows what is covered, what is a gap and what needs a look from you.
   Location, work authorization and similar conditions are flagged, never used to block.
 - **Résumé tailoring** (optional). Writes a draft from your master résumé in which every
-  line cites the bullets it came from. You accept, edit, reject or copy each line, then
-  export DOCX or PDF. The exact file you send is kept with the application.
+  line cites the bullets it came from. You accept, edit, reject or copy each line, with the
+  job's requirements and a page meter beside it, then export DOCX or PDF. The exact file you
+  send is kept with the application.
 - **Job feed** (optional). Reads a CSV file that a separate search tool fills, and holds
   new rows for you to decide on. See [Finding jobs](#finding-jobs-optional).
+- **Keyboard and themes.** `Ctrl+K` searches pages and jobs, `N` adds a job, `?` lists the
+  keys. Light, dark, or follow your computer.
 
 You can use the app only as a tracker and never set up AI. The fit check and tailoring are
 turned on separately, and can be hidden again at any time without deleting anything.
@@ -62,34 +73,71 @@ The first time you open the app it asks how you want to use it:
 
 - **Just track my applications.** Nothing else to set up. The fit check and résumé pages
   are hidden, so the app stays small.
+- **Track, and fill from a job file.** The same, plus jobs that a search tool saves to a
+  CSV file arrive in a To review list. No AI needed.
 - **Also tailor résumés with AI.** Opens a short guided setup (below).
 
-You can change your mind later in **Settings → AI features**.
+You can change your mind at any time in **Settings → Your setup**. Turning the job feed or
+tailoring off only hides it; nothing you saved is deleted.
+
+The top bar has **Today**, **Jobs**, **Q&A**, **Résumé** (when tailoring is on) and
+**Settings**. **Jobs** has two views: the **List** you work from, and the **Tracker**, a
+table of everything you have applied to.
 
 ### Tracking jobs
 
-1. On **Jobs**, choose **Add job**. A company and a title are enough. Add the description
-   now, or later when you open the job.
+1. On **Jobs**, choose **Add job** (or press `N`). Paste a link and choose **Fetch details**
+   to fill the fields, or just type. A company and a title are enough. Add the description
+   now, or later when you open the job. Pasting a link anywhere on the Jobs page opens the
+   same form.
 2. Choose **Save and add another** to enter several in a row, or tick **I already applied
    to this job** if you are catching up on past applications.
 3. Press **Mark as applied** on a job when you apply. It is one click, and **Undo** puts it
    back. The job description is kept with the application, so you still have it after the
-   posting disappears.
-4. Open **Tracker** to filter by company, status or date, add follow-up dates, contacts
-   and notes, and export a spreadsheet. Quiet applications can be marked as ghosted after
-   a number of days you choose.
+   posting disappears. A follow-up date is set for you unless you turned that off.
+4. Open the **Tracker** view to filter by company, status or date, change follow-up dates,
+   contacts and notes, and export a spreadsheet. Applications with no reply for a while are
+   suggested for closing as **No reply**; nothing changes until you confirm.
 
 LinkedIn, Indeed and Glassdoor pages are not fetched. Paste their text instead. Other
-postings can be fetched from a link.
+postings can be fetched from a link, with no AI involved.
+
+### Follow-up reminders
+
+**Settings → Follow-up reminders** holds the defaults: 7 days after you apply, 2 days after
+an interview, a "no reply" suggestion after 14 days, and a 3-day snooze. Each rule has its
+own switch and number, and one switch turns every reminder off while keeping your dates.
+Dates you set yourself are never replaced. When the app opens it tells you what is due, and
+**Today** lists it. The app only reminds you while it is open; **Add to calendar (.ics)** on
+an application lets a calendar app remind you when it is closed. In the desktop app you can
+also switch on a system notification here (off by default).
+
+### Importing a spreadsheet
+
+In the **Tracker** view, **Import from a spreadsheet** brings in applications you already
+keep elsewhere. Choose an `.xlsx`, `.csv` or `.tsv` file, or paste cells copied from a
+spreadsheet. The app matches your columns by their headings (you can change any match), shows
+each row as new, already saved or skipped, and lets you check what each status word in your
+sheet becomes (for example "Phone screen" is Interviewing and "Ghosted" is Closed · No
+reply). Dates come from your sheet; an applied job with no date gets the day of the import.
+Nothing is saved until you press **Import**, and **Undo this import** removes what it made,
+except jobs you have worked on since. Files can be up to 5 MB and 5,000 rows.
+
+### Reviewing new jobs
+
+When jobs are waiting in To review, **Today** offers **Start reviewing** (also in `Ctrl+K`).
+It goes through them one at a time: `S` saves, `X` skips, `J` and `K` move without deciding,
+and **Undo** takes back a decision.
 
 ### Turning on AI features
 
 Fit checks and tailoring run on a model on your own computer, through
-[Ollama](https://ollama.com). **Settings → AI features → Set up AI features** walks you
+[Ollama](https://ollama.com). **Settings → AI features → Set up AI features** (or the third choice on first run) walks you
 through three steps and tells you what is wrong at each one:
 
 1. Install Ollama and open it.
-2. Download the model: `ollama pull gemma4:12b`.
+2. Download the model, with a button and a progress bar (or run `ollama pull gemma4:12b`
+   yourself). The suggested model is `gemma4:12b`.
 3. Run a quick test. AI features turn on only after it passes.
 
 Then import your résumé in **Résumé → Master résumé**, review what was read, and keep only
@@ -127,8 +175,10 @@ that does. Start Claude Code or Codex inside that folder and say `run initial sc
 3. `cd job-search`, start `claude` or `codex`, and say `run initial scan`.
 
 The agent saves its results to `job-search/data/jobs.csv` inside the app's data folder
-(shown in Settings), which the app reads on its own. The new rows wait in **Jobs** behind an
-**Only from the job feed** filter until you track, skip or tailor them. Your profile and
+(shown in Settings), which the app reads on its own once **Use a job feed** is on in
+**Settings → Your setup**. The new rows wait in **Jobs** (in To review, behind an **Only from
+the job feed** filter) until you track, skip or tailor them. **Settings → Job feed** shows
+recent checks, and turning the feed off hides its undecided jobs without deleting them. Your profile and
 résumé stay in `job-search/` and are ignored by git.
 
 ## Privacy
@@ -142,7 +192,8 @@ résumé stay in `job-search/` and are ignored by git.
 - Your API key is stored with owner-only permissions, is never returned to the browser, and
   is left out of full backups unless you ask for it.
 - Merely launching the app makes no model or API call. The only outgoing requests are the
-  ones you ask for, such as fetching a posting from a link.
+  ones you ask for, such as fetching a posting from a link or downloading the Ollama model
+  you chose. Spreadsheets you import are read on this computer and never uploaded.
 
 ## Your data and backups
 
