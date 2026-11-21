@@ -7,10 +7,10 @@ import { mkdir, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { applicationStatuses, calendarDate, answerCompanyWarnings } from '../../../packages/shared/src/index.js'
 import { parseResumeFile } from './master.js'
-import { csv, dateOnly, filterTrackerJobs, libraryAnswers, similarAnswers, trackerSummary } from './tracker.js'
+import { addDays, csv, dateOnly, filterTrackerJobs, followUpPreferences, libraryAnswers, similarAnswers, trackerJob, trackerSummary } from './tracker.js'
 
 const date = z.string().refine(dateOnly, 'Use a real calendar date (YYYY-MM-DD).')
-const metadataSchema = z.object({ followUpDate: date.nullable(), lastContactAt: date.nullable(), contacts: z.string().trim().max(5000), notes: z.string().trim().max(5000) }).strict()
+const metadataSchema = z.object({ followUpDate: date.nullable(), lastContactAt: date.nullable(), contacts: z.string().trim().max(5000), notes: z.string().trim().max(5000), remindOff: z.boolean().optional() }).strict()
 export function registerTrackerRoutes(app: Hono, sqlite: Database.Database, dataDirectory: string) {
   const safe = (fn: (context: Context) => Promise<Response>) => async (context: Context) => {
     try { return await fn(context) }
@@ -26,19 +26,39 @@ export function registerTrackerRoutes(app: Hono, sqlite: Database.Database, data
     const result = trackerSummary(sqlite)
     return context.json({ ...result, jobs: filterTrackerJobs(result.jobs, filters(context)) })
   }))
-  app.get('/api/tracker/preferences', safe(async (context) => context.json(sqlite.prepare('SELECT ghosted_days AS ghostedDays FROM tracker_preferences WHERE id=1').get())))
+  app.get('/api/tracker/jobs/:id', safe(async (context) => { const found = trackerJob(sqlite, context.req.param('id')!); return found ? context.json(found) : context.json({ error: 'Job not found.' }, 404) }))
+  app.get('/api/tracker/preferences', safe(async (context) => context.json(followUpPreferences(sqlite))))
+  // What the open-app message needs: how many follow-ups are due and how many applications might be closed.
+  app.get('/api/tracker/reminders', safe(async (context) => { const summary = trackerSummary(sqlite); return context.json({ on: summary.preferences.remindersOn, due: summary.followUps.length, suggestions: summary.ghostedSuggestions.length }) }))
+  const days = (max: number) => z.number().int().min(1).max(max)
+  const preferenceSchema = z.object({ remindersOn: z.boolean(), applyOn: z.boolean(), applyDays: days(90), interviewOn: z.boolean(), interviewDays: days(90), noReplyOn: z.boolean(), ghostedDays: days(365), snoozeDays: days(60) }).partial().strict()
   app.put('/api/tracker/preferences', safe(async (context) => {
-    const value = z.object({ ghostedDays: z.number().int().min(1).max(365) }).strict().parse(await context.req.json().catch(() => null))
-    sqlite.prepare('UPDATE tracker_preferences SET ghosted_days=? WHERE id=1').run(value.ghostedDays)
-    return context.json(value)
+    const value = preferenceSchema.parse(await context.req.json().catch(() => null))
+    const columns: Record<string, string> = { remindersOn: 'reminders_on', applyOn: 'apply_on', applyDays: 'apply_days', interviewOn: 'interview_on', interviewDays: 'interview_days', noReplyOn: 'noreply_on', ghostedDays: 'ghosted_days', snoozeDays: 'snooze_days' }
+    for (const [key, column] of Object.entries(columns)) {
+      const given = (value as Record<string, number | boolean | undefined>)[key]
+      if (given !== undefined) sqlite.prepare(`UPDATE tracker_preferences SET ${column}=? WHERE id=1`).run(typeof given === 'boolean' ? Number(given) : given)
+    }
+    return context.json(followUpPreferences(sqlite))
+  }))
+  // One calendar entry for the follow-up date, made here and downloaded; it holds only what the job page already shows.
+  app.get('/api/jobs/:id/follow-up.ics', safe(async (context) => {
+    const row = sqlite.prepare('SELECT j.id,j.company,j.title,a.follow_up_date AS day FROM jobs j JOIN applications a ON a.job_id=j.id WHERE j.id=?').get(context.req.param('id')!) as { id: string; company: string; title: string; day: string | null } | undefined
+    if (!row?.day) return context.json({ error: 'This job has no follow-up date.' }, 404)
+    const escape = (text: string) => text.replace(/[\\;,]/g, '\\$&').replace(/\r\n|\r|\n/g, '\\n')
+    const origin = new URL(context.req.url).origin, compact = row.day.replaceAll('-', ''), next = addDays(row.day, 1).replaceAll('-', '')
+    const body = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//The Role Clinic//Follow-up//EN', 'BEGIN:VEVENT', `UID:${row.id}-${compact}@role-clinic.local`,
+      `DTSTAMP:${new Date().toISOString().replace(/[-:]|\.\d{3}/g, '')}`, `DTSTART;VALUE=DATE:${compact}`, `DTEND;VALUE=DATE:${next}`,
+      `SUMMARY:${escape(`Follow up: ${row.title} at ${row.company}`)}`, `DESCRIPTION:${escape(`Open in Role Clinic: ${origin}/#tracker?job=${row.id}`)}`, 'END:VEVENT', 'END:VCALENDAR']
+    return new Response(body.join('\r\n') + '\r\n', { headers: { 'content-type': 'text/calendar; charset=utf-8', 'content-disposition': 'attachment; filename="follow-up.ics"' } })
   }))
   app.put('/api/jobs/:id/tracker', safe(async (context) => {
     const jobId = context.req.param('id')!
     if (!exists(jobId)) return context.json({ error: 'Job not found.' }, 404)
     const value = metadataSchema.parse(await context.req.json().catch(() => null))
     if (value.lastContactAt && value.lastContactAt > calendarDate()) return context.json({ error: 'Last contact cannot be in the future.' }, 400)
-    sqlite.prepare(`INSERT INTO applications(id,job_id,status,notes,contacts,follow_up_date,last_contact_at) VALUES(?,?,'new',?,?,?,?)
-      ON CONFLICT(job_id) DO UPDATE SET notes=excluded.notes,contacts=excluded.contacts,follow_up_date=excluded.follow_up_date,last_contact_at=excluded.last_contact_at`).run(randomUUID(), jobId, value.notes, value.contacts, value.followUpDate, value.lastContactAt)
+    sqlite.prepare(`INSERT INTO applications(id,job_id,status,notes,contacts,follow_up_date,last_contact_at,remind_off) VALUES(?,?,'new',?,?,?,?,?)
+      ON CONFLICT(job_id) DO UPDATE SET notes=excluded.notes,contacts=excluded.contacts,follow_up_date=excluded.follow_up_date,last_contact_at=excluded.last_contact_at,remind_off=COALESCE(?,remind_off)`).run(randomUUID(), jobId, value.notes, value.contacts, value.followUpDate, value.lastContactAt, Number(value.remindOff ?? 0), value.remindOff === undefined ? null : Number(value.remindOff))
     return context.json({ ok: true })
   }))
   app.get('/api/jobs/:id/submitted', safe(async (context) => {

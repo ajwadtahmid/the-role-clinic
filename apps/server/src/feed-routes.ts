@@ -6,7 +6,17 @@ import { readSettings, writeSettings } from './settings.js'
 const days = (value: unknown) => { const n = Number(value); return Number.isInteger(n) && n >= 1 && n <= 3650 ? n : null }
 
 export function registerFeedRoutes(app: Hono, feed: FeedService, dataDirectory: string, onImported: (count: number) => void = () => {}) {
+  app.get('/api/feed/runs', (context) => context.json({ runs: feed.history() }))
   app.get('/api/feed/status', async (context) => context.json(await feed.status()))
+
+  // The feed switch. Off stops imports and hides the jobs it brought in that nobody acted on; nothing is deleted, and on shows them again.
+  app.put('/api/feed/enabled', async (context) => {
+    const payload = await context.req.json().catch(() => null) as { enabled?: unknown } | null
+    if (typeof payload?.enabled !== 'boolean') return context.json({ error: 'Send enabled as true or false.' }, 400)
+    const settings = await readSettings(dataDirectory)
+    await writeSettings(dataDirectory, { ...settings, feedEnabled: payload.enabled })
+    return context.json(await feed.status())
+  })
 
   // An empty path turns the feed off. Saving the path never reads or changes the file.
   app.put('/api/feed/path', async (context) => {

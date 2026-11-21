@@ -5,7 +5,7 @@ import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import { databaseBackup } from './database-backups.js'
 import * as schema from './schema.js'
 
-export const CURRENT_SCHEMA_VERSION = 9
+export const CURRENT_SCHEMA_VERSION = 12
 
 export type ClinicDatabase = BetterSQLite3Database<typeof schema>
 
@@ -232,6 +232,43 @@ export function createDatabase(dataDirectory: string): { sqlite: Database.Databa
           status='closed' WHERE status IN ('rejected','ghosted','withdrawn','accepted');
         UPDATE applications SET status='interviewing' WHERE status='screening';
         PRAGMA user_version = 9;
+      COMMIT;`)
+    } catch (error) { rollbackQuietly(sqlite); sqlite.close(); throw error }
+  }
+  if (schemaVersion < 10) {
+    // Follow-up reminders the person controls: a master switch, a rule and a number for each moment, and a snooze length.
+    // ghosted_days stays the "no reply" number. remind_off silences one application.
+    try {
+      sqlite.exec(`BEGIN IMMEDIATE;
+        ALTER TABLE tracker_preferences ADD COLUMN reminders_on INTEGER NOT NULL DEFAULT 1;
+        ALTER TABLE tracker_preferences ADD COLUMN apply_on INTEGER NOT NULL DEFAULT 1;
+        ALTER TABLE tracker_preferences ADD COLUMN apply_days INTEGER NOT NULL DEFAULT 7;
+        ALTER TABLE tracker_preferences ADD COLUMN interview_on INTEGER NOT NULL DEFAULT 1;
+        ALTER TABLE tracker_preferences ADD COLUMN interview_days INTEGER NOT NULL DEFAULT 2;
+        ALTER TABLE tracker_preferences ADD COLUMN noreply_on INTEGER NOT NULL DEFAULT 1;
+        ALTER TABLE tracker_preferences ADD COLUMN snooze_days INTEGER NOT NULL DEFAULT 3;
+        ALTER TABLE applications ADD COLUMN remind_off INTEGER NOT NULL DEFAULT 0;
+        PRAGMA user_version = 10;
+      COMMIT;`)
+    } catch (error) { rollbackQuietly(sqlite); sqlite.close(); throw error }
+  }
+  if (schemaVersion < 11) {
+    // A short history of job feed checks, so a person can see when it last ran and what it found.
+    try {
+      sqlite.exec(`BEGIN IMMEDIATE;
+        CREATE TABLE feed_runs (id TEXT PRIMARY KEY, ran_at TEXT NOT NULL, imported INTEGER NOT NULL DEFAULT 0, duplicates INTEGER NOT NULL DEFAULT 0, invalid INTEGER NOT NULL DEFAULT 0, notice TEXT, error TEXT);
+        PRAGMA user_version = 11;
+      COMMIT;`)
+    } catch (error) { rollbackQuietly(sqlite); sqlite.close(); throw error }
+  }
+  if (schemaVersion < 12) {
+    // Spreadsheet imports: each import is a batch, and a job made by one remembers its batch so the whole import can be undone.
+    try {
+      sqlite.exec(`BEGIN IMMEDIATE;
+        ALTER TABLE jobs ADD COLUMN import_batch TEXT;
+        CREATE TABLE imports (id TEXT PRIMARY KEY, created_at TEXT NOT NULL, added INTEGER NOT NULL DEFAULT 0, skipped INTEGER NOT NULL DEFAULT 0, undone_at TEXT);
+        CREATE INDEX jobs_import_batch_idx ON jobs(import_batch);
+        PRAGMA user_version = 12;
       COMMIT;`)
     } catch (error) { rollbackQuietly(sqlite); sqlite.close(); throw error }
   }

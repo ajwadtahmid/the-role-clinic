@@ -32,6 +32,10 @@ export const appSettingsSchema = z.object({
   jobFeed: z.object({ path: z.string().trim().max(1000) }).strict().optional(),
   autoFitCheck: z.boolean().default(false),
   aiFeatures: aiFeaturesSchema.optional(),
+  // Whether the job feed is in use. Unset (an older install) means on once a feed file is found; the first-run choice sets it.
+  feedEnabled: z.boolean().optional(),
+  // Applications per week the person wants to send. Unset means no goal: nothing is shown until one is chosen.
+  weeklyGoal: z.number().int().min(1).max(100).optional(),
 })
 export type AppSettings = z.infer<typeof appSettingsSchema>
 
@@ -175,13 +179,18 @@ export function answerCompanyWarnings(text: string, targetCompany: string, compa
 }
 export interface TrackerJob {
   id: string; company: string; title: string; sourceUrl: string | null; source: string; location: string; remote: string; salary: string;
-  status: string; outcome: string | null; capturedAt: string; appliedAt: string | null; followUpDate: string | null; lastContactAt: string | null;
+  status: string; outcome: string | null; capturedAt: string; appliedAt: string | null; followUpDate: string | null; lastContactAt: string | null; remindOff: boolean;
   lastActivityAt: string; notes: string; contacts: string; answerCount: number; submittedArtifactId: string | null;
   submittedFilename: string | null; hasSubmittedText: boolean; costUsd: number;
   knockouts: Array<{ quote: string; assessment: string; basis: string }>;
 }
+// The follow-up rules. Each moment has its own switch and number; remindersOn turns every reminder off while the dates stay.
+export interface FollowUpPreferences {
+  remindersOn: boolean; applyOn: boolean; applyDays: number; interviewOn: boolean; interviewDays: number
+  noReplyOn: boolean; ghostedDays: number; snoozeDays: number
+}
 export interface TrackerSummary {
-  jobs: TrackerJob[]; preferences: { ghostedDays: number };
+  jobs: TrackerJob[]; preferences: FollowUpPreferences; repliesThisWeek: number; appliedThisWeek: number;
   followUps: TrackerJob[]; ghostedSuggestions: TrackerJob[];
   funnel: Array<{ status: string; count: number }>;
   gaps: Array<{ key: string; label: string; count: number; jobs: Array<{ id: string; company: string; title: string; reason: string }> }>;

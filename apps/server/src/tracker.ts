@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3'
-import { type Extraction, type Gap, type LibraryAnswer, type TrackerJob, type TrackerSummary, suggestAnswerCategory, calendarDate, currentStatus } from '../../../packages/shared/src/index.js'
+import { type Extraction, type FollowUpPreferences, type Gap, type LibraryAnswer, type TrackerJob, type TrackerSummary, suggestAnswerCategory, calendarDate, currentStatus } from '../../../packages/shared/src/index.js'
 import { listSynonyms, readMaster, readProfile } from './master.js'
 import { assessRequirement } from './pipeline-core.js'
 
@@ -11,26 +11,49 @@ export function latestByJob(sqlite: Database.Database, table: 'requirements' | '
   const rows = sqlite.prepare(`SELECT t.job_id AS jobId, ${expression} AS value FROM ${table} t WHERE t.rowid=(SELECT t2.rowid FROM ${table} t2 WHERE t2.job_id=t.job_id ORDER BY t2.created_at DESC,t2.rowid DESC LIMIT 1)`).all() as Array<{ jobId: string; value: string | null }>
   return new Map(rows.map((row) => [row.jobId, row.value]))
 }
-export function trackerSummary(sqlite: Database.Database, today = calendarDate()): TrackerSummary {
+// The Monday of the week that holds `day`, as YYYY-MM-DD.
+function mondayOf(day: string) { const d = new Date(`${day}T12:00:00Z`); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); return d.toISOString().slice(0, 10) }
+const flag = (value: number) => value === 1
+export function followUpPreferences(sqlite: Database.Database): FollowUpPreferences {
+  const row = sqlite.prepare('SELECT reminders_on AS r,apply_on AS ao,apply_days AS ad,interview_on AS io,interview_days AS id,noreply_on AS no,ghosted_days AS gd,snooze_days AS sd FROM tracker_preferences WHERE id=1').get() as Record<'r' | 'ao' | 'ad' | 'io' | 'id' | 'no' | 'gd' | 'sd', number>
+  return { remindersOn: flag(row.r), applyOn: flag(row.ao), applyDays: row.ad, interviewOn: flag(row.io), interviewDays: row.id, noReplyOn: flag(row.no), ghostedDays: row.gd, snoozeDays: row.sd }
+}
+// A calendar day plus a number of days, as YYYY-MM-DD.
+export function addDays(day: string, days: number) { const d = new Date(`${day}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10) }
+// Tracker rows, with their knockout checks. With a job id, just that job: the job page needs one application, not the whole summary.
+function readTrackerJobs(sqlite: Database.Database, jobId?: string) {
   const jobs = sqlite.prepare(`SELECT j.id,j.company,j.title,j.source_url AS sourceUrl,j.source,j.location,j.remote,j.salary,j.captured_at AS capturedAt,
-    COALESCE(a.status,'new') AS status,a.outcome,a.applied_at AS appliedAt,a.follow_up_date AS followUpDate,a.last_contact_at AS lastContactAt,
+    COALESCE(a.status,'new') AS status,a.outcome,a.applied_at AS appliedAt,a.follow_up_date AS followUpDate,a.last_contact_at AS lastContactAt,COALESCE(a.remind_off,0) AS remindOff,
     COALESCE(a.notes,'') AS notes,COALESCE(a.contacts,'') AS contacts,a.submitted_artifact_id AS submittedArtifactId,
     json_extract(art.document,'$.filename') AS submittedFilename,a.submitted_text IS NOT NULL AS hasSubmittedText,
     (SELECT COUNT(*) FROM job_answers WHERE job_id=j.id) AS answerCount,
     MAX(COALESCE(a.last_contact_at,''),COALESCE((SELECT MAX(created_at) FROM status_events WHERE application_id=a.id),j.captured_at)) AS lastActivityAt,
     COALESCE((SELECT SUM(COALESCE(json_extract(usage,'$.totalUsd'),0)) FROM runs WHERE job_id=j.id),0) AS costUsd
     FROM jobs j LEFT JOIN applications a ON a.job_id=j.id LEFT JOIN artifacts art ON art.id=a.submitted_artifact_id
-    ORDER BY j.captured_at DESC,j.rowid DESC`).all() as TrackerJob[]
+    ${jobId ? 'WHERE j.id=?' : ''} ORDER BY j.captured_at DESC,j.rowid DESC`).all(...(jobId ? [jobId] : [])) as TrackerJob[]
   const master = readMaster(sqlite).document, profile = readProfile(sqlite).document, synonyms = listSynonyms(sqlite)
-  const requirementDocuments = latestByJob(sqlite, 'requirements', 't.document')
+  const requirementDocuments = latestByJob(sqlite, 'requirements', 't.document'), requirementsOf = new Map<string, Extraction['requirements']>()
+  for (const job of jobs) {
+    job.hasSubmittedText = Boolean(job.hasSubmittedText); job.remindOff = Boolean(job.remindOff)
+    const requirementDocument = requirementDocuments.get(job.id)
+    const requirements = requirementDocument ? (JSON.parse(requirementDocument) as Extraction).requirements : []
+    job.knockouts = requirements.filter((r) => r.kind === 'knockout').map((r) => ({ quote: r.quote, ...assessRequirement(r, master, profile, synonyms) }))
+    requirementsOf.set(job.id, requirements)
+  }
+  return { jobs, requirementsOf }
+}
+// One application and the follow-up rules, or null when the job does not exist.
+export function trackerJob(sqlite: Database.Database, jobId: string): { job: TrackerJob; preferences: FollowUpPreferences } | null {
+  const job = readTrackerJobs(sqlite, jobId).jobs[0]
+  return job ? { job, preferences: followUpPreferences(sqlite) } : null
+}
+export function trackerSummary(sqlite: Database.Database, today = calendarDate()): TrackerSummary {
+  const { jobs, requirementsOf } = readTrackerJobs(sqlite)
   const gapDocuments = latestByJob(sqlite, 'tailored', "json_extract(t.document,'$.gaps')")
   const gaps = new Map<string, TrackerSummary['gaps'][number]>()
   let analyzedJobs = 0
   for (const job of jobs) {
-    job.hasSubmittedText = Boolean(job.hasSubmittedText)
-    const requirementDocument = requirementDocuments.get(job.id)
-    const requirements = requirementDocument ? (JSON.parse(requirementDocument) as Extraction).requirements : []
-    job.knockouts = requirements.filter((r) => r.kind === 'knockout').map((r) => ({ quote: r.quote, ...assessRequirement(r, master, profile, synonyms) }))
+    const requirements = requirementsOf.get(job.id) ?? []
     if (['new', 'skipped'].includes(job.status)) continue
     if (!gapDocuments.has(job.id)) continue
     analyzedJobs++
@@ -45,17 +68,24 @@ export function trackerSummary(sqlite: Database.Database, today = calendarDate()
       entry.count++; entry.jobs.push({ id: job.id, company: job.company, title: job.title, reason: gap.reason }); gaps.set(key, entry)
     }
   }
-  const preferences = sqlite.prepare('SELECT ghosted_days AS ghostedDays FROM tracker_preferences WHERE id=1').get() as { ghostedDays: number }
+  const preferences = followUpPreferences(sqlite)
   const funnelStages = ['saved', 'applied', 'interviewing', 'offer', 'accepted']
   // How far a status got along the funnel. Old history rows (screening, accepted…) are read through currentStatus. Other endings give no level of their own.
   const funnelLevel = (status: string, outcome: string | null) => { const now = currentStatus(status, outcome); return now.status === 'closed' ? (now.outcome === 'accepted' ? 4 : -1) : funnelStages.indexOf(now.status) }
   const stagesByJob = new Map<string, number>()
   for (const event of sqlite.prepare('SELECT a.job_id AS jobId,e.status,e.outcome FROM status_events e JOIN applications a ON a.id=e.application_id').all() as Array<{ jobId: string; status: string; outcome: string | null }>) stagesByJob.set(event.jobId, Math.max(stagesByJob.get(event.jobId) ?? -1, funnelLevel(event.status, event.outcome)))
   for (const job of jobs) stagesByJob.set(job.id, Math.max(stagesByJob.get(job.id) ?? -1, funnelLevel(job.status, job.outcome), job.appliedAt ? 1 : -1))
+  // A reply is an application that moved to Interviewing or Offer, or was closed as Rejected, this week (Monday to today). Each application counts once.
+  const monday = mondayOf(today), replied = new Set<string>()
+  for (const event of sqlite.prepare('SELECT a.job_id AS jobId,e.status,e.outcome,e.created_at AS at FROM status_events e JOIN applications a ON a.id=e.application_id').all() as Array<{ jobId: string; status: string; outcome: string | null; at: string }>) {
+    const day = calendarDate(event.at), now = currentStatus(event.status, event.outcome)
+    if (day >= monday && day <= today && (now.status === 'interviewing' || now.status === 'offer' || (now.status === 'closed' && now.outcome === 'rejected'))) replied.add(event.jobId)
+  }
+  const appliedThisWeek = jobs.filter((job) => job.appliedAt && calendarDate(job.appliedAt) >= monday && calendarDate(job.appliedAt) <= today).length
   return {
-    jobs, preferences,
-    followUps: jobs.filter((j) => j.followUpDate && j.followUpDate <= today && !['new', 'skipped', 'closed'].includes(j.status)).sort((a, b) => a.followUpDate!.localeCompare(b.followUpDate!)),
-    ghostedSuggestions: jobs.filter((j) => quietStatuses.has(j.status) && Math.floor((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${calendarDate(j.lastActivityAt)}T00:00:00Z`)) / 86400000) >= preferences.ghostedDays),
+    jobs, preferences, repliesThisWeek: replied.size, appliedThisWeek,
+    followUps: !preferences.remindersOn ? [] : jobs.filter((j) => !j.remindOff && j.followUpDate && j.followUpDate <= today && !['new', 'skipped', 'closed'].includes(j.status)).sort((a, b) => a.followUpDate!.localeCompare(b.followUpDate!)),
+    ghostedSuggestions: !preferences.remindersOn || !preferences.noReplyOn ? [] : jobs.filter((j) => !j.remindOff && !(j.followUpDate && j.followUpDate > today) && quietStatuses.has(j.status) && Math.floor((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${calendarDate(j.lastActivityAt)}T00:00:00Z`)) / 86400000) >= preferences.ghostedDays),
     funnel: funnelStages.map((status, index) => ({ status, count: [...stagesByJob.values()].filter((stage) => stage >= index).length })),
     gaps: [...gaps.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)), analyzedJobs,
   }

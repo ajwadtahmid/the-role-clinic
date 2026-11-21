@@ -289,7 +289,7 @@ export async function applyCleanup(sqlite: Database.Database, path: string | nul
 
 // ---- Service ----
 
-export interface FeedStatus { configured: boolean; path: string | null; isDefault: boolean; defaultPath: string | null; lastCheckedAt: string | null; running: boolean; lastResult: Omit<FeedResult, 'importedIds'> | null }
+export interface FeedStatus { enabled: boolean; fileFound: boolean; configured: boolean; path: string | null; isDefault: boolean; defaultPath: string | null; lastCheckedAt: string | null; running: boolean; lastResult: Omit<FeedResult, 'importedIds'> | null }
 
 export class FeedService {
   private chain: Promise<unknown> = Promise.resolve()
@@ -298,12 +298,14 @@ export class FeedService {
   private active = 0
   // `getPath` returns a path the owner chose. Without one, the feed is read from `defaultPath` (inside the data
   // folder) as soon as a file exists there, so a search tool that writes to the default location needs no setup.
-  constructor(private sqlite: Database.Database, private getPath: () => Promise<string | null>, private capture: PostingCapture, private fetchOptions: { concurrency?: number; spacingMs?: number } = {}, private defaultPath: string | null = null) {}
+  constructor(private sqlite: Database.Database, private getPath: () => Promise<string | null>, private capture: PostingCapture, private fetchOptions: { concurrency?: number; spacingMs?: number } = {}, private defaultPath: string | null = null, private getEnabled: () => Promise<boolean | undefined> = async () => undefined) {}
 
   async status(): Promise<FeedStatus> {
-    const chosen = await this.getPath()
+    const [chosen, switched] = await Promise.all([this.getPath(), this.getEnabled()])
     const path = chosen ?? (this.defaultPath && existsSync(this.defaultPath) ? this.defaultPath : null)
-    return { configured: Boolean(path), path, isDefault: !chosen && Boolean(path), defaultPath: this.defaultPath, lastCheckedAt: this.checkedAt, running: this.active > 0, lastResult: this.last }
+    // The feed is in use when it is switched on (or, for an install that never chose, once a file exists) and a file is found.
+    const enabled = switched ?? Boolean(path)
+    return { enabled, fileFound: Boolean(path), configured: enabled && Boolean(path), path, isDefault: !chosen && Boolean(path), defaultPath: this.defaultPath, lastCheckedAt: this.checkedAt, running: this.active > 0, lastResult: this.last }
   }
 
   // Imports run one at a time, so two quick requests never import the same row twice.
@@ -312,21 +314,39 @@ export class FeedService {
     this.chain = next.catch(() => undefined)
     return next
   }
+  // The check made when the app starts: queued at once, so it runs before any import asked for later, and does nothing when the feed is off or has no file.
+  refreshOnStart() {
+    const next = this.chain.then(async () => { if ((await this.status()).configured) await this.runImport() })
+    this.chain = next.catch(() => undefined)
+    return next
+  }
+  // One row per check, kept to the latest fifty, so Settings can show a history.
+  private record(result: { imported?: number; duplicates?: number; invalid?: number; notice?: string | null; error?: string }) {
+    try {
+      this.sqlite.prepare('INSERT INTO feed_runs(id,ran_at,imported,duplicates,invalid,notice,error) VALUES(?,?,?,?,?,?,?)').run(randomUUID(), new Date().toISOString(), result.imported ?? 0, result.duplicates ?? 0, result.invalid ?? 0, result.notice ?? null, result.error ?? null)
+      this.sqlite.prepare('DELETE FROM feed_runs WHERE id NOT IN (SELECT id FROM feed_runs ORDER BY ran_at DESC,rowid DESC LIMIT 50)').run()
+    } catch { /* the history is a convenience; a failed note never fails the check */ }
+  }
+  history() {
+    return this.sqlite.prepare('SELECT id,ran_at AS ranAt,imported,duplicates,invalid,notice,error FROM feed_runs ORDER BY ran_at DESC,rowid DESC LIMIT 20').all()
+  }
   private async runImport() {
     this.active++
-    try {
-      const { path } = await this.status()
-      if (!path) throw new Error('No job feed file was found. Set its path in Settings, or run the search so it writes to the default location.')
-      const { file } = await readFeedFile(path)
-      if (file.missingColumns.length) throw new Error(`The file is missing required columns: ${file.missingColumns.join(', ')}.`)
-      const { marks, importedIds, ...counts } = importRows(this.sqlite, file)
-      const marked = await markImported(path, marks)
-      this.checkedAt = new Date().toISOString()
-      this.last = { ...counts, notice: marked.notice }
-      // Posting text arrives in the background; nothing here waits on it.
-      if (importedIds.length) void fetchPostings(this.sqlite, importedIds, this.capture, this.fetchOptions).catch(() => undefined)
-      return { ...counts, notice: marked.notice, importedIds }
-    } finally { this.active-- }
+    try { return await this.importOnce() } catch (error) { this.record({ error: (error as Error).message }); throw error } finally { this.active-- }
+  }
+  private async importOnce() {
+    const { path } = await this.status()
+    if (!path) throw new Error('No job feed file was found. Set its path in Settings, or run the search so it writes to the default location.')
+    const { file } = await readFeedFile(path)
+    if (file.missingColumns.length) throw new Error(`The file is missing required columns: ${file.missingColumns.join(', ')}.`)
+    const { marks, importedIds, ...counts } = importRows(this.sqlite, file)
+    const marked = await markImported(path, marks)
+    this.checkedAt = new Date().toISOString()
+    this.last = { ...counts, notice: marked.notice }
+    // Posting text arrives in the background; nothing here waits on it.
+    if (importedIds.length) void fetchPostings(this.sqlite, importedIds, this.capture, this.fetchOptions).catch(() => undefined)
+    this.record({ imported: counts.imported, duplicates: counts.duplicates, invalid: counts.invalid, notice: marked.notice })
+    return { ...counts, notice: marked.notice, importedIds }
   }
 
   // A dry look at a file: counts only, nothing is changed.

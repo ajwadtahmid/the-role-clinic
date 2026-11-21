@@ -7,7 +7,7 @@ import ExcelJS from 'exceljs'
 import { createApp } from './app.js'
 import { createDatabase } from './db.js'
 import { trackerSummary, csv } from './tracker.js'
-import { answerCompanyWarnings, suggestAnswerCategory, type TrackerSummary } from '../../../packages/shared/src/index.js'
+import { answerCompanyWarnings, calendarDate, suggestAnswerCategory, type TrackerSummary } from '../../../packages/shared/src/index.js'
 import { renderDocx } from './resume-output.js'
 
 const fixtures: Array<{ directory: string; sqlite: ReturnType<typeof createDatabase>['sqlite'] }> = []
@@ -35,7 +35,7 @@ describe('tracker and answers', () => {
     await f.send(`/api/jobs/${jobId}/answers`, { question: 'Legacy question?', answer: 'Legacy submitted answer.', category: 'project' })
     await f.send(`/api/jobs/${jobId}/status`, { status: 'applied', submittedText: 'Legacy résumé' }, 'PUT')
     f.sqlite.exec(`BEGIN IMMEDIATE;
-      ALTER TABLE applications DROP COLUMN outcome; ALTER TABLE status_events DROP COLUMN outcome;
+      DROP TABLE imports; DROP INDEX jobs_import_batch_idx; ALTER TABLE jobs DROP COLUMN import_batch; DROP TABLE feed_runs; ALTER TABLE applications DROP COLUMN remind_off; ALTER TABLE applications DROP COLUMN outcome; ALTER TABLE status_events DROP COLUMN outcome;
       DROP TABLE tracker_preferences; DROP INDEX job_answers_job_idx;
       ALTER TABLE applications DROP COLUMN follow_up_date;
       DROP TABLE feed_imports;
@@ -56,10 +56,102 @@ describe('tracker and answers', () => {
     f.sqlite.close()
     const migrated = createDatabase(f.directory).sqlite
     fixtures.find((entry) => entry.directory === f.directory)!.sqlite = migrated
-    expect(migrated.pragma('user_version', { simple: true })).toBe(9)
+    expect(migrated.pragma('user_version', { simple: true })).toBe(12)
     expect(migrated.pragma('integrity_check', { simple: true })).toBe('ok')
     expect(migrated.prepare('SELECT submitted_question,submitted_category,submitted_answer FROM job_answers').get()).toEqual({ submitted_question: 'Legacy question?', submitted_category: 'project', submitted_answer: 'Legacy submitted answer.' })
     expect(migrated.prepare('SELECT submitted_text,submitted_job_text FROM applications').get()).toEqual({ submitted_text: 'Legacy résumé', submitted_job_text: 'Original job description requiring TypeScript and reliable software systems.' })
+  })
+  it('migrates a version 9 database to the current one with the reminder defaults and keeps the saved no-reply days', async () => {
+    const f = await setup()
+    f.sqlite.exec(`DROP TABLE imports; DROP INDEX jobs_import_batch_idx; ALTER TABLE jobs DROP COLUMN import_batch; DROP TABLE feed_runs; ALTER TABLE applications DROP COLUMN remind_off; ${['reminders_on', 'apply_on', 'apply_days', 'interview_on', 'interview_days', 'noreply_on', 'snooze_days'].map((c) => `ALTER TABLE tracker_preferences DROP COLUMN ${c};`).join(' ')} UPDATE tracker_preferences SET ghosted_days=21; PRAGMA user_version = 9;`)
+    f.sqlite.close()
+    const migrated = createDatabase(f.directory).sqlite
+    fixtures.find((entry) => entry.directory === f.directory)!.sqlite = migrated
+    expect(migrated.pragma('user_version', { simple: true })).toBe(12)
+    expect(migrated.prepare('SELECT reminders_on,apply_on,apply_days,interview_on,interview_days,noreply_on,ghosted_days,snooze_days FROM tracker_preferences').get()).toEqual({ reminders_on: 1, apply_on: 1, apply_days: 7, interview_on: 1, interview_days: 2, noreply_on: 1, ghosted_days: 21, snooze_days: 3 })
+  })
+  it('sets follow-up dates from the rules without replacing a date the person chose, and the master switch hides every reminder', async () => {
+    const f = await setup(), today = calendarDate(), plus = (n: number) => { const d = new Date(`${today}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10) }
+    const date = (id: string) => (f.sqlite.prepare('SELECT follow_up_date AS d FROM applications WHERE job_id=?').get(id) as { d: string | null }).d
+    const plain = f.job('Plain', 'saved'), own = f.job('Own', 'saved')
+    await f.send(`/api/jobs/${own}/tracker`, { followUpDate: plus(30), lastContactAt: null, contacts: '', notes: '' }, 'PUT')
+    await f.send(`/api/jobs/${plain}/status`, { status: 'applied', submittedText: '' }, 'PUT')
+    await f.send(`/api/jobs/${own}/status`, { status: 'applied', submittedText: '' }, 'PUT')
+    expect(date(plain)).toBe(plus(7)); expect(date(own)).toBe(plus(30))
+    await f.send(`/api/jobs/${plain}/status`, { status: 'interviewing' }, 'PUT')
+    await f.send(`/api/jobs/${own}/status`, { status: 'interviewing' }, 'PUT')
+    // A later date already set is kept; an empty one gets the interview rule.
+    const direct = f.job('Direct', 'saved'); await f.send(`/api/jobs/${direct}/status`, { status: 'interviewing' }, 'PUT')
+    expect(date(plain)).toBe(plus(7)); expect(date(own)).toBe(plus(30)); expect(date(direct)).toBe(plus(2))
+    // Rules off: nothing is set.
+    await f.send('/api/tracker/preferences', { applyOn: false }, 'PUT')
+    const quiet = f.job('Quiet', 'saved'); await f.send(`/api/jobs/${quiet}/status`, { status: 'applied', submittedText: '' }, 'PUT')
+    expect(date(quiet)).toBeNull()
+    // Master off hides due follow-ups and suggestions but keeps the dates.
+    await f.send(`/api/jobs/${plain}/tracker`, { followUpDate: '2020-01-01', lastContactAt: null, contacts: '', notes: '' }, 'PUT')
+    expect(trackerSummary(f.sqlite).followUps.map((j) => j.id)).toContain(plain)
+    await f.send('/api/tracker/preferences', { remindersOn: false }, 'PUT')
+    const off = trackerSummary(f.sqlite); expect(off.followUps).toEqual([]); expect(off.ghostedSuggestions).toEqual([]); expect(date(plain)).toBe('2020-01-01')
+    await f.send('/api/tracker/preferences', { remindersOn: true }, 'PUT')
+    expect(trackerSummary(f.sqlite).followUps.map((j) => j.id)).toContain(plain)
+    // One application can be silenced.
+    await f.send(`/api/jobs/${plain}/tracker`, { followUpDate: '2020-01-01', lastContactAt: null, contacts: '', notes: '', remindOff: true }, 'PUT')
+    expect(trackerSummary(f.sqlite).followUps.map((j) => j.id)).not.toContain(plain)
+  })
+  it('undoing Mark as applied removes the follow-up date the rule set, but keeps one the person chose', async () => {
+    const f = await setup(), ruled = f.job('Ruled', 'saved'), chosen = f.job('Chosen', 'saved')
+    const date = (id: string) => (f.sqlite.prepare('SELECT follow_up_date AS d FROM applications WHERE job_id=?').get(id) as { d: string | null }).d
+    for (const id of [ruled, chosen]) await f.send(`/api/jobs/${id}/status`, { status: 'applied', submittedText: '' }, 'PUT')
+    expect(date(ruled)).toBeTruthy()
+    await f.send(`/api/jobs/${chosen}/tracker`, { followUpDate: '2099-01-01', lastContactAt: null, contacts: '', notes: '' }, 'PUT')
+    for (const id of [ruled, chosen]) expect((await f.send(`/api/jobs/${id}/status`, { status: 'saved', undoApplied: true }, 'PUT')).status).toBe(200)
+    expect(date(ruled)).toBeNull(); expect(date(chosen)).toBe('2099-01-01')
+  })
+  it('returns one application exactly as the full summary shows it, and 404 for an unknown job', async () => {
+    const f = await setup(), id = f.job('Acme', 'applied'), other = f.job('Beta', 'interviewing')
+    await f.send(`/api/jobs/${id}/tracker`, { followUpDate: '2026-12-01', lastContactAt: null, contacts: 'Jane', notes: 'Call back', remindOff: true }, 'PUT')
+    const one = await (await f.request(`/api/tracker/jobs/${id}`)).json() as { job: unknown; preferences: unknown }
+    const all = trackerSummary(f.sqlite)
+    expect(one.job).toEqual(JSON.parse(JSON.stringify(all.jobs.find((job) => job.id === id))))
+    expect(one.preferences).toEqual(all.preferences)
+    expect((one.job as { id: string }).id).not.toBe(other)
+    expect((await f.request('/api/tracker/jobs/nope')).status).toBe(404)
+  })
+  it('counts applications sent this week from Monday to today', async () => {
+    const f = await setup()
+    f.job('Monday', 'applied', '2026-11-16T12:00:00.000Z'); f.job('Wednesday', 'applied', '2026-11-18T12:00:00.000Z'); f.job('Last week', 'applied', '2026-11-15T12:00:00.000Z')
+    expect(trackerSummary(f.sqlite, '2026-11-18').appliedThisWeek).toBe(2)
+  })
+  it('does not suggest closing an application that is snoozed to a future date, or when the no-reply rule is off', async () => {
+    const f = await setup(), id = f.job('Quiet Co', 'applied', '2026-09-01T12:00:00.000Z')
+    expect(trackerSummary(f.sqlite, '2026-11-06').ghostedSuggestions.map((j) => j.id)).toEqual([id])
+    await f.send(`/api/jobs/${id}/tracker`, { followUpDate: '2026-11-09', lastContactAt: null, contacts: '', notes: '' }, 'PUT')
+    expect(trackerSummary(f.sqlite, '2026-11-06').ghostedSuggestions).toEqual([])
+    expect(trackerSummary(f.sqlite, '2026-11-10').ghostedSuggestions.map((j) => j.id)).toEqual([id])
+    await f.send('/api/tracker/preferences', { noReplyOn: false }, 'PUT')
+    expect(trackerSummary(f.sqlite, '2026-11-10').ghostedSuggestions).toEqual([])
+  })
+  it('makes a calendar file for a follow-up date and refuses when there is none', async () => {
+    const f = await setup(), id = f.job('Acme, Inc.', 'applied')
+    expect((await f.request(`/api/jobs/${id}/follow-up.ics`)).status).toBe(404)
+    await f.send(`/api/jobs/${id}/tracker`, { followUpDate: '2026-12-03', lastContactAt: null, contacts: '', notes: '' }, 'PUT')
+    const response = await f.request(`/api/jobs/${id}/follow-up.ics`), body = await response.text()
+    expect(response.headers.get('content-type')).toContain('text/calendar')
+    expect(body).toContain('DTSTART;VALUE=DATE:20261203'); expect(body).toContain('DTEND;VALUE=DATE:20261204'); expect(body).toContain('SUMMARY:Follow up: Software Engineer at Acme\\, Inc.'); expect(body).toContain(`#tracker?job=${id}`)
+  })
+  it('counts replies this week: interviews, offers and rejections, once per application, and nothing from earlier weeks', async () => {
+    const f = await setup(), today = '2026-11-18' // a Wednesday; the week began Monday 2026-11-16
+    const event = (id: string, status: string, outcome: string | null, at: string) => f.sqlite.prepare('INSERT INTO status_events(id,application_id,status,outcome,created_at) VALUES(?,(SELECT id FROM applications WHERE job_id=?),?,?,?)').run(randomUUID(), id, status, outcome, at)
+    const interview = f.job('A', 'interviewing'), both = f.job('B', 'offer'), rejected = f.job('C', 'closed'), old = f.job('D', 'interviewing'), noReply = f.job('E', 'closed'), applied = f.job('F', 'applied')
+    event(interview, 'interviewing', null, '2026-11-17T10:00:00.000Z')
+    event(both, 'interviewing', null, '2026-11-16T10:00:00.000Z'); event(both, 'offer', null, '2026-11-18T09:00:00.000Z')
+    event(rejected, 'closed', 'rejected', '2026-11-18T12:00:00.000Z')
+    event(old, 'interviewing', null, '2026-11-13T10:00:00.000Z')
+    event(noReply, 'closed', 'no_reply', '2026-11-17T10:00:00.000Z')
+    event(applied, 'applied', null, '2026-11-17T10:00:00.000Z')
+    expect(trackerSummary(f.sqlite, today).repliesThisWeek).toBe(3)
+    expect(trackerSummary(f.sqlite, '2026-11-22').repliesThisWeek).toBe(3)
+    expect(trackerSummary(f.sqlite, '2026-11-23').repliesThisWeek).toBe(0)
   })
   it('keeps due follow-ups separate from quiet suggestions, excludes closed jobs, and requires explicit status changes', async () => {
     const f = await setup(), active = f.job('Acme', 'applied'), closed = f.job('Closed', 'closed')

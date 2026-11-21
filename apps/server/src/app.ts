@@ -7,7 +7,7 @@ import { isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type Database from 'better-sqlite3'
 import type { ClinicDatabase } from './db.js'
-import { appSettingsSchema, applicationStatuses, closedOutcomes, taskNames, suggestAnswerCategory, type AppSettings } from '../../../packages/shared/src/index.js'
+import { appSettingsSchema, applicationStatuses, calendarDate, closedOutcomes, taskNames, suggestAnswerCategory, type AppSettings } from '../../../packages/shared/src/index.js'
 import { readSettings, toPublicSettings, writeSettings } from './settings.js'
 import { aiActive, resolveAiFeatures } from './ai-features.js'
 import { SerialRunQueue } from './queue.js'
@@ -21,7 +21,7 @@ import { databaseBackup } from './database-backups.js'
 import { registerRuntimeRoutes, type RuntimeInfo } from './runtime-routes.js'
 import { registerMasterRoutes } from './master-routes.js'
 import { registerTrackerRoutes } from './tracker-routes.js'
-import { latestByJob } from './tracker.js'
+import { addDays, followUpPreferences, latestByJob } from './tracker.js'
 import { registerReviewRoutes } from './review-routes.js'
 import { PipelineService } from './pipeline.js'
 import { listSynonyms, readMaster, readProfile } from './master.js'
@@ -164,7 +164,7 @@ export function createApp(options: AppOptions) {
   const modelRouter = options.modelRouter ?? new ModelRouter(() => readSettings(options.dataDirectory))
   const pipeline = new PipelineService(options.sqlite, options.dataDirectory, queue, modelRouter)
   const fitBatch = new FitBatch(options.sqlite, options.dataDirectory, pipeline)
-  const feed = new FeedService(options.sqlite, async () => (await readSettings(options.dataDirectory)).jobFeed?.path || null, options.postingCapture ?? ((url) => captureJobUrl(url)), { spacingMs: options.feedSpacingMs }, join(options.dataDirectory, 'job-search', 'data', 'jobs.csv'))
+  const feed = new FeedService(options.sqlite, async () => (await readSettings(options.dataDirectory)).jobFeed?.path || null, options.postingCapture ?? ((url) => captureJobUrl(url)), { spacingMs: options.feedSpacingMs }, join(options.dataDirectory, 'job-search', 'data', 'jobs.csv'), async () => (await readSettings(options.dataDirectory)).feedEnabled)
   const app = new Hono()
   app.use('*', securityMiddleware({ port, webPort, development }))
   if (options.runtime?.desktop) app.use('*', async (context, next) => {
@@ -190,7 +190,7 @@ export function createApp(options: AppOptions) {
   registerTrackerRoutes(app, options.sqlite, options.dataDirectory)
   registerFeedRoutes(app, feed, options.dataDirectory, () => { void fitBatch.maybeStart().catch(() => {}) })
   // Check the feed once at start; a missing or unreadable file is shown later in Settings, never here.
-  void feed.status().then((status) => status.configured ? feed.refresh() : undefined).catch(() => undefined)
+  void feed.refreshOnStart().catch(() => undefined)
   app.get('/api/jobs/:id/analysis', (context) => {
     const analysis = pipeline.getAnalysis(context.req.param('id'))
     return analysis ? context.json(analysis) : context.json({ error: 'Job not found.' }, 404)
@@ -236,11 +236,13 @@ export function createApp(options: AppOptions) {
     catch (error) { return context.json({ error: (error as Error).message }, 409) }
   })
 
-  app.get('/api/jobs', (context) => {
+  app.get('/api/jobs', async (context) => {
     const query = cleanText(context.req.query('q'), 200)
     const status = cleanText(context.req.query('status'), 30)
     if (status && !jobViews.includes(status) && !applicationStatuses.includes(status as typeof applicationStatuses[number])) return context.json({ error: 'Unknown status filter.' }, 400)
-    const clauses = [query ? "(j.company LIKE ? ESCAPE '\\' OR j.title LIKE ? ESCAPE '\\' OR j.text LIKE ? ESCAPE '\\')" : '', viewClause(status)].filter(Boolean)
+    // With the feed off, jobs it brought in that nobody has acted on stay in the database but are not shown.
+    const hideFeed = !(await feed.status()).enabled
+    const clauses = [hideFeed ? "NOT (j.origin='feed' AND COALESCE(a.status,'new')='new')" : '', query ? "(j.company LIKE ? ESCAPE '\\' OR j.title LIKE ? ESCAPE '\\' OR j.text LIKE ? ESCAPE '\\')" : '', viewClause(status)].filter(Boolean)
     const params: string[] = []
     // Search for the typed text itself: a literal % or _ must not act as a wildcard.
     const pattern = `%${query.replace(/[\\%_]/g, '\\$&')}%`
@@ -269,11 +271,12 @@ export function createApp(options: AppOptions) {
   })
 
   // How many jobs each Jobs view holds. Registered before `/api/jobs/:id`, which would otherwise match "counts".
-  app.get('/api/jobs/counts', (context) => {
-    const rows = options.sqlite.prepare("SELECT COALESCE(a.status,'new') AS status, COUNT(*) AS n FROM jobs j LEFT JOIN applications a ON a.job_id=j.id GROUP BY 1").all() as Array<{ status: string; n: number }>
+  app.get('/api/jobs/counts', async (context) => {
+    const hideFeed = !(await feed.status()).enabled
+    const rows = options.sqlite.prepare(`SELECT COALESCE(a.status,'new') AS status, COUNT(*) AS n FROM jobs j LEFT JOIN applications a ON a.job_id=j.id ${hideFeed ? "WHERE NOT (j.origin='feed' AND COALESCE(a.status,'new')='new')" : ''} GROUP BY 1`).all() as Array<{ status: string; n: number }>
     const count = (status: string) => rows.find((row) => row.status === status)?.n ?? 0
     const all = rows.reduce((sum, row) => sum + row.n, 0)
-    const triage = (options.sqlite.prepare("SELECT COUNT(*) AS n FROM jobs j LEFT JOIN applications a ON a.job_id=j.id WHERE j.origin='feed' AND COALESCE(a.status,'new')='new'").get() as { n: number }).n
+    const triage = (options.sqlite.prepare("SELECT COUNT(*) AS n FROM jobs j LEFT JOIN applications a ON a.job_id=j.id WHERE j.origin='feed' AND COALESCE(a.status,'new')='new'").get() as { n: number }).n * (hideFeed ? 0 : 1)
     // `active` is what is still being worked on (to review or saved); `applied` is everything from applied onward; `tracker` is now the same as `applied`.
     return context.json({ new: count('new'), saved: count('saved'), triage, active: count('new') - triage + count('saved'), applied: all - count('new') - count('saved') - count('skipped'), tracker: all - count('new') - count('saved') - count('skipped'), skipped: count('skipped'), all })
   })
@@ -379,6 +382,9 @@ export function createApp(options: AppOptions) {
     const sentOn = typeof (payload as { appliedAt?: unknown }).appliedAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test((payload as { appliedAt: string }).appliedAt) ? new Date(`${(payload as { appliedAt: string }).appliedAt}T12:00:00`) : null
     // Today is allowed at any hour: only a day that has not started yet is in the future. A time later than now is stored as now.
     if (sentOn && (Number.isNaN(sentOn.getTime()) || new Date(`${(payload as { appliedAt: string }).appliedAt}T00:00:00`).getTime() > Date.now())) return context.json({ error: 'The date applied cannot be in the future.' }, 400)
+        // The follow-up date the applied rule set goes too; a date the person chose themselves stays.
+        const rules = followUpPreferences(options.sqlite)
+        if (row.appliedAt && row.followUp && rules.applyOn && row.followUp === addDays(calendarDate(row.appliedAt), rules.applyDays)) options.sqlite.prepare('UPDATE applications SET follow_up_date=NULL WHERE id=?').run(row.id)
     const sentAt = sentOn && sentOn.getTime() > Date.now() ? new Date() : sentOn
     if (status === 'closed' && !closedOutcomes.includes(payload.outcome as typeof closedOutcomes[number])) return context.json({ error: 'Say how this application ended: rejected, no reply, withdrawn or accepted.' }, 400)
     if (status !== 'closed' && payload.outcome != null) return context.json({ error: 'Only a closed application has an outcome.' }, 400)
@@ -387,7 +393,7 @@ export function createApp(options: AppOptions) {
     // description and answers. Once a résumé file is recorded as sent, the record is final and this refuses.
     if ((payload as { undoApplied?: unknown }).undoApplied === true) {
       if (!['new', 'saved', 'skipped'].includes(status)) return context.json({ error: 'An application can only be undone back to To review, Saved or Skipped.' }, 400)
-      const row = options.sqlite.prepare('SELECT id,status,submitted_artifact_id AS artifactId,submitted_text AS text FROM applications WHERE job_id=?').get(jobId) as { id: string; status: string; artifactId: string | null; text: string | null } | undefined
+      const row = options.sqlite.prepare('SELECT id,status,submitted_artifact_id AS artifactId,submitted_text AS text,applied_at AS appliedAt,follow_up_date AS followUp FROM applications WHERE job_id=?').get(jobId) as { id: string; status: string; artifactId: string | null; text: string | null; appliedAt: string | null; followUp: string | null } | undefined
       if (!row || row.status !== 'applied' || row.artifactId || row.text) return context.json({ error: 'Only a job just marked applied, with no résumé recorded, can be undone.' }, 409)
       options.sqlite.transaction(() => {
         options.sqlite.prepare('UPDATE applications SET status=?,outcome=NULL,applied_at=NULL,submitted_job_text=NULL,submitted_text=NULL WHERE id=?').run(status, row.id)
@@ -403,6 +409,16 @@ export function createApp(options: AppOptions) {
       if (!artifact?.document || !artifact.parse_check || !JSON.parse(artifact.parse_check).ok) return context.json({ error: 'Choose a verified export belonging to this job.' }, 422)
       submittedArtifactId = artifact.id
       artifactText = (JSON.parse(artifact.document).blocks as Array<{ text: string }>).map((b) => b.text).join('\n')
+      // Reminder rules: a date the person set is never replaced by the applied rule, and the interview rule only moves an earlier date forward.
+      const rules = followUpPreferences(options.sqlite)
+      if (rules.remindersOn && (status === 'applied' || status === 'interviewing')) {
+        const rule = status === 'applied' ? { on: rules.applyOn, days: rules.applyDays } : { on: rules.interviewOn, days: rules.interviewDays }
+        const from = status === 'applied' ? calendarDate((options.sqlite.prepare('SELECT applied_at FROM applications WHERE id=?').get(appId) as { applied_at: string }).applied_at) : calendarDate()
+        if (rule.on) {
+          const target = addDays(from, rule.days), current = (options.sqlite.prepare('SELECT follow_up_date AS d FROM applications WHERE id=?').get(appId) as { d: string | null }).d
+          if (!current || (status === 'interviewing' && current < target)) options.sqlite.prepare('UPDATE applications SET follow_up_date=? WHERE id=?').run(target, appId)
+        }
+      }
     }
 
     const application = options.sqlite.prepare('SELECT id,notes FROM applications WHERE job_id=?').get(jobId) as { id: string; notes: string } | undefined
@@ -468,6 +484,30 @@ export function createApp(options: AppOptions) {
 
   // Whether AI features are chosen, on and showing. Hiding changes only what is shown; nothing is deleted.
   app.put('/api/ai-features', async (context) => {
+  // The weekly goal: a number, or null for none. It is off until the person picks one.
+  app.get('/api/weekly-goal', async (context) => context.json({ goal: (await readSettings(options.dataDirectory)).weeklyGoal ?? null }))
+  app.put('/api/weekly-goal', async (context) => {
+    const payload = await context.req.json().catch(() => null) as { goal?: unknown } | null
+    const goal = payload?.goal
+    if (goal !== null && !(typeof goal === 'number' && Number.isInteger(goal) && goal >= 1 && goal <= 100)) return context.json({ error: 'Choose a whole number from 1 to 100, or none.' }, 400)
+    const settings = await readSettings(options.dataDirectory)
+    await writeSettings(options.dataDirectory, { ...settings, weeklyGoal: goal ?? undefined })
+    return context.json({ goal })
+  })
+
+  // Downloads the chosen local model through Ollama and passes its progress lines straight on (one JSON object per line).
+  // The model comes from settings, never from the request, and Ollama must be the loopback one.
+  app.post('/api/connections/ollama/pull', async (context) => {
+    const settings = await readSettings(options.dataDirectory), choice = settings.taskModels.requirementExtraction
+    if (choice.provider !== 'ollama' || !choice.model) return context.json({ error: 'Choose a local model in Settings first.' }, 409)
+    let upstream: Response
+    try {
+      upstream = await fetch(`${localOllamaUrl(settings.ollamaBaseUrl).origin}/api/pull`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: choice.model, stream: true }), signal: context.req.raw.signal })
+    } catch { return context.json({ error: 'Ollama is not running. Open it, then try again.' }, 502) }
+    if (!upstream.ok || !upstream.body) return context.json({ error: `Ollama could not download ${choice.model} (HTTP ${upstream.status}).` }, 502)
+    return new Response(upstream.body, { headers: { 'content-type': 'application/x-ndjson', 'cache-control': 'no-store' } })
+  })
+
     const payload = await context.req.json().catch(() => null) as Record<string, unknown> | null
     const flags = ['chosen', 'enabled', 'hidden'] as const
     if (!payload || typeof payload !== 'object' || flags.some((flag) => payload[flag] !== undefined && typeof payload[flag] !== 'boolean')) return context.json({ error: 'Send chosen, enabled or hidden as true or false.' }, 400)
@@ -506,7 +546,7 @@ export function createApp(options: AppOptions) {
     const current = await readSettings(options.dataDirectory)
     if (!Object.hasOwn(payload, 'anthropicApiKey')) value = { ...value, anthropicApiKey: current.anthropicApiKey }
     // The AI-features choice is changed only through /api/ai-features, never by saving model settings.
-    value = { ...value, aiFeatures: current.aiFeatures }
+    value = { ...value, aiFeatures: current.aiFeatures, feedEnabled: current.feedEnabled, weeklyGoal: current.weeklyGoal }
     try { localOllamaUrl(value.ollamaBaseUrl) } catch (error) { return context.json({ error: error instanceof Error ? error.message : 'Invalid Ollama URL.' }, 400) }
     await writeSettings(options.dataDirectory, value)
     return context.json(publicSettings(value))

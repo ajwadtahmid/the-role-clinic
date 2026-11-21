@@ -3,9 +3,10 @@ import Database from 'better-sqlite3'
 import { mkdtemp, readdir, rm, readFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { createServer } from 'node:http'
 import { createApp } from './app.js'
 import { createDatabase } from './db.js'
-import { defaultSettings, readSettings } from './settings.js'
+import { defaultSettings, readSettings, writeSettings } from './settings.js'
 import { SerialRunQueue } from './queue.js'
 import { captureJobUrl } from './capture.js'
 
@@ -111,6 +112,40 @@ describe('local server foundation', () => {
     expect(response.status).toBe(502)
     expect((await response.json()).error).toContain('localhost or 127.0.0.1')
     sqlite.close()
+  })
+
+  it('keeps the weekly goal off until chosen, validates it, and keeps it when other settings are saved', async () => {
+    const { app, sqlite } = await fixture()
+    const put = (goal: unknown) => request(app, '/api/weekly-goal', { method: 'PUT', headers: sameOrigin, body: JSON.stringify({ goal }) })
+    expect(await (await request(app, '/api/weekly-goal')).json()).toEqual({ goal: null })
+    expect((await put(0)).status).toBe(400); expect((await put('5')).status).toBe(400); expect((await put(2.5)).status).toBe(400)
+    expect((await put(5)).status).toBe(200)
+    await request(app, '/api/settings', { method: 'PUT', headers: sameOrigin, body: JSON.stringify(defaultSettings()) })
+    expect(await (await request(app, '/api/weekly-goal')).json()).toEqual({ goal: 5 })
+    expect((await put(null)).status).toBe(200)
+    expect(await (await request(app, '/api/weekly-goal')).json()).toEqual({ goal: null })
+    sqlite.close()
+  })
+
+  it('downloads the model chosen in settings through Ollama and streams its progress, and says so when Ollama is not running', async () => {
+    const { app, sqlite, dataDirectory } = await fixture()
+    const received: string[] = []
+    const fake = createServer((req, res) => { let body = ''; req.on('data', (c) => { body += c }); req.on('end', () => { received.push(`${req.url} ${body}`); res.setHeader('content-type', 'application/x-ndjson'); res.end('{"status":"pulling","total":100,"completed":40}\n{"status":"success"}\n') }) })
+    await new Promise<void>((resolve) => fake.listen(0, '127.0.0.1', resolve))
+    const port = (fake.address() as { port: number }).port, settings = defaultSettings()
+    // Not running yet: a plain message, not a crash.
+    await writeSettings(dataDirectory, { ...settings, ollamaBaseUrl: 'http://127.0.0.1:1' })
+    const down = await request(app, '/api/connections/ollama/pull', { method: 'POST', headers: sameOrigin, body: '{}' })
+    expect(down.status).toBe(502); expect((await down.json()).error).toContain('Ollama is not running')
+    await writeSettings(dataDirectory, { ...settings, ollamaBaseUrl: `http://127.0.0.1:${port}` })
+    // The model comes from settings; a model named in the request is ignored.
+    const response = await request(app, '/api/connections/ollama/pull', { method: 'POST', headers: sameOrigin, body: JSON.stringify({ model: 'something-else' }) })
+    expect(response.status).toBe(200)
+    expect(await response.text()).toContain('"completed":40')
+    expect(received).toEqual([`/api/pull ${JSON.stringify({ model: settings.taskModels.requirementExtraction.model, stream: true })}`])
+    await writeSettings(dataDirectory, { ...settings, ollamaBaseUrl: 'http://example.com:11434' })
+    expect((await request(app, '/api/connections/ollama/pull', { method: 'POST', headers: sameOrigin, body: '{}' })).status).toBe(502)
+    await new Promise<void>((resolve) => fake.close(() => resolve())); sqlite.close()
   })
 
   it('creates a consistent database backup outside the app bundle', async () => {
@@ -236,7 +271,7 @@ describe('job capture and tracker', () => {
     first.sqlite.prepare('INSERT INTO jobs(id,company,title,captured_at,source_url,raw_snapshot) VALUES(?,?,?,?,?,?)').run('legacy-job', 'Acme', 'Engineer', new Date().toISOString(), null, 'Existing job snapshot')
     first.sqlite.close()
     const legacy = new Database(join(dataDirectory, 'role-clinic.sqlite'))
-    legacy.exec(`ALTER TABLE applications DROP COLUMN outcome; ALTER TABLE status_events DROP COLUMN outcome; DROP TABLE feed_imports; DROP INDEX jobs_origin_idx; ALTER TABLE jobs DROP COLUMN origin; ALTER TABLE jobs DROP COLUMN found_at; ALTER TABLE jobs DROP COLUMN posted_at; ALTER TABLE jobs DROP COLUMN finder_priority; ALTER TABLE jobs DROP COLUMN finder_note; ALTER TABLE jobs DROP COLUMN posting_state; ALTER TABLE job_answers DROP COLUMN submitted_question; ALTER TABLE job_answers DROP COLUMN submitted_category; DROP TABLE tracker_preferences; DROP INDEX job_answers_job_idx; ALTER TABLE applications DROP COLUMN follow_up_date; ALTER TABLE applications DROP COLUMN last_contact_at; ALTER TABLE applications DROP COLUMN contacts; ALTER TABLE applications DROP COLUMN submitted_job_text; DROP TABLE review_drafts; ALTER TABLE artifacts DROP COLUMN document; ALTER TABLE applications DROP COLUMN submitted_artifact_id; DROP INDEX jobs_canonical_url_idx; DROP INDEX applications_status_idx;
+    legacy.exec(`DROP TABLE imports; DROP INDEX jobs_import_batch_idx; ALTER TABLE jobs DROP COLUMN import_batch; DROP TABLE feed_runs; ALTER TABLE applications DROP COLUMN remind_off; ALTER TABLE applications DROP COLUMN outcome; ALTER TABLE status_events DROP COLUMN outcome; DROP TABLE feed_imports; DROP INDEX jobs_origin_idx; ALTER TABLE jobs DROP COLUMN origin; ALTER TABLE jobs DROP COLUMN found_at; ALTER TABLE jobs DROP COLUMN posted_at; ALTER TABLE jobs DROP COLUMN finder_priority; ALTER TABLE jobs DROP COLUMN finder_note; ALTER TABLE jobs DROP COLUMN posting_state; ALTER TABLE job_answers DROP COLUMN submitted_question; ALTER TABLE job_answers DROP COLUMN submitted_category; DROP TABLE tracker_preferences; DROP INDEX job_answers_job_idx; ALTER TABLE applications DROP COLUMN follow_up_date; ALTER TABLE applications DROP COLUMN last_contact_at; ALTER TABLE applications DROP COLUMN contacts; ALTER TABLE applications DROP COLUMN submitted_job_text; DROP TABLE review_drafts; ALTER TABLE artifacts DROP COLUMN document; ALTER TABLE applications DROP COLUMN submitted_artifact_id; DROP INDEX jobs_canonical_url_idx; DROP INDEX applications_status_idx;
       ALTER TABLE jobs DROP COLUMN text; ALTER TABLE job_answers DROP COLUMN submitted_at;
       ALTER TABLE job_answers DROP COLUMN updated_at;
       ALTER TABLE jobs DROP COLUMN canonical_url; ALTER TABLE jobs DROP COLUMN apply_url;
@@ -248,7 +283,7 @@ describe('job capture and tracker', () => {
       PRAGMA user_version = 1;`)
     legacy.close()
     const migrated = createDatabase(dataDirectory)
-    expect(migrated.sqlite.pragma('user_version', { simple: true })).toBe(9)
+    expect(migrated.sqlite.pragma('user_version', { simple: true })).toBe(12)
     expect((migrated.sqlite.prepare('SELECT COUNT(*) AS count FROM synonyms').get() as { count: number }).count).toBe(3)
     expect(migrated.sqlite.prepare("SELECT company,raw_snapshot,text FROM jobs WHERE id='legacy-job'").get()).toEqual({ company: 'Acme', raw_snapshot: 'Existing job snapshot', text: 'Existing job snapshot' })
     expect(migrated.sqlite.prepare('PRAGMA table_info(jobs)').all().map((column) => (column as { name: string }).name)).toContain('canonical_url')
@@ -264,7 +299,7 @@ describe('job capture and tracker', () => {
       first.sqlite.prepare('INSERT INTO applications(id,job_id,status,notes,contacts) VALUES(?,?,?,?,?)').run(`app-${status}`, status, status, '', '')
       first.sqlite.prepare('INSERT INTO status_events(id,application_id,status,created_at) VALUES(?,?,?,?)').run(`event-${status}`, `app-${status}`, status, '2026-10-02T00:00:00.000Z')
     }
-    first.sqlite.exec('ALTER TABLE applications DROP COLUMN outcome; ALTER TABLE status_events DROP COLUMN outcome; PRAGMA user_version = 8;')
+    first.sqlite.exec('DROP TABLE imports; DROP INDEX jobs_import_batch_idx; ALTER TABLE jobs DROP COLUMN import_batch; DROP TABLE feed_runs; ALTER TABLE applications DROP COLUMN remind_off; ALTER TABLE applications DROP COLUMN outcome; ALTER TABLE status_events DROP COLUMN outcome; ALTER TABLE tracker_preferences DROP COLUMN reminders_on; ALTER TABLE tracker_preferences DROP COLUMN apply_on; ALTER TABLE tracker_preferences DROP COLUMN apply_days; ALTER TABLE tracker_preferences DROP COLUMN interview_on; ALTER TABLE tracker_preferences DROP COLUMN interview_days; ALTER TABLE tracker_preferences DROP COLUMN noreply_on; ALTER TABLE tracker_preferences DROP COLUMN snooze_days; PRAGMA user_version = 8;')
     first.sqlite.close()
     const migrated = createDatabase(dataDirectory)
     const rows = migrated.sqlite.prepare('SELECT job_id AS id,status,outcome FROM applications ORDER BY job_id').all() as Array<{ id: string; status: string; outcome: string | null }>
@@ -273,7 +308,7 @@ describe('job capture and tracker', () => {
       offer: ['offer', null], accepted: ['closed', 'accepted'], rejected: ['closed', 'rejected'], withdrawn: ['closed', 'withdrawn'], ghosted: ['closed', 'no_reply'],
     })
     expect(migrated.sqlite.prepare('SELECT status,outcome FROM status_events WHERE id=?').get('event-ghosted')).toEqual({ status: 'ghosted', outcome: null })
-    expect(migrated.sqlite.pragma('user_version', { simple: true })).toBe(9)
+    expect(migrated.sqlite.pragma('user_version', { simple: true })).toBe(12)
     expect((await readdir(join(dataDirectory, 'backups'))).some((name) => name.startsWith('pre-migration-v8'))).toBe(true)
     migrated.sqlite.close()
   })
