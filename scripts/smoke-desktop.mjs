@@ -111,6 +111,8 @@ try {
   // as a finished setup would, and reloads so the page reads the new setting.
   // These choices hold a title and a description, so the exact-text button helper cannot find them.
   await start(); await until(() => evaluate(`const b=[...document.querySelectorAll('.start-choice')].find(b=>b.querySelector('strong')?.textContent.trim()===arguments[0]&&!b.disabled);if(!b)return false;b.click();return true`, 'Also tailor résumés with AI'), 'first-run choice')
+  // The choice saves its settings and then records the welcome; reloading before that finishes shows the welcome page again.
+  await until(async () => (await api('/api/app/status')).welcomeComplete === true, 'first run recorded')
   await api('/api/ai-features', { enabled: true }, 'PUT')
   await evaluate('location.hash="#jobs"; location.reload()')
   await until(async () => (await text()).includes('Add your first job'), 'jobs page with AI features on')
